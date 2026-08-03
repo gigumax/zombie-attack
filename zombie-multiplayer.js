@@ -586,14 +586,29 @@ class ZombieMultiplayerClient {
       // Walk animation — legs, arms, head bob, torso sway
       const ud = mesh.userData;
       const swing = Math.sin(z.wp);
-      // Handle arm loss — hide arms and spawn falling detached arm
+      // Handle limb loss — hide limbs and spawn exploding detached limb
       if (z.la && ud.armL && ud.armL.visible) {
         ud.armL.visible = false;
-        this.spawnDetachedLimb(z.x, 1.3, z.z, ud.armL, z.r || 0);
+        this.spawnLimbExplosion(z.x, 1.3, z.z, ud.armL, z.r || 0);
       }
       if (z.ra && ud.armR && ud.armR.visible) {
         ud.armR.visible = false;
-        this.spawnDetachedLimb(z.x, 1.3, z.z, ud.armR, z.r || 0);
+        this.spawnLimbExplosion(z.x, 1.3, z.z, ud.armR, z.r || 0);
+      }
+      if (z.ll && ud.legL && ud.legL.visible) {
+        ud.legL.visible = false;
+        this.spawnLimbExplosion(z.x, 0.4, z.z, ud.legL, z.r || 0);
+      }
+      if (z.rl && ud.legR && ud.legR.visible) {
+        ud.legR.visible = false;
+        this.spawnLimbExplosion(z.x, 0.4, z.z, ud.legR, z.r || 0);
+      }
+      // Boss special attack effects
+      if (z.slm) {
+        this.spawnSlamEffect(z.x, z.z);
+      }
+      if (z.rng) {
+        this.spawnRangedEffect(z.x, 3.0, z.z, z.r || 0);
       }
       // Boss reviving — pulse red and shake
       if (z.rvv) {
@@ -853,35 +868,70 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh, life: cfg.life, maxLife: cfg.life });
   }
 
-  spawnDetachedLimb(x, y, z, originalMesh, yaw) {
-    // Clone the limb mesh geometry/material for a falling detached limb
+  spawnLimbExplosion(x, y, z, originalMesh, yaw) {
+    // Clone the limb mesh for the falling body part
     const clone = new THREE.Mesh(
       originalMesh.geometry.clone(),
       originalMesh.material.clone()
     );
-    // Position at the zombie's side, offset by the original arm's local position
     const offsetX = originalMesh.position.x;
     const offsetY = originalMesh.position.y;
     const offsetZ = originalMesh.position.z;
-    // Rotate offset by zombie yaw
     const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
-    clone.position.set(
-      x + offsetX * cosY - offsetZ * sinY,
-      offsetY,
-      z + offsetX * sinY + offsetZ * cosY
-    );
+    const wx = x + offsetX * cosY - offsetZ * sinY;
+    const wz = z + offsetX * sinY + offsetZ * cosY;
+    clone.position.set(wx, offsetY, wz);
     clone.rotation.copy(originalMesh.rotation);
     clone.rotation.y += yaw;
     clone.castShadow = true;
+    clone.material.transparent = true;
     this.scene.add(clone);
-    // Add to bullets array with physics for falling
     this.bullets.push({
       mesh: clone, life: 3.0, maxLife: 3.0, isLimb: true,
-      vx: (Math.random() - 0.5) * 3,
-      vy: 2 + Math.random() * 2,
-      vz: (Math.random() - 0.5) * 3,
-      rotVel: (Math.random() - 0.5) * 5,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 4 + Math.random() * 3,
+      vz: (Math.random() - 0.5) * 6,
+      rotVel: (Math.random() - 0.5) * 8,
     });
+    // Explosion particles — red blood/gore burst
+    for (let i = 0; i < 12; i++) {
+      const pMat = new THREE.MeshBasicMaterial({ color: 0xcc0000, transparent: true, opacity: 1 });
+      const pSize = 0.05 + Math.random() * 0.08;
+      const particle = new THREE.Mesh(new THREE.SphereGeometry(pSize, 4, 4), pMat);
+      particle.position.set(wx, offsetY, wz);
+      this.scene.add(particle);
+      this.bullets.push({
+        mesh: particle, life: 0.5 + Math.random() * 0.3, maxLife: 0.8, isParticle: true,
+        vx: (Math.random() - 0.5) * 8,
+        vy: 2 + Math.random() * 5,
+        vz: (Math.random() - 0.5) * 8,
+      });
+    }
+    // Flash sphere — quick expanding red glow
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.8 });
+    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), flashMat);
+    flash.position.set(wx, offsetY, wz);
+    this.scene.add(flash);
+    this.bullets.push({ mesh: flash, life: 0.2, maxLife: 0.2, isFlash: true });
+  }
+
+  spawnSlamEffect(x, z) {
+    // Expanding shockwave ring on ground
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.8, 16), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.05, z);
+    this.scene.add(ring);
+    this.bullets.push({ mesh: ring, life: 0.6, maxLife: 0.6, isShockwave: true });
+  }
+
+  spawnRangedEffect(x, y, z, yaw) {
+    // Glowing projectile orb that fades
+    const projMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 1 });
+    const proj = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), projMat);
+    proj.position.set(x, y, z);
+    this.scene.add(proj);
+    this.bullets.push({ mesh: proj, life: 0.4, maxLife: 0.4, isProjectile: true });
   }
 
   spawnImpactHole(x, y, z, zid) {
@@ -959,17 +1009,36 @@ class ZombieMultiplayerClient {
         b.mesh.position.z += b.vz * dt;
         b.mesh.rotation.x += b.rotVel * dt;
         b.mesh.rotation.z += b.rotVel * dt;
-        // Hit ground
         if (b.mesh.position.y < 0.1) {
           b.mesh.position.y = 0.1;
-          b.vy = -b.vy * 0.3; // bounce
+          b.vy = -b.vy * 0.3;
           b.vx *= 0.5; b.vz *= 0.5;
           b.rotVel *= 0.3;
         }
-        // Fade in last 1 second
         const fadeRatio = Math.min(b.life / 1.0, 1);
         b.mesh.material.opacity = fadeRatio;
-        b.mesh.material.transparent = true;
+      } else if (b.isParticle) {
+        // Blood particles — gravity, fade fast
+        b.vy -= 20 * dt;
+        b.mesh.position.x += b.vx * dt;
+        b.mesh.position.y += b.vy * dt;
+        b.mesh.position.z += b.vz * dt;
+        if (b.mesh.position.y < 0.02) { b.mesh.position.y = 0.02; b.vy = 0; b.vx *= 0.3; b.vz *= 0.3; }
+        b.mesh.material.opacity = b.life / b.maxLife;
+      } else if (b.isFlash) {
+        // Quick expanding flash
+        const p = 1 - b.life / b.maxLife;
+        b.mesh.scale.setScalar(1 + p * 4);
+        b.mesh.material.opacity = (1 - p) * 0.8;
+      } else if (b.isShockwave) {
+        // Expanding shockwave ring
+        const p = 1 - b.life / b.maxLife;
+        b.mesh.scale.setScalar(1 + p * 8);
+        b.mesh.material.opacity = (1 - p) * 0.8;
+      } else if (b.isProjectile) {
+        // Glowing projectile fades
+        b.mesh.material.opacity = b.life / b.maxLife;
+        b.mesh.scale.setScalar(1 + (1 - b.life / b.maxLife) * 2);
       } else if (b.isHole) {
         // Fade out holes gradually in last 1 second
         const fadeRatio = Math.min(b.life / 1.0, 1);

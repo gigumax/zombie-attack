@@ -142,7 +142,7 @@ function spawnZombie() {
     damage, attackRange, attackTimer: 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
-    lostArms: {},
+    lostLimbs: {}, limbDamage: {},
   });
 }
 
@@ -152,15 +152,16 @@ function spawnBoss() {
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
   const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
-  const health = 1500 + (wave - 6) * 400;
+  const health = (1500 + (wave - 6) * 400) * 3; // 3x harder
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
-    damage: CONFIG.zombieDamage * 5, attackRange: CONFIG.zombieAttackRange * 2.5,
+    damage: CONFIG.zombieDamage * 15, attackRange: CONFIG.zombieAttackRange * 2.5, // 3x damage
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
-    lostArms: {},
+    lostLimbs: {}, limbDamage: {},
     reviveCount: 0, reviveTimer: 0, reviving: false,
+    specialAttackTimer: 5, // timer for special attacks
   });
   broadcastKillFeed('BOSS HAS APPEARED!');
 }
@@ -173,7 +174,7 @@ function spawnGuard() {
     damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
     attackTimer: 0, walkPhase: 0,
     isBoss: false, hasKey: true,
-    lostArms: {},
+    lostLimbs: {}, limbDamage: {},
   });
 }
 
@@ -187,7 +188,7 @@ function spawnEscapeZombie() {
     damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
     attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
-    lostArms: {},
+    lostLimbs: {}, limbDamage: {},
   });
 }
 
@@ -201,7 +202,8 @@ function killZombie(zombie, killerId) {
     zombie.reviving = true;
     zombie.reviveTimer = 3; // 3 seconds to revive
     zombie.health = 0;
-    zombie.lostArms = {}; // reset arms on revive
+    zombie.lostLimbs = {}; // limbs grow back on revive
+    zombie.limbDamage = {};
     // Give partial reward for downing the boss
     const downScore = 50 * wave;
     const downGold = 30 + wave * 5;
@@ -427,16 +429,34 @@ function handleShoot(playerId) {
     const muzzleY = p.y - 0.3;
     const muzzleX = p.x + Math.cos(p.yaw) * 0.3;
     const muzzleZ = p.z - Math.sin(p.yaw) * 0.3;
-    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0, zid: hitZombie ? closestHit.zombie.id : -1, part: hitZombie ? closestHit.part : '' });
+    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0, zid: hitZombie ? closestHit.zombie.id : -1, part: hitZombie ? closestHit.part : '', explode: 0 });
 
     if (closestHit) {
-      // Handle arm shot — mark arm as lost
-      if (closestHit.part === 'armL' || closestHit.part === 'armR') {
-        if (!closestHit.zombie.lostArms) closestHit.zombie.lostArms = {};
-        closestHit.zombie.lostArms[closestHit.part] = true;
+      const z = closestHit.zombie;
+      const part = closestHit.part;
+      // Accumulate limb damage — 100 damage to rip off a limb
+      if (part !== 'body') {
+        if (!z.limbDamage) z.limbDamage = {};
+        if (!z.limbDamage[part]) z.limbDamage[part] = 0;
+        z.limbDamage[part] += damage;
+        if (z.limbDamage[part] >= 100 && !(z.lostLimbs && z.lostLimbs[part])) {
+          // Rip off the limb!
+          if (!z.lostLimbs) z.lostLimbs = {};
+          z.lostLimbs[part] = true;
+          // Mark tracer for explosion effect
+          p.shootTracers[p.shootTracers.length - 1].explode = 1;
+          // Slow zombie if a leg was lost
+          if (part === 'legL' || part === 'legR') {
+            z.speed *= 0.5;
+          }
+          // Don't apply body damage when limb rips off — the limb damage IS the damage
+        } else if (z.limbDamage[part] < 100) {
+          // Still accumulating damage to limb — don't hurt body
+        }
+      } else {
+        z.health -= damage;
       }
-      closestHit.zombie.health -= damage;
-      if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
+      if (z.health <= 0) killZombie(z, playerId);
     }
   }
 }
@@ -482,18 +502,26 @@ function rayHitZombie(p, dir, z, maxDist) {
   if (hitY < 0 || hitY > height) return null;
   const hitX = ox + t * dx;
   const hitZ = oz + t * dz;
-  // Determine hit body part — arms are at sides, roughly y 1.0-1.6 for normal, scaled for boss
+  // Determine hit body part
   const armYMin = z.isBoss ? 1.5 : 1.0;
   const armYMax = z.isBoss ? 4.5 : 1.6;
   const armOffset = z.isBoss ? 1.15 : 0.38;
+  const legYMax = z.isBoss ? 1.5 : 0.75;
+  const legOffset = z.isBoss ? 0.4 : 0.13;
   let part = 'body';
+  const relX = hitX - z.x;
+  // Check arms
   if (hitY >= armYMin && hitY <= armYMax) {
-    // Check if hit is to the left or right of center
-    const relX = hitX - z.x;
     if (Math.abs(relX) > armOffset * 0.6) {
-      part = relX < 0 ? 'armL' : 'armR';
-      // Don't allow hitting an already-lost arm
-      if (z.lostArms && z.lostArms[part]) part = 'body';
+      const armPart = relX < 0 ? 'armL' : 'armR';
+      if (!(z.lostLimbs && z.lostLimbs[armPart])) part = armPart;
+    }
+  }
+  // Check legs
+  if (hitY < legYMax) {
+    if (Math.abs(relX) > legOffset * 0.5) {
+      const legPart = relX < 0 ? 'legL' : 'legR';
+      if (!(z.lostLimbs && z.lostLimbs[legPart])) part = legPart;
     }
   }
   return {
@@ -645,13 +673,14 @@ function updateZombies(dt) {
       if (z.reviveTimer <= 0) {
         z.reviving = false;
         z.reviveCount++;
-        // Each revival: more health, more damage, slightly faster
-        const baseHealth = 1500 + (wave - 6) * 400;
+        // Each revival: more health, more damage, slightly faster (3x base)
+        const baseHealth = (1500 + (wave - 6) * 400) * 3;
         z.maxHealth = Math.floor(baseHealth * (1 + z.reviveCount * 0.5));
         z.health = z.maxHealth;
-        z.damage = CONFIG.zombieDamage * 5 * (1 + z.reviveCount * 0.3);
+        z.damage = CONFIG.zombieDamage * 15 * (1 + z.reviveCount * 0.3);
         z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.15);
-        z.lostArms = {}; // arms grow back creepier
+        z.lostLimbs = {}; // limbs grow back creepier
+        z.limbDamage = {};
         broadcastKillFeed(`BOSS REVIVED! Phase ${z.reviveCount}/3 — STRONGER!`);
       }
       continue; // don't process AI while reviving
@@ -681,22 +710,86 @@ function updateZombies(dt) {
     // Attack
     z.attackTimer -= dt;
     const attackRange = z.attackRange || CONFIG.zombieAttackRange;
-    if (dist < attackRange && z.attackTimer <= 0) {
-      z.attackTimer = CONFIG.zombieAttackCooldown;
-      if (z.isBoss) {
-        // Boss triggers escape for all players
-        startEscape();
-        return;
-      } else {
-        target.health -= (z.damage || CONFIG.zombieDamage);
+    if (z.isBoss) {
+      // Boss special attacks
+      z.specialAttackTimer -= dt;
+      if (z.specialAttackTimer <= 0) {
+        z.specialAttackTimer = 5 + Math.random() * 3; // every 5-8 seconds
+        const attackType = Math.floor(Math.random() * 3);
+        if (attackType === 0) {
+          // CHARGE — fast dash toward target, dealing damage on hit
+          z.charging = true;
+          z.chargeTimer = 1.0;
+          z.chargeDx = dx / dist;
+          z.chargeDz = dz / dist;
+          broadcastKillFeed('BOSS CHARGES!');
+        } else if (attackType === 1) {
+          // SLAM — AoE damage to all nearby players
+          if (dist < attackRange * 2) {
+            for (const p of Object.values(players)) {
+              if (p.dead) continue;
+              const pd = Math.hypot(p.x - z.x, p.z - z.z);
+              if (pd < attackRange * 2) {
+                p.health -= z.damage * 0.5;
+                if (p.health <= 0) { p.health = 0; p.dead = true; }
+              }
+            }
+            z.slamEffect = 1; // visual flag for client
+            z.attackTimer = 1.5;
+            broadcastKillFeed('BOSS SLAMS THE GROUND!');
+          }
+        } else {
+          // RANGED — shoot projectile at target (instant hit, long range)
+          if (dist < 30) {
+            target.health -= z.damage * 0.4;
+            if (target.health <= 0) { target.health = 0; target.dead = true; }
+            z.rangedEffect = 1; // visual flag
+            z.attackTimer = 1.0;
+            broadcastKillFeed('BOSS HURLS A PROJECTILE!');
+          }
+        }
+      }
+      // Handle charge movement
+      if (z.charging) {
+        z.chargeTimer -= dt;
+        const chargeSpeed = z.speed * 4;
+        z.x += z.chargeDx * chargeSpeed * dt;
+        z.z += z.chargeDz * chargeSpeed * dt;
+        // Check collision with any player
+        for (const p of Object.values(players)) {
+          if (p.dead) continue;
+          const pd = Math.hypot(p.x - z.x, p.z - z.z);
+          if (pd < attackRange) {
+            p.health -= z.damage;
+            if (p.health <= 0) { p.health = 0; p.dead = true; }
+            z.charging = false;
+          }
+        }
+        if (z.chargeTimer <= 0) z.charging = false;
+        // Keep world bounds
+        const half = CONFIG.worldSize - 1;
+        z.x = Math.max(-half, Math.min(half, z.x));
+        z.z = Math.max(-half, Math.min(half, z.z));
+      }
+      // Normal boss melee attack when in range
+      if (dist < attackRange && z.attackTimer <= 0 && !z.charging) {
+        z.attackTimer = z.attackCooldown || 0.7;
+        target.health -= z.damage;
         if (target.health <= 0) {
           target.health = 0;
           target.dead = true;
-          // Check if all players dead
-          const allDead = Object.values(players).every(p => p.dead);
-          if (allDead && !escapeMode) {
-            io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
-          }
+        }
+      }
+    } else if (dist < attackRange && z.attackTimer <= 0) {
+      z.attackTimer = CONFIG.zombieAttackCooldown;
+      target.health -= (z.damage || CONFIG.zombieDamage);
+      if (target.health <= 0) {
+        target.health = 0;
+        target.dead = true;
+        // Check if all players dead
+        const allDead = Object.values(players).every(p => p.dead);
+        if (allDead && !escapeMode) {
+          io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
         }
       }
     }
@@ -790,18 +883,21 @@ function gameLoop() {
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
     })),
     zombies: zombies.map(z => {
-      const la = z.lostArms || {};
-      if (z.dying) {
-        return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
-          boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-          dy: 1, dt: Math.ceil(z.deathTimer), la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0,
-          rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0 };
-      }
-      return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
-        hp: Math.ceil(z.health), mhp: z.maxHealth,
+      const ll = z.lostLimbs || {};
+      const base = {
+        id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
         boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-        dy: 0, dt: 0, la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0,
-        rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0 };
+        la: ll.armL ? 1 : 0, ra: ll.armR ? 1 : 0, ll: ll.legL ? 1 : 0, rl: ll.legR ? 1 : 0,
+        rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,
+        chg: z.charging ? 1 : 0, slm: z.slamEffect ? 1 : 0, rng: z.rangedEffect ? 1 : 0,
+      };
+      // Reset one-shot effect flags
+      if (z.slamEffect) z.slamEffect = 0;
+      if (z.rangedEffect) z.rangedEffect = 0;
+      if (z.dying) {
+        return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
+      }
+      return { ...base, hp: Math.ceil(z.health), mhp: z.maxHealth, dy: 0, dt: 0 };
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
