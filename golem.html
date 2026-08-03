@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iron Golem — Village Defender</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      font-family: 'Inter', sans-serif;
+      color: #fff;
+      overflow: hidden;
+      user-select: none;
+    }
+    #game-canvas { display: block; }
+    #hud {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 24px;
+      padding: 10px 28px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      z-index: 10;
+      pointer-events: none;
+    }
+    .hud-item { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .hud-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.4); }
+    .hud-value { font-size: 22px; font-weight: 800; }
+    #health-bar {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 240px;
+      height: 16px;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      overflow: hidden;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #health-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #e74c3c, #2ecc71);
+      transition: width 0.2s;
+    }
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 20px;
+      color: rgba(255,255,255,0.8);
+      z-index: 10;
+      pointer-events: none;
+      text-shadow: 0 0 4px rgba(0,0,0,0.8);
+    }
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(8px);
+      text-align: center;
+      padding: 40px;
+      z-index: 20;
+      transition: opacity 0.3s;
+    }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+    .overlay h1 {
+      font-size: 52px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      background: linear-gradient(135deg, #95a5a6, #ecf0f1, #7f8c8d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .instructions { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+    .instructions p { font-size: 14px; color: rgba(255,255,255,0.7); line-height: 1.5; }
+    .controls { font-size: 14px; color: rgba(255,255,255,0.5); }
+    kbd {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 5px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0 1px;
+    }
+    .btn {
+      margin-top: 12px;
+      padding: 14px 40px;
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #fff;
+      background: linear-gradient(135deg, #7f8c8d, #95a5a6);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(149, 165, 166, 0.3);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(149,165,166,0.5); }
+    #final-text { font-size: 18px; color: rgba(255,255,255,0.6); }
+    #final-score { font-size: 22px; font-weight: 700; color: #f1c40f; }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="hud" style="display:none">
+    <div class="hud-item"><span class="hud-label">WAVE</span><span id="hud-wave" class="hud-value">1</span></div>
+    <div class="hud-item"><span class="hud-label">ZOMBIES</span><span id="hud-zombies" class="hud-value">0</span></div>
+    <div class="hud-item"><span class="hud-label">VILLAGERS</span><span id="hud-villagers" class="hud-value">0</span></div>
+    <div class="hud-item"><span class="hud-label">KILLS</span><span id="hud-kills" class="hud-value">0</span></div>
+  </div>
+  <div id="health-bar" style="display:none"><div id="health-fill"></div></div>
+  <div id="crosshair" style="display:none">+</div>
+  <div id="start-screen" class="overlay">
+    <h1>IRON GOLEM</h1>
+    <div class="instructions">
+      <p><strong>You are the Iron Golem</strong> — protector of the village</p>
+      <p><strong>Zombies attack in waves</strong> — punch them before they reach the villagers</p>
+      <p><strong>Keep villagers alive</strong> — if they all die, the village falls</p>
+      <p><strong>Each wave gets harder</strong> — how long can you last?</p>
+    </div>
+    <p class="controls">Move <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> · Look with mouse · <kbd>Shift</kbd> to attack · <kbd>Space</kbd> to jump</p>
+    <button id="start-btn" class="btn">DEFEND THE VILLAGE</button>
+  </div>
+  <div id="game-over-screen" class="overlay hidden">
+    <h1>VILLAGE FALLEN</h1>
+    <p id="final-text">The zombies overran the village</p>
+    <p id="final-score">You survived 0 waves</p>
+    <button id="restart-btn" class="btn">TRY AGAIN</button>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="golem.js"></script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cube Eat — Online</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-wrapper">
+    <div id="hud">
+      <div class="hud-item">
+        <span class="hud-label">VALUE</span>
+        <span id="hud-value" class="hud-value">2</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">TRAIL</span>
+        <span id="hud-trail" class="hud-value">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">BEST</span>
+        <span id="hud-best" class="hud-value">2</span>
+      </div>
+    </div>
+    <div id="canvas-container">
+      <canvas id="game-canvas"></canvas>
+      <div id="leaderboard">
+        <div class="lb-header">LEADERBOARD</div>
+        <ol id="lb-list"></ol>
+      </div>
+      <div id="start-screen" class="overlay">
+        <h1>CUBE EAT ONLINE</h1>
+        <div class="instructions">
+          <p><strong>Two-player online</strong> — one person runs the server, both open this page</p>
+          <p><strong>Eat same-number cubes</strong> to double your value (2→4→8→16...)</p>
+          <p><strong>Eat smaller cubes</strong> to grow your trail behind you</p>
+          <p><strong>Bigger cubes block or eat you</strong> — navigate around them</p>
+          <p><strong>Collect power-up items</strong> ⚡🛡️🧲💣❄️ and press <kbd>1</kbd>–<kbd>5</kbd> to use them</p>
+        </div>
+        <p class="controls">Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></p>
+        <button id="start-btn" class="btn">JOIN GAME</button>
+      </div>
+      <div id="game-over-screen" class="overlay hidden">
+        <h1>GAME OVER</h1>
+        <p id="final-text">You were eaten!</p>
+        <p id="final-score">You reached: 2</p>
+        <button id="restart-btn" class="btn">PLAY AGAIN</button>
+      </div>
+      <div id="waiting-screen" class="overlay hidden">
+        <h1>WAITING</h1>
+        <p>Connected. Waiting for server...</p>
+      </div>
+    </div>
+    <div id="inventory-bar">
+      <div class="inv-header">INVENTORY</div>
+      <div id="inv-slots">
+        <div class="inv-slot" data-slot="0"><span class="inv-key">1</span><span class="inv-icon"></span><span class="inv-count"></span></div>
+        <div class="inv-slot" data-slot="1"><span class="inv-key">2</span><span class="inv-icon"></span><span class="inv-count"></span></div>
+        <div class="inv-slot" data-slot="2"><span class="inv-key">3</span><span class="inv-icon"></span><span class="inv-count"></span></div>
+        <div class="inv-slot" data-slot="3"><span class="inv-key">4</span><span class="inv-icon"></span><span class="inv-count"></span></div>
+        <div class="inv-slot" data-slot="4"><span class="inv-key">5</span><span class="inv-icon"></span><span class="inv-count"></span></div>
+      </div>
+      <div id="inv-status"></div>
+    </div>
+  </div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="multiplayer.js"></script>
+</body>
+</html>

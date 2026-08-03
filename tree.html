@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roots</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="tree.css">
+</head>
+<body>
+  <div id="game-wrapper">
+    <div id="hud">
+      <div class="hud-item">
+        <span class="hud-label">WATER</span>
+        <span id="hud-water" class="hud-value">0</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">DEPTH</span>
+        <span id="hud-depth" class="hud-value">0m</span>
+      </div>
+      <div class="hud-item">
+        <span class="hud-label">HEIGHT</span>
+        <span id="hud-height" class="hud-value">0m</span>
+      </div>
+    </div>
+    <div id="canvas-container">
+      <canvas id="game-canvas"></canvas>
+      <div id="start-screen" class="overlay">
+        <h1>ROOTS</h1>
+        <div class="instructions">
+          <p><strong>Steer your root</strong> through the soil to find water</p>
+          <p><strong>Avoid rocks</strong> — they block your path</p>
+          <p><strong>Collect water</strong> to grow your tree taller</p>
+          <p><strong>Deeper water</strong> is worth more!</p>
+        </div>
+        <p class="controls">Move with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></p>
+        <button id="start-btn" class="btn">START GAME</button>
+      </div>
+      <div id="game-over-screen" class="overlay hidden">
+        <h1>YOUR TREE</h1>
+        <p id="final-text">Grew to 0m tall</p>
+        <p id="final-score">Collected 0 water</p>
+        <button id="restart-btn" class="btn">PLANT AGAIN</button>
+      </div>
+    </div>
+  </div>
+  <script src="tree.js"></script>
+</body>
+</html>

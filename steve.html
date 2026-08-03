@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steve — Mine & Survive</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; font-family: 'Inter', sans-serif; color: #fff; overflow: hidden; user-select: none; }
+    #game-canvas { display: block; }
+
+    /* Hotbar */
+    #hotbar {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 4px;
+      padding: 6px;
+      background: rgba(0,0,0,0.6);
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 8px;
+      z-index: 10;
+      pointer-events: none;
+    }
+    .slot {
+      width: 52px; height: 52px;
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: rgba(255,255,255,0.7);
+      position: relative;
+    }
+    .slot.active { border-color: #fff; background: rgba(255,255,255,0.15); }
+    .slot .icon { font-size: 24px; line-height: 1; }
+    .slot .count { position: absolute; bottom: 2px; right: 4px; font-size: 11px; font-weight: 800; color: #fff; text-shadow: 1px 1px 2px #000; }
+    .slot .label { font-size: 8px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+
+    /* HUD */
+    #hud-top {
+      position: fixed;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 20px;
+      padding: 8px 24px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      z-index: 10;
+      pointer-events: none;
+    }
+    .hud-item { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+    .hud-label { font-size: 9px; font-weight: 700; letter-spacing: 2px; color: rgba(255,255,255,0.4); }
+    .hud-value { font-size: 18px; font-weight: 800; }
+
+    /* Health */
+    #health-bar {
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 14px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 7px;
+      overflow: hidden;
+      z-index: 10;
+      pointer-events: none;
+    }
+    #health-fill { height: 100%; background: linear-gradient(90deg, #e74c3c, #2ecc71); transition: width 0.3s; }
+
+    /* Crosshair */
+    #crosshair {
+      position: fixed; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 20px; height: 20px;
+      z-index: 10; pointer-events: none;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute; background: rgba(255,255,255,0.8);
+    }
+    #crosshair::before { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
+    #crosshair::after { left: 50%; top: 0; height: 100%; width: 2px; transform: translateX(-50%); }
+
+    /* Message */
+    #message {
+      position: fixed;
+      top: 60%;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      z-index: 10;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+      text-align: center;
+    }
+    #message.show { opacity: 1; }
+
+    /* Crafting menu */
+    #crafting {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(20,20,30,0.95);
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 24px 32px;
+      z-index: 15;
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 320px;
+    }
+    #crafting h2 { font-size: 18px; font-weight: 800; letter-spacing: 2px; text-align: center; margin-bottom: 8px; }
+    .recipe {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .recipe:hover { background: rgba(255,255,255,0.1); }
+    .recipe.disabled { opacity: 0.4; cursor: not-allowed; }
+    .recipe-info { display: flex; flex-direction: column; gap: 2px; }
+    .recipe-name { font-size: 14px; font-weight: 700; }
+    .recipe-cost { font-size: 11px; color: rgba(255,255,255,0.5); }
+    .recipe-icon { font-size: 28px; }
+
+    /* Overlay */
+    .overlay {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      gap: 16px; background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px); text-align: center;
+      padding: 40px; z-index: 20; transition: opacity 0.3s;
+    }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+    .overlay h1 {
+      font-size: 48px; font-weight: 800; letter-spacing: 4px;
+      background: linear-gradient(135deg, #8bc34a, #4caf50, #2e7d32);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .instructions { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+    .instructions p { font-size: 13px; color: rgba(255,255,255,0.7); line-height: 1.5; }
+    .controls { font-size: 13px; color: rgba(255,255,255,0.5); }
+    kbd {
+      display: inline-block; padding: 2px 7px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px; font-family: inherit; font-size: 12px; font-weight: 600; margin: 0 1px;
+    }
+    .btn {
+      margin-top: 12px; padding: 14px 40px; font-family: inherit;
+      font-size: 16px; font-weight: 700; letter-spacing: 2px; color: #fff;
+      background: linear-gradient(135deg, #2e7d32, #4caf50); border: none;
+      border-radius: 12px; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+      box-shadow: 0 4px 20px rgba(76,175,80,0.3);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 28px rgba(76,175,80,0.5); }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="hud-top" style="display:none">
+    <div class="hud-item"><span class="hud-label">DAY</span><span id="hud-day" class="hud-value">1</span></div>
+    <div class="hud-item"><span class="hud-label">TIME</span><span id="hud-time" class="hud-value">☀</span></div>
+    <div class="hud-item"><span class="hud-label">ZOMBIES</span><span id="hud-zombies" class="hud-value">0</span></div>
+  </div>
+
+  <div id="health-bar" style="display:none"><div id="health-fill" style="width:100%"></div></div>
+  <div id="crosshair" style="display:none"></div>
+  <div id="hotbar" style="display:none"></div>
+  <div id="message"></div>
+
+  <div id="crafting">
+    <h2>CRAFTING</h2>
+    <div id="recipe-list"></div>
+    <p style="font-size:11px;color:rgba(255,255,255,0.4);text-align:center;margin-top:4px;">Press E or Esc to close</p>
+  </div>
+
+  <div id="start-screen" class="overlay">
+    <h1>STEVE</h1>
+    <div class="instructions">
+      <p><strong>Mine wood</strong> from trees → craft a <strong>wooden pickaxe</strong> & <strong>sword</strong></p>
+      <p><strong>Mine stone</strong> with a pickaxe → craft <strong>stone tools</strong></p>
+      <p><strong>Mine iron</strong> deep underground (rare!) → craft <strong>iron tools</strong></p>
+      <p><strong>At night</strong> zombies spawn — fight them with your sword!</p>
+      <p><strong>Survive</strong> as many days as you can</p>
+    </div>
+    <p class="controls">
+      Move <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ·
+      Look with mouse · <kbd>Hold Left Click</kbd> mine/attack · <kbd>Right Click</kbd> place block ·
+      <kbd>E</kbd> craft · <kbd>Shift</kbd> sneak · <kbd>Scroll</kbd> or <kbd>1</kbd>-<kbd>9</kbd> hotbar · <kbd>Space</kbd> jump
+    </p>
+    <button id="start-btn" class="btn">START MINING</button>
+  </div>
+
+  <div id="game-over-screen" class="overlay hidden">
+    <h1>YOU DIED</h1>
+    <p id="final-text" style="font-size:18px;color:rgba(255,255,255,0.6);">The zombies got you</p>
+    <p id="final-score" style="font-size:22px;font-weight:700;color:#f1c40f;">Survived 0 days</p>
+    <button id="restart-btn" class="btn">RESPAWN</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="steve.js"></script>
+</body>
+</html>

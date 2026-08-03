@@ -1,0 +1,785 @@
+// ============================================================
+//  ZOMBIE SHOOTER 3D — Multiplayer Co-op Server
+// ============================================================
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
+
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+// Serve zombie multiplayer at root — BEFORE static middleware
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'zombie-multiplayer.html'));
+});
+app.get('/zombie-multiplayer', (req, res) => {
+  res.sendFile(path.join(__dirname, 'zombie-multiplayer.html'));
+});
+app.use(express.static(path.join(__dirname)));
+
+// ─── Config (mirrors zombie.js) ───
+const CONFIG = {
+  worldSize: 60, playerSpeed: 8, playerSprintSpeed: 13, playerJump: 9,
+  gravity: 25, playerHeight: 1.7, playerRadius: 0.4, maxHealth: 100,
+  bulletRange: 100, zombieHealth: 100, zombieSpeed: 2.5, zombieDamage: 15,
+  zombieAttackRange: 1.8, zombieAttackCooldown: 1.0,
+  waveBaseCount: 5, waveSpeedIncrease: 0.3, waveCountIncrease: 3,
+  waveBreakTime: 5, goldPickupRadius: 1.5, maxGoldPickups: 8, goldSpawnInterval: 8,
+};
+
+const GUNS = {
+  knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true },
+  pistol: { name:'Pistol', magSize:12, reloadTime:1.2, fireRate:0.25, damage:34, pellets:1, spread:0.01, price:0 },
+  smg:    { name:'SMG', magSize:100, reloadTime:1.8, fireRate:0.08, damage:25, pellets:1, spread:0.03, price:150 },
+  shotgun:{ name:'Shotgun', magSize:6, reloadTime:2.5, fireRate:0.6, damage:20, pellets:8, spread:0.12, price:250 },
+  rifle:  { name:'Rifle', magSize:500, reloadTime:1.0, fireRate:0.06, damage:55, pellets:1, spread:0.005, price:400 },
+};
+
+const UPGRADES = {
+  damage:  { name:'Damage +10', price:100, maxLevel:5 },
+  fireRate:{ name:'Fire Rate +20%', price:80, maxLevel:5 },
+  magSize: { name:'Mag Size +5', price:60, maxLevel:5 },
+  health:  { name:'Max Health +25', price:120, maxLevel:5 },
+};
+
+const OBSTACLES = [
+  {x:-15,z:-10,w:1,d:1},{x:12,z:-8,w:1,d:1},{x:-5,z:15,w:1,d:1},
+  {x:8,z:12,w:1,d:1},{x:-20,z:5,w:1,d:1},{x:18,z:18,w:1,d:1},
+  {x:-12,z:-20,w:1,d:1},{x:5,z:-15,w:1,d:1},{x:22,z:-5,w:1,d:1},
+  {x:-25,z:-3,w:1,d:1},{x:-3,z:-5,w:1.5,d:1.5},{x:6,z:3,w:1.5,d:1.5},
+  {x:-8,z:8,w:1.5,d:1.5},{x:10,z:-12,w:1.5,d:1.5},{x:15,z:6,w:1.5,d:1.5},
+];
+
+// ─── Game State ───
+let players = {};
+let zombies = [];
+let goldPickups = [];
+let particles = [];
+let nextZombieId = 1;
+let nextGoldId = 1;
+let wave = 1;
+let waveActive = false;
+let waveBreakTimer = 3;
+let zombiesToSpawn = 0;
+let spawnTimer = 0;
+let bossPending = false;
+let bossSpawned = false;
+let goldSpawnTimer = 3;
+let gameStarted = false;
+let escapeMode = false;
+let escapeStep = null;
+let doorOpen = false;
+let keyDropped = false;
+let keyPos = null;
+let killFeed = [];
+
+function getGunStat(player, stat) {
+  const gun = GUNS[player.currentGun];
+  const lvl = player.upgrades;
+  switch (stat) {
+    case 'damage': return gun.damage + lvl.damage * 10;
+    case 'fireRate': return gun.fireRate * Math.pow(0.8, lvl.fireRate);
+    case 'magSize': return gun.magSize + lvl.magSize * 5;
+    case 'reloadTime': return gun.reloadTime;
+    case 'pellets': return gun.pellets;
+    case 'spread': return gun.spread;
+    case 'maxHealth': return CONFIG.maxHealth + lvl.health * 25;
+    default: return gun[stat];
+  }
+}
+
+function createPlayer(id) {
+  return {
+    id, name: `Player ${Object.keys(players).length + 1}`,
+    x: 0, y: CONFIG.playerHeight, z: 0,
+    vx: 0, vy: 0, vz: 0,
+    yaw: 0, pitch: 0,
+    health: CONFIG.maxHealth, maxHealth: CONFIG.maxHealth,
+    score: 0, kills: 0, gold: 0, wave: 1,
+    currentGun: 'pistol',
+    ownedGuns: { knife: true, pistol: true },
+    ammo: GUNS.pistol.magSize,
+    reserveAmmo: GUNS.pistol.magSize * 3,
+    upgrades: { damage: 0, fireRate: 0, magSize: 0, health: 0 },
+    reloading: false, reloadTimer: 0,
+    fireTimer: 0, autoFire: false,
+    shopOpen: false, onGround: true,
+    keys: {},
+    dead: false,
+    escapeMode: false, escapeStep: null, hasKey: false,
+    preEscapeGun: null, preEscapeOwned: null,
+    muzzleFlash: 0, gunRecoil: 0,
+    shootTracers: [],
+  };
+}
+
+// ─── Zombie spawning ───
+function spawnZombie() {
+  let type = 'normal';
+  const r = Math.random();
+  if (wave >= 4 && r < 0.15) type = 'skeleton';
+  else if (wave >= 3 && r < 0.35) type = 'buff';
+
+  const angle = Math.random() * Math.PI * 2;
+  const dist = CONFIG.worldSize - 5;
+  const x = Math.cos(angle) * dist;
+  const z = Math.sin(angle) * dist;
+
+  const speed = CONFIG.zombieSpeed + (wave - 1) * CONFIG.waveSpeedIncrease;
+  let health = CONFIG.zombieHealth;
+  let damage = CONFIG.zombieDamage;
+  let attackRange = CONFIG.zombieAttackRange;
+
+  if (type === 'buff') { health *= 3; damage *= 2; attackRange *= 1.3; }
+  else if (type === 'skeleton') { health *= 0.6; damage *= 1.2; attackRange *= 1.2; }
+
+  zombies.push({
+    id: nextZombieId++, x, z, type,
+    health, maxHealth: health,
+    speed: type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : speed,
+    damage, attackRange, attackTimer: 0,
+    walkPhase: Math.random() * Math.PI * 2,
+    isBoss: false, hasKey: false,
+  });
+}
+
+function spawnBoss() {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = CONFIG.worldSize - 5;
+  const x = Math.cos(angle) * dist;
+  const z = Math.sin(angle) * dist;
+  const speed = CONFIG.zombieSpeed * 0.7 + (wave - 1) * CONFIG.waveSpeedIncrease * 0.5;
+  const health = 800 + (wave - 6) * 200;
+  zombies.push({
+    id: nextZombieId++, x, z, type: 'boss',
+    health, maxHealth: health, speed,
+    damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 2,
+    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: true, hasKey: false,
+  });
+  broadcastKillFeed('BOSS HAS APPEARED!');
+}
+
+function spawnGuard() {
+  zombies.push({
+    id: nextZombieId++, x: 0, z: 4, type: 'guard',
+    health: 300, maxHealth: 300,
+    speed: CONFIG.zombieSpeed * 0.6,
+    damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
+    attackTimer: 0, walkPhase: 0,
+    isBoss: false, hasKey: true,
+  });
+}
+
+function spawnEscapeZombie() {
+  const x = -4 + Math.random() * 8;
+  const z = 7 + Math.random() * 3;
+  zombies.push({
+    id: nextZombieId++, x, z, type: 'normal',
+    health: CONFIG.zombieHealth, maxHealth: CONFIG.zombieHealth,
+    speed: CONFIG.zombieSpeed * 0.8,
+    damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
+    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: false, hasKey: false,
+  });
+}
+
+function killZombie(zombie, killerId) {
+  const idx = zombies.indexOf(zombie);
+  if (idx < 0) return;
+  zombies.splice(idx, 1);
+
+  const player = players[killerId];
+  if (!player) return;
+
+  let score = 10 * wave, goldDrop = 5 + Math.floor(Math.random()*10) + wave;
+  if (zombie.isBoss) { score = 200 * wave; goldDrop = 100 + wave * 20; }
+  else if (zombie.type === 'guard') { score = 50 * wave; goldDrop = 50 + wave * 10; }
+  else if (zombie.type === 'buff') { score = 25 * wave; goldDrop = 20 + wave * 5; }
+  else if (zombie.type === 'skeleton') { score = 15 * wave; goldDrop = 10 + wave * 3; }
+
+  player.score += score;
+  player.kills++;
+  player.gold += goldDrop;
+
+  // Drop key if guard
+  if (zombie.hasKey) {
+    keyDropped = true;
+    keyPos = { x: zombie.x, z: zombie.z };
+  }
+
+  // Kill feed
+  let msg = '';
+  if (zombie.isBoss) msg = `BOSS ELIMINATED! +${score}`;
+  else if (zombie.type === 'guard') msg = `GUARD ELIMINATED! +${score}`;
+  else if (zombie.type === 'buff') msg = `BUFF ZOMBIE ELIMINATED! +${score}`;
+  else if (zombie.type === 'skeleton') msg = `SKELETON ELIMINATED! +${score}`;
+  else msg = `+${score} Zombie eliminated!`;
+  broadcastKillFeed(`${player.name}: ${msg}`);
+
+  // Check wave complete or escape win
+  if (escapeMode) {
+    checkEscapeWin();
+  } else if (zombies.length === 0 && zombiesToSpawn === 0) {
+    endWave();
+  }
+}
+
+function broadcastKillFeed(msg) {
+  killFeed.push({ msg, time: Date.now() });
+  if (killFeed.length > 5) killFeed.shift();
+  io.emit('killFeed', killFeed);
+}
+
+// ─── Wave management ───
+function startWave() {
+  zombiesToSpawn = CONFIG.waveBaseCount + (wave - 1) * CONFIG.waveCountIncrease;
+  waveActive = true;
+  spawnTimer = 0;
+  bossSpawned = false;
+  if (wave >= 5) bossPending = true;
+  io.emit('waveAnnounce', bossPending ? `WAVE ${wave} — BOSS INCOMING!` : `WAVE ${wave}`);
+}
+
+function endWave() {
+  waveActive = false;
+  waveBreakTimer = CONFIG.waveBreakTime;
+  bossPending = false;
+  bossSpawned = false;
+  const clearedWave = wave;
+  wave++;
+  // Bonus for all players
+  for (const p of Object.values(players)) {
+    p.health = Math.min(getGunStat(p, 'maxHealth'), p.health + 25);
+    p.reserveAmmo += getGunStat(p, 'magSize') * 2;
+    p.gold += 30 + clearedWave * 10;
+    p.wave = wave;
+  }
+  io.emit('waveAnnounce', `WAVE ${clearedWave} CLEARED! +25 HP`);
+}
+
+// ─── Escape sequence ───
+function startEscape() {
+  escapeMode = true;
+  escapeStep = 'guard';
+  keyDropped = false;
+  keyPos = null;
+  doorOpen = false;
+  zombies = [];
+
+  for (const p of Object.values(players)) {
+    p.escapeMode = true;
+    p.escapeStep = 'guard';
+    p.hasKey = false;
+    p.health = getGunStat(p, 'maxHealth');
+    p.preEscapeGun = p.currentGun;
+    p.preEscapeOwned = { ...p.ownedGuns };
+    p.ownedGuns = { knife: true };
+    p.currentGun = 'knife';
+    p.ammo = Infinity;
+    p.reserveAmmo = Infinity;
+    p.reloading = false;
+    p.fireTimer = 0;
+    p.shopOpen = false;
+    // Place in cell
+    p.x = 0; p.y = CONFIG.playerHeight; p.z = 0;
+    p.vx = 0; p.vy = 0; p.vz = 0;
+    p.yaw = 0; p.pitch = 0;
+    p.dead = false;
+  }
+
+  spawnGuard();
+  io.emit('escapeStart', {
+    text: 'The boss knocked you out... Your eyes open in a dark prison cell. They took your guns, but forgot your knife. A zombie guard holds the key.',
+  });
+}
+
+function pickUpKey(playerId) {
+  const p = players[playerId];
+  if (!p || !p.escapeMode || p.escapeStep !== 'guard' || !keyDropped || !keyPos) return;
+  const dx = p.x - keyPos.x, dz = p.z - keyPos.z;
+  if (Math.hypot(dx, dz) > 2.5) return;
+  keyDropped = false;
+  keyPos = null;
+  p.hasKey = true;
+  p.escapeStep = 'key';
+  io.emit('escapeUpdate', 'You got the key. Press Shift near the cell door to unlock it.');
+}
+
+function unlockCell(playerId) {
+  const p = players[playerId];
+  if (!p || !p.escapeMode || p.escapeStep !== 'key' || !p.hasKey || doorOpen) return;
+  // Check distance to door (at z=6)
+  const dz = Math.abs(p.z - 6);
+  const dx = Math.abs(p.x);
+  if (dx > 3.5 || dz > 3.5) return;
+  doorOpen = true;
+  p.hasKey = false;
+  escapeStep = 'fight';
+  for (const pl of Object.values(players)) pl.escapeStep = 'fight';
+  for (let i = 0; i < 5; i++) spawnEscapeZombie();
+  io.emit('escapeUpdate', 'ALERT! The cell is open. 5 zombies are coming in!');
+}
+
+function checkEscapeWin() {
+  if (escapeStep !== 'fight') return;
+  if (zombies.length === 0) endEscape();
+}
+
+function endEscape() {
+  escapeMode = false;
+  escapeStep = 'won';
+  for (const p of Object.values(players)) {
+    p.escapeMode = false;
+    p.ownedGuns = p.preEscapeOwned || p.ownedGuns;
+    p.currentGun = p.preEscapeGun || p.currentGun;
+    p.gold += 500;
+    p.score += 1000;
+  }
+  io.emit('escapeWin', {});
+}
+
+// ─── Shooting (server-side raycast) ───
+function handleShoot(playerId) {
+  const p = players[playerId];
+  if (!p || p.dead || p.shopOpen || p.reloading || p.fireTimer > 0) return;
+
+  const gun = GUNS[p.currentGun];
+  if (gun.melee) {
+    p.fireTimer = getGunStat(p, 'fireRate');
+    p.gunRecoil = 0.12;
+    const damage = getGunStat(p, 'damage');
+    const meleeRange = 3.0;
+    // Direction from yaw/pitch
+    const dir = getLookDir(p);
+    let closestHit = null, closestDist = meleeRange;
+    for (const z of zombies) {
+      const hit = rayHitZombie(p, dir, z, meleeRange);
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
+    }
+    if (closestHit) {
+      closestHit.zombie.health -= damage;
+      if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
+    }
+    return;
+  }
+
+  if (p.ammo <= 0) { startReload(playerId); return; }
+  p.ammo--;
+  p.fireTimer = getGunStat(p, 'fireRate');
+  p.gunRecoil = 0.08;
+  p.muzzleFlash = 1;
+
+  const damage = getGunStat(p, 'damage');
+  const pellets = getGunStat(p, 'pellets');
+  const spread = getGunStat(p, 'spread');
+
+  for (let pellet = 0; pellet < pellets; pellet++) {
+    const dir = getLookDir(p, spread);
+    let closestHit = null, closestDist = CONFIG.bulletRange;
+    for (const z of zombies) {
+      const hit = rayHitZombie(p, dir, z, closestDist);
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
+    }
+    // Tracer endpoint
+    const endX = p.x + dir.x * Math.min(closestDist, CONFIG.bulletRange);
+    const endY = p.y + dir.y * Math.min(closestDist, CONFIG.bulletRange);
+    const endZ = p.z + dir.z * Math.min(closestDist, CONFIG.bulletRange);
+    p.shootTracers.push({ x1: p.x, y1: p.y, z1: p.z, x2: endX, y2: endY, z2: endZ, life: 0.08 });
+
+    if (closestHit) {
+      closestHit.zombie.health -= damage;
+      if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
+    }
+  }
+}
+
+function getLookDir(p, spread = 0) {
+  const sx = (Math.random() - 0.5) * spread;
+  const sy = (Math.random() - 0.5) * spread;
+  const cp = Math.cos(p.pitch + sy);
+  const dir = {
+    x: -Math.sin(p.yaw + sx) * cp,
+    y: Math.sin(p.pitch + sy),
+    z: -Math.cos(p.yaw + sx) * cp,
+  };
+  const len = Math.hypot(dir.x, dir.y, dir.z);
+  if (len > 0) { dir.x /= len; dir.y /= len; dir.z /= len; }
+  return dir;
+}
+
+function rayHitZombie(p, dir, z, maxDist) {
+  // Simple ray-cylinder intersection (zombie at z.x, z.z with radius ~0.6, height ~2.2)
+  const radius = z.isBoss ? 1.5 : z.type === 'buff' ? 0.9 : 0.5;
+  const height = z.isBoss ? 6.6 : z.type === 'buff' ? 2.5 : 2.2;
+
+  // Ray: P = origin + t * dir
+  // Cylinder axis is vertical at (z.x, z.z) from y=0 to y=height
+  const ox = p.x, oy = p.y, oz = p.z;
+  const dx = dir.x, dy = dir.y, dz = dir.z;
+
+  // Project to XZ plane
+  const a = dx * dx + dz * dz;
+  if (a < 0.0001) return null;
+  const b = 2 * (dx * (ox - z.x) + dz * (oz - z.z));
+  const c = (ox - z.x) * (ox - z.x) + (oz - z.z) * (oz - z.z) - radius * radius;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const t1 = (-b - sq) / (2 * a);
+  const t2 = (-b + sq) / (2 * a);
+  let t = t1 >= 0 ? t1 : (t2 >= 0 ? t2 : -1);
+  if (t < 0 || t > maxDist) return null;
+  // Check height
+  const hitY = oy + t * dy;
+  if (hitY < 0 || hitY > height) return null;
+  return {
+    dist: t,
+    point: { x: ox + t * dx, y: hitY, z: oz + t * dz },
+  };
+}
+
+function startReload(playerId) {
+  const p = players[playerId];
+  if (!p) return;
+  const gun = GUNS[p.currentGun];
+  if (gun.infinite || gun.melee) return;
+  if (p.reloading) return;
+  if (p.ammo >= getGunStat(p, 'magSize')) return;
+  p.reloading = true;
+  p.reloadTimer = getGunStat(p, 'reloadTime');
+}
+
+function finishReload(playerId) {
+  const p = players[playerId];
+  if (!p) return;
+  p.ammo = getGunStat(p, 'magSize');
+  p.reloading = false;
+}
+
+function switchGun(playerId, gunName) {
+  const p = players[playerId];
+  if (!p || p.escapeMode) return;
+  if (!p.ownedGuns[gunName]) return;
+  p.currentGun = gunName;
+  const gun = GUNS[gunName];
+  if (gun.melee || gun.infinite) { p.ammo = Infinity; p.reserveAmmo = Infinity; }
+  else { p.ammo = getGunStat(p, 'magSize'); p.reserveAmmo = getGunStat(p, 'magSize') * 3; }
+  p.reloading = false;
+}
+
+function buyGun(playerId, gunName) {
+  const p = players[playerId];
+  if (!p || p.ownedGuns[gunName] || p.gold < GUNS[gunName].price) return;
+  p.gold -= GUNS[gunName].price;
+  p.ownedGuns[gunName] = true;
+  switchGun(playerId, gunName);
+}
+
+function buyUpgrade(playerId, key) {
+  const p = players[playerId];
+  if (!p) return;
+  const up = UPGRADES[key];
+  const lvl = p.upgrades[key];
+  if (lvl >= up.maxLevel) return;
+  const price = up.price * (lvl + 1);
+  if (p.gold < price) return;
+  p.gold -= price;
+  p.upgrades[key]++;
+  if (key === 'health') p.health += 25;
+  if (key === 'magSize') p.ammo = getGunStat(p, 'magSize');
+}
+
+// ─── Player movement ───
+function updatePlayer(p, dt) {
+  if (p.dead) return;
+  const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed);
+  let mx = 0, mz = 0;
+  if (p.keys['w']) mz -= 1;
+  if (p.keys['s']) mz += 1;
+  if (p.keys['a']) mx -= 1;
+  if (p.keys['d']) mx += 1;
+  const len = Math.hypot(mx, mz);
+  if (len > 0) { mx /= len; mz /= len; }
+
+  // Camera direction (from yaw/pitch, projected to horizontal)
+  const cp = Math.cos(p.pitch);
+  const fx = -Math.sin(p.yaw) * cp;
+  const fz = -Math.cos(p.yaw) * cp;
+  const fy = Math.sin(p.pitch);
+  // Horizontal forward
+  let hfx = -Math.sin(p.yaw), hfz = -Math.cos(p.yaw);
+  const hlen = Math.hypot(hfx, hfz);
+  if (hlen > 0) { hfx /= hlen; hfz /= hlen; }
+  // Right vector
+  const rx = -hfz, rz = hfx;
+
+  p.vx = (hfx * (-mz) + rx * mx) * speed;
+  p.vz = (hfz * (-mz) + rz * mx) * speed;
+
+  if (p.keys[' '] && p.onGround) { p.vy = CONFIG.playerJump; p.onGround = false; }
+  p.vy -= CONFIG.gravity * dt;
+
+  const newX = p.x + p.vx * dt;
+  const newZ = p.z + p.vz * dt;
+  const newY = p.y + p.vy * dt;
+
+  const half = CONFIG.worldSize - 1;
+  p.x = Math.max(-half, Math.min(half, newX));
+  p.z = Math.max(-half, Math.min(half, newZ));
+
+  // Escape mode cell bounds
+  if (p.escapeMode) {
+    p.x = Math.max(-5, Math.min(5, p.x));
+    p.z = Math.max(-5, Math.min(5, p.z));
+  }
+
+  // Obstacle collision
+  for (const obs of OBSTACLES) {
+    const dx = p.x - obs.x, dz = p.z - obs.z;
+    const minDist = obs.w / 2 + CONFIG.playerRadius;
+    if (Math.abs(dx) < minDist && Math.abs(dz) < minDist) {
+      if (Math.abs(dx) > Math.abs(dz)) p.x = obs.x + Math.sign(dx) * minDist;
+      else p.z = obs.z + Math.sign(dz) * minDist;
+    }
+  }
+
+  if (newY <= CONFIG.playerHeight) { p.y = CONFIG.playerHeight; p.vy = 0; p.onGround = true; }
+  else p.y = newY;
+
+  // Timers
+  if (p.fireTimer > 0) p.fireTimer -= dt;
+  if (p.gunRecoil > 0) p.gunRecoil = Math.max(0, p.gunRecoil - dt * 0.5);
+  if (p.muzzleFlash > 0) p.muzzleFlash = Math.max(0, p.muzzleFlash - dt * 8);
+  if (p.reloading) {
+    p.reloadTimer -= dt;
+    if (p.reloadTimer <= 0) finishReload(p.id);
+  }
+  // Clear tracers
+  for (let i = p.shootTracers.length - 1; i >= 0; i--) {
+    p.shootTracers[i].life -= dt;
+    if (p.shootTracers[i].life <= 0) p.shootTracers.splice(i, 1);
+  }
+  // Auto-fire
+  if (p.autoFire && !p.shopOpen && !p.reloading && !p.dead) handleShoot(p.id);
+}
+
+// ─── Zombie AI ───
+function updateZombies(dt) {
+  // Find nearest alive player for each zombie
+  for (const z of zombies) {
+    let target = null, minDist = Infinity;
+    for (const p of Object.values(players)) {
+      if (p.dead) continue;
+      const d = Math.hypot(p.x - z.x, p.z - z.z);
+      if (d < minDist) { minDist = d; target = p; }
+    }
+    if (!target) continue;
+
+    const dx = target.x - z.x, dz = target.z - z.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 0.01) {
+      z.x += (dx / dist) * z.speed * dt;
+      z.z += (dz / dist) * z.speed * dt;
+      z.walkPhase += dt * z.speed * 2;
+    }
+
+    // Attack
+    z.attackTimer -= dt;
+    const attackRange = z.attackRange || CONFIG.zombieAttackRange;
+    if (dist < attackRange && z.attackTimer <= 0) {
+      z.attackTimer = CONFIG.zombieAttackCooldown;
+      if (z.isBoss) {
+        // Boss triggers escape for all players
+        startEscape();
+        return;
+      } else {
+        target.health -= (z.damage || CONFIG.zombieDamage);
+        if (target.health <= 0) {
+          target.health = 0;
+          target.dead = true;
+          // Check if all players dead
+          const allDead = Object.values(players).every(p => p.dead);
+          if (allDead && !escapeMode) {
+            io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
+          }
+        }
+      }
+    }
+  }
+}
+
+// ─── Gold pickups ───
+function updateGoldPickups(dt) {
+  for (let i = goldPickups.length - 1; i >= 0; i--) {
+    const g = goldPickups[i];
+    for (const p of Object.values(players)) {
+      if (p.dead) continue;
+      const dx = p.x - g.x, dz = p.z - g.z;
+      if (Math.hypot(dx, dz) < CONFIG.goldPickupRadius) {
+        p.gold += g.value;
+        goldPickups.splice(i, 1);
+        break;
+      }
+    }
+  }
+  goldSpawnTimer -= dt;
+  if (goldSpawnTimer <= 0 && goldPickups.length < CONFIG.maxGoldPickups) {
+    const half = CONFIG.worldSize - 5;
+    goldPickups.push({
+      id: nextGoldId++,
+      x: (Math.random() - 0.5) * half * 2,
+      z: (Math.random() - 0.5) * half * 2,
+      value: 5 + Math.floor(Math.random() * 15),
+    });
+    goldSpawnTimer = CONFIG.goldSpawnInterval;
+  }
+}
+
+// ─── Game loop ───
+let lastTime = Date.now();
+function gameLoop() {
+  const now = Date.now();
+  const dt = Math.min((now - lastTime) / 1000, 0.05);
+  lastTime = now;
+
+  if (gameStarted && Object.keys(players).length > 0) {
+    // Update players
+    for (const p of Object.values(players)) updatePlayer(p, dt);
+
+    if (!escapeMode) {
+      // Wave management
+      if (!waveActive) {
+        waveBreakTimer -= dt;
+        if (waveBreakTimer <= 0) startWave();
+      } else {
+        if (zombiesToSpawn > 0) {
+          spawnTimer -= dt;
+          if (spawnTimer <= 0) {
+            spawnZombie();
+            zombiesToSpawn--;
+            spawnTimer = 1.5 + Math.random() * 1.5;
+          }
+        } else if (bossPending && !bossSpawned) {
+          bossSpawned = true;
+          bossPending = false;
+          spawnBoss();
+        }
+      }
+      updateGoldPickups(dt);
+    } else {
+      checkEscapeWin();
+    }
+
+    updateZombies(dt);
+
+    // Check if all players dead (non-escape)
+    if (!escapeMode) {
+      const allDead = Object.values(players).every(p => p.dead);
+      if (allDead) {
+        io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
+      }
+    }
+  }
+
+  // Broadcast state
+  const state = {
+    players: Object.values(players).map(p => ({
+      id: p.id, name: p.name,
+      x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch,
+      health: p.health, maxHealth: getGunStat(p, 'maxHealth'),
+      score: p.score, kills: p.kills, gold: p.gold, wave,
+      currentGun: p.currentGun, ammo: p.ammo, reserveAmmo: p.reserveAmmo,
+      reloading: p.reloading, autoFire: p.autoFire, shopOpen: p.shopOpen,
+      dead: p.dead, escapeMode: p.escapeMode, escapeStep: p.escapeStep,
+      hasKey: p.hasKey, gunRecoil: p.gunRecoil, muzzleFlash: p.muzzleFlash,
+      upgrades: p.upgrades, ownedGuns: p.ownedGuns,
+      shootTracers: p.shootTracers,
+    })),
+    zombies: zombies.map(z => ({
+      id: z.id, x: z.x, z: z.z, type: z.type,
+      health: z.health, maxHealth: z.maxHealth,
+      isBoss: z.isBoss, walkPhase: z.walkPhase,
+    })),
+    goldPickups: goldPickups.map(g => ({ id: g.id, x: g.x, z: g.z, value: g.value })),
+    wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
+    zombiesRemaining: zombies.length + zombiesToSpawn,
+  };
+  io.emit('state', state);
+}
+
+setInterval(gameLoop, 50); // 20 TPS
+
+// ─── Socket handlers ───
+io.on('connection', (socket) => {
+  console.log(`Player connected: ${socket.id}`);
+  players[socket.id] = createPlayer(socket.id);
+
+  if (Object.keys(players).length === 1) {
+    // First player starts the game
+    gameStarted = true;
+    wave = 1;
+    waveActive = false;
+    waveBreakTimer = 3;
+    zombies = [];
+    goldPickups = [];
+    escapeMode = false;
+  }
+
+  socket.emit('connected', { id: socket.id, name: players[socket.id].name });
+  io.emit('playerList', Object.values(players).map(p => ({ id: p.id, name: p.name })));
+
+  socket.on('input', (data) => {
+    const p = players[socket.id];
+    if (!p) return;
+    p.keys = data.keys || {};
+    p.yaw = data.yaw !== undefined ? data.yaw : p.yaw;
+    p.pitch = data.pitch !== undefined ? data.pitch : p.pitch;
+  });
+
+  socket.on('shoot', () => handleShoot(socket.id));
+  socket.on('reload', () => startReload(socket.id));
+  socket.on('switchGun', (gun) => switchGun(socket.id, gun));
+  socket.on('buyGun', (gun) => buyGun(socket.id, gun));
+  socket.on('buyUpgrade', (key) => buyUpgrade(socket.id, key));
+  socket.on('toggleShop', () => {
+    const p = players[socket.id];
+    if (p) p.shopOpen = !p.shopOpen;
+  });
+  socket.on('toggleAutoFire', () => {
+    const p = players[socket.id];
+    if (p) p.autoFire = !p.autoFire;
+  });
+  socket.on('escapeInteract', () => {
+    const p = players[socket.id];
+    if (!p || !p.escapeMode) return;
+    if (p.escapeStep === 'guard' && keyDropped) pickUpKey(socket.id);
+    else if (p.escapeStep === 'key' && p.hasKey) unlockCell(socket.id);
+  });
+  socket.on('respawn', () => {
+    const p = players[socket.id];
+    if (!p) return;
+    p.dead = false;
+    p.health = getGunStat(p, 'maxHealth');
+    p.x = 0; p.y = CONFIG.playerHeight; p.z = 0;
+    p.vx = 0; p.vy = 0; p.vz = 0;
+  });
+
+  socket.on('disconnect', () => {
+    console.log(`Player disconnected: ${socket.id}`);
+    delete players[socket.id];
+    io.emit('playerList', Object.values(players).map(p => ({ id: p.id, name: p.name })));
+    if (Object.keys(players).length === 0) {
+      gameStarted = false;
+      zombies = [];
+      goldPickups = [];
+    }
+  });
+});
+
+const PORT = process.env.PORT || 3001;
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`Zombie Shooter multiplayer server running on port ${PORT}`);
+});

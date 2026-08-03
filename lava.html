@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LAVA FLOOR</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #000; }
+    canvas { display: block; }
+
+    #hud {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      display: none; gap: 24px; z-index: 10;
+    }
+    .hud-item {
+      background: rgba(0,0,0,0.5); border-radius: 8px; padding: 8px 16px;
+      color: #fff; font-size: 18px; font-weight: 700; text-align: center;
+      backdrop-filter: blur(4px);
+    }
+    .hud-label { font-size: 10px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+    #timer { color: #f1c40f; }
+    #lava-level { color: #ff6b35; }
+
+    #crosshair {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+      width: 20px; height: 20px; display: none; z-index: 5;
+    }
+    #crosshair::before, #crosshair::after {
+      content: ''; position: absolute; background: rgba(255,255,255,0.7);
+    }
+    #crosshair::before { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-50%); }
+    #crosshair::after { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+
+    .overlay {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 20;
+      background: radial-gradient(ellipse at center, rgba(40,10,5,0.9), rgba(0,0,0,0.95));
+    }
+    .overlay h1 {
+      font-size: 64px; font-weight: 900; color: #ff6b35;
+      text-shadow: 0 0 30px rgba(255,107,53,0.5); margin-bottom: 8px;
+      letter-spacing: 4px;
+    }
+    .overlay h2 { font-size: 24px; color: rgba(255,255,255,0.6); margin-bottom: 24px; }
+    .instructions { text-align: center; margin-bottom: 24px; }
+    .instructions p { color: rgba(255,255,255,0.7); font-size: 16px; margin: 6px 0; }
+    .controls { font-size: 14px; color: rgba(255,255,255,0.4); margin-bottom: 24px; text-align: center; }
+    kbd {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+      font-family: monospace; font-size: 13px; color: #fff;
+    }
+    .btn {
+      padding: 14px 48px; font-size: 20px; font-weight: 700; color: #fff;
+      background: linear-gradient(135deg, #ff6b35, #e63946); border: none;
+      border-radius: 12px; cursor: pointer; transition: transform 0.15s;
+      letter-spacing: 2px;
+    }
+    .btn:hover { transform: scale(1.05); }
+    .hidden { display: none !important; }
+
+    #message {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      color: #fff; font-size: 18px; font-weight: 600; z-index: 10;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    }
+    #message.show { opacity: 1; }
+
+    #danger-overlay {
+      position: fixed; inset: 0; pointer-events: none; z-index: 8;
+      box-shadow: inset 0 0 100px rgba(255,50,0,0); transition: box-shadow 0.3s;
+    }
+    #danger-overlay.danger { box-shadow: inset 0 0 100px rgba(255,50,0,0.4); }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="danger-overlay"></div>
+
+  <div id="hud">
+    <div class="hud-item"><div class="hud-label">Survived</div><div id="timer">0.0s</div></div>
+    <div class="hud-item"><div class="hud-label">Lava Level</div><div id="lava-level">0%</div></div>
+    <div class="hud-item"><div class="hud-label">AI Alive</div><div id="ai-count" style="color:#42a5f5;">4</div></div>
+  </div>
+
+  <div id="message"></div>
+
+  <div id="start-screen" class="overlay">
+    <h1>THE FLOOR IS LAVA</h1>
+    <h2>Jump on furniture to survive!</h2>
+    <div class="instructions">
+      <p>The lava is <strong style="color:#ff6b35">rising</strong>. Jump from couch to table to chair.</p>
+      <p>Don't touch the lava. Last as long as you can.</p>
+    </div>
+    <p class="controls">
+      Move <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> ·
+      Turn <kbd>←</kbd><kbd>→</kbd> · Forward <kbd>↑</kbd> Back <kbd>↓</kbd> ·
+      <kbd>Space</kbd> jump · <kbd>Shift</kbd> sprint
+    </p>
+    <button id="start-btn" class="btn">JUMP!</button>
+  </div>
+
+  <div id="game-over-screen" class="overlay hidden">
+    <h1 style="color:#e63946;">YOU BURNED</h1>
+    <h2 id="final-text">The lava got you</h2>
+    <p id="final-score" style="font-size:28px;font-weight:700;color:#f1c40f;margin-bottom:24px;">Survived 0.0s</p>
+    <button id="restart-btn" class="btn">TRY AGAIN</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="lava.js"></script>
+</body>
+</html>

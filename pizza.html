@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PIZZA CHEF 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: 'Segoe UI', system-ui, sans-serif; background: #1a1a2e; }
+    canvas { display: block; }
+
+    #hud {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      display: none; gap: 20px; z-index: 10;
+    }
+    .hud-item {
+      background: rgba(0,0,0,0.5); border-radius: 8px; padding: 8px 16px;
+      color: #fff; font-size: 18px; font-weight: 700; text-align: center;
+      backdrop-filter: blur(4px);
+    }
+    .hud-label { font-size: 10px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+    #score { color: #f1c40f; }
+    #orders-served { color: #2ecc71; }
+
+    #order-panel {
+      position: fixed; top: 80px; right: 16px; z-index: 10;
+      display: none; flex-direction: column; gap: 8px;
+      max-width: 260px;
+    }
+    .order-card {
+      background: rgba(0,0,0,0.6); border-radius: 10px; padding: 10px 14px;
+      color: #fff; font-size: 14px; backdrop-filter: blur(4px);
+      border-left: 4px solid #e74c3c;
+    }
+    .order-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+    .order-toppings { font-size: 12px; color: rgba(255,255,255,0.7); }
+    .order-timer { font-size: 11px; color: #f1c40f; margin-top: 4px; }
+
+    #pizza-status {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: none;
+      background: rgba(0,0,0,0.6); border-radius: 10px; padding: 10px 20px;
+      color: #fff; font-size: 16px; font-weight: 600; backdrop-filter: blur(4px);
+    }
+    #pizza-status .topping-list { font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 4px; }
+
+    #action-prompt {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+      z-index: 10; display: none;
+      background: rgba(46,204,113,0.9); border-radius: 8px; padding: 8px 20px;
+      color: #fff; font-size: 16px; font-weight: 700;
+    }
+
+    .overlay {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 20;
+      background: radial-gradient(ellipse at center, rgba(40,20,10,0.9), rgba(0,0,0,0.95));
+    }
+    .overlay h1 {
+      font-size: 56px; font-weight: 900; color: #e74c3c;
+      text-shadow: 0 0 30px rgba(231,76,60,0.4); margin-bottom: 8px; letter-spacing: 3px;
+    }
+    .overlay h2 { font-size: 22px; color: rgba(255,255,255,0.6); margin-bottom: 24px; }
+    .instructions { text-align: center; margin-bottom: 20px; }
+    .instructions p { color: rgba(255,255,255,0.7); font-size: 15px; margin: 5px 0; }
+    kbd {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+      font-family: monospace; font-size: 13px; color: #fff;
+    }
+    .btn {
+      padding: 14px 48px; font-size: 20px; font-weight: 700; color: #fff;
+      background: linear-gradient(135deg, #e74c3c, #f39c12); border: none;
+      border-radius: 12px; cursor: pointer; transition: transform 0.15s; letter-spacing: 2px;
+    }
+    .btn:hover { transform: scale(1.05); }
+    .hidden { display: none !important; }
+
+    #message {
+      position: fixed; bottom: 140px; left: 50%; transform: translateX(-50%);
+      color: #fff; font-size: 20px; font-weight: 700; z-index: 10;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+    }
+    #message.show { opacity: 1; }
+    #message.good { color: #2ecc71; }
+    #message.bad { color: #e74c3c; }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="hud">
+    <div class="hud-item"><div class="hud-label">Money</div><div id="score">$50</div></div>
+    <div class="hud-item"><div class="hud-label">Served</div><div id="orders-served">0</div></div>
+    <div class="hud-item"><div class="hud-label">Time Left</div><div id="time-left">Day 1/3 · 60s</div></div>
+  </div>
+
+  <div id="inventory-panel" style="position:fixed;top:16px;left:16px;z-index:10;background:rgba(0,0,0,0.6);border-radius:10px;padding:10px 14px;color:#fff;font-size:14px;font-weight:600;backdrop-filter:blur(4px);display:none;">
+    <div style="color:#d4a574;">Dough: 0</div>
+    <div style="color:#f1c40f;">Cheese: 0</div>
+    <div style="color:#e74c3c;">Pepperoni: 0</div>
+  </div>
+
+  <div id="order-panel"></div>
+
+  <div id="pizza-status">
+    <div id="pizza-stage">No pizza</div>
+    <div class="topping-list" id="topping-list"></div>
+  </div>
+
+  <div id="action-prompt"></div>
+  <div id="message"></div>
+
+  <div id="start-screen" class="overlay">
+    <h1>PIZZA CHEF 3D</h1>
+    <h2>3 days of pizza! Buy ingredients between days!</h2>
+    <div class="instructions">
+      <p><strong>1.</strong> Go outside through the doorway to the ingredient shop</p>
+      <p><strong>2.</strong> Buy ingredients (dough $3, cheese $5, pepperoni $8)</p>
+      <p><strong>3.</strong> Come back inside and make a pizza at a prep station</p>
+      <p><strong>4.</strong> Bake it in the oven — it auto-stacks on the display counter</p>
+      <p><strong>5.</strong> Grab a pizza from the display counter</p>
+      <p><strong>6.</strong> Walk to a customer, press <kbd>Space</kbd> to serve — they pay if it matches!</p>
+      <p><strong>7.</strong> When the store closes, you get 30s to buy ingredients & prep pizzas for the next day</p>
+      <p><strong>8.</strong> Press <kbd>H</kbd> at the Hire station to hire chefs (auto-cook for you)</p>
+    </div>
+    <p style="color:rgba(255,255,255,0.4);font-size:14px;margin-bottom:20px;">
+      Move <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> · Turn <kbd>←</kbd><kbd>→</kbd> ·
+      <kbd>Space</kbd> action/serve · <kbd>Shift</kbd> put pizza back on display · <kbd>O</kbd> open/close store · <kbd>H</kbd> hire chef
+    </p>
+    <button id="start-btn" class="btn">START COOKING</button>
+  </div>
+
+  <div id="game-over-screen" class="overlay hidden">
+    <h1 style="color:#f39c12;">TIME'S UP!</h1>
+    <h2 id="final-text">Your money carries over — cook again to earn more!</h2>
+    <p id="final-score" style="font-size:32px;font-weight:700;color:#f1c40f;margin-bottom:24px;">0 pizzas served</p>
+    <button id="restart-btn" class="btn">COOK AGAIN</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="pizza.js"></script>
+</body>
+</html>
