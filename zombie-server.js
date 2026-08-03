@@ -145,7 +145,7 @@ function spawnZombie() {
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: type === 'skeleton' ? speed * 1.6 : type === 'creepy' ? speed * 1.3 : type === 'buff' ? speed * 0.75 : speed,
+    speed: type === 'skeleton' ? speed * 1.6 : type === 'creepy' ? speed * 3.0 : type === 'buff' ? speed * 0.75 : speed,
     damage, attackRange, attackTimer: 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
