@@ -716,6 +716,9 @@ class ZombieMultiplayerClient {
       if (z.rng) {
         this.spawnRangedEffect(z.x, 3.0, z.z, z.r || 0);
       }
+      if (z.crk) {
+        this.spawnCrackEffect(z.x, z.z, z.cdx, z.cdz, z.clen);
+      }
       // Boss reviving — pulse red and shake
       if (z.rvv) {
         const t = performance.now() / 1000;
@@ -1061,6 +1064,45 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh: ring, life: 0.6, maxLife: 0.6, isShockwave: true });
   }
 
+  spawnCrackEffect(x, z, dx, dz, length) {
+    const len = length || 30;
+    // Main crack line — dark jagged line on ground
+    const crackMat = new THREE.MeshBasicMaterial({ color: 0x1a0a00, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    const crack = new THREE.Mesh(new THREE.PlaneGeometry(2.0, len), crackMat);
+    crack.rotation.x = -Math.PI / 2;
+    // Position at midpoint of crack
+    crack.position.set(x + dx * len / 2, 0.03, z + dz * len / 2);
+    // Rotate to align with direction
+    crack.rotation.z = Math.atan2(dx, dz);
+    this.scene.add(crack);
+    this.bullets.push({ mesh: crack, life: 3.0, maxLife: 3.0, isCrack: true });
+    // Glowing edges — orange/red glow along the crack
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(3.0, len), glowMat);
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.set(x + dx * len / 2, 0.02, z + dz * len / 2);
+    glow.rotation.z = Math.atan2(dx, dz);
+    this.scene.add(glow);
+    this.bullets.push({ mesh: glow, life: 1.0, maxLife: 1.0, isCrackGlow: true });
+    // Debris particles along the crack
+    for (let i = 0; i < 15; i++) {
+      const t = (i + 1) / 16 * len;
+      const px = x + dx * t + (Math.random() - 0.5) * 1.5;
+      const pz = z + dz * t + (Math.random() - 0.5) * 1.5;
+      const pMat = new THREE.MeshBasicMaterial({ color: 0x3a1a00, transparent: true, opacity: 1 });
+      const pSize = 0.1 + Math.random() * 0.15;
+      const particle = new THREE.Mesh(new THREE.BoxGeometry(pSize, pSize, pSize), pMat);
+      particle.position.set(px, 0.5 + Math.random() * 1.5, pz);
+      this.scene.add(particle);
+      this.bullets.push({
+        mesh: particle, life: 0.8 + Math.random() * 0.4, maxLife: 1.2, isParticle: true,
+        vx: (Math.random() - 0.5) * 4,
+        vy: 3 + Math.random() * 4,
+        vz: (Math.random() - 0.5) * 4,
+      });
+    }
+  }
+
   spawnRangedEffect(x, y, z, yaw) {
     const projMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 1 });
     const proj = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), projMat);
@@ -1228,6 +1270,13 @@ class ZombieMultiplayerClient {
         // Glowing projectile fades
         b.mesh.material.opacity = b.life / b.maxLife;
         b.mesh.scale.setScalar(1 + (1 - b.life / b.maxLife) * 2);
+      } else if (b.isCrack) {
+        // Crack stays then fades in last 1 second
+        const fadeRatio = Math.min(b.life / 1.0, 1);
+        b.mesh.material.opacity = fadeRatio * 0.9;
+      } else if (b.isCrackGlow) {
+        // Glow fades faster
+        b.mesh.material.opacity = (b.life / b.maxLife) * 0.7;
       } else if (b.isHole) {
         // Fade out holes gradually in last 1 second
         const fadeRatio = Math.min(b.life / 1.0, 1);

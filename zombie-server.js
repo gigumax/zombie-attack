@@ -153,11 +153,11 @@ function spawnBoss() {
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
   const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
-  const health = 27500; // 500 rifle hits (55 dmg each) to kill
+  const health = 137500; // 5x harder: 2500 rifle hits (55 dmg each) to kill
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
-    damage: CONFIG.zombieDamage * 15, attackRange: CONFIG.zombieAttackRange * 2.5, // 3x damage
+    damage: CONFIG.zombieDamage * 75, attackRange: CONFIG.zombieAttackRange * 2.5, // 5x damage
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
     lostLimbs: {}, limbDamage: {},
@@ -674,11 +674,11 @@ function updateZombies(dt) {
       if (z.reviveTimer <= 0) {
         z.reviving = false;
         z.reviveCount++;
-        // Each revival: 500 rifle hits per phase, increasing damage and speed
-        const baseHealth = 27500;
+        // Each revival: 5x base, increasing damage and speed
+        const baseHealth = 137500;
         z.maxHealth = Math.floor(baseHealth * (1 + z.reviveCount * 0.3));
         z.health = z.maxHealth;
-        z.damage = CONFIG.zombieDamage * 15 * (1 + z.reviveCount * 0.5);
+        z.damage = CONFIG.zombieDamage * 75 * (1 + z.reviveCount * 0.5);
         z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.2);
         z.lostLimbs = {}; // limbs grow back creepier
         z.limbDamage = {};
@@ -716,7 +716,7 @@ function updateZombies(dt) {
       z.specialAttackTimer -= dt;
       if (z.specialAttackTimer <= 0) {
         z.specialAttackTimer = 5 + Math.random() * 3; // every 5-8 seconds
-        const attackType = Math.floor(Math.random() * 3);
+        const attackType = Math.floor(Math.random() * 4);
         if (attackType === 0) {
           // CHARGE — fast dash toward target, dealing damage on hit
           z.charging = true;
@@ -724,21 +724,17 @@ function updateZombies(dt) {
           z.chargeDx = dx / dist;
           z.chargeDz = dz / dist;
           broadcastKillFeed('BOSS CHARGES!');
-        } else if (attackType === 1) {
-          // SLAM — AoE damage to all nearby players
-          if (dist < attackRange * 2) {
-            for (const p of Object.values(players)) {
-              if (p.dead) continue;
-              const pd = Math.hypot(p.x - z.x, p.z - z.z);
-              if (pd < attackRange * 2) {
-                p.health -= z.damage * 0.5;
-                if (p.health <= 0) { p.health = 0; p.dead = true; }
-              }
-            }
-            z.slamEffect = 1; // visual flag for client
-            z.attackTimer = 1.5;
-            broadcastKillFeed('BOSS SLAMS THE GROUND!');
-          }
+        } else if (attackType === 1 || attackType === 2) {
+          // GROUND CRACK — boss smashes ground, crack line shoots toward target
+          z.crackAttack = true;
+          z.crackTimer = 0.6; // wind-up time before crack appears
+          z.crackDx = dx / dist;
+          z.crackDz = dz / dist;
+          z.crackLength = 30; // crack extends 30 units
+          z.crackWidth = 2.0;
+          z.slamEffect = 1; // visual: boss slams ground
+          z.attackTimer = 2.0;
+          broadcastKillFeed('BOSS SMASHES THE GROUND!');
         } else {
           // RANGED — shoot projectile at target (instant hit, long range)
           if (dist < 30) {
@@ -748,6 +744,32 @@ function updateZombies(dt) {
             z.attackTimer = 1.0;
             broadcastKillFeed('BOSS HURLS A PROJECTILE!');
           }
+        }
+      }
+      // Handle ground crack attack
+      if (z.crackAttack) {
+        z.crackTimer -= dt;
+        if (z.crackTimer <= 0) {
+          // Crack appears — damage any player standing on the line
+          z.crackEffect = 1; // visual flag for client
+          for (const p of Object.values(players)) {
+            if (p.dead) continue;
+            // Project player position onto crack line
+            const px = p.x - z.x, pz = p.z - z.z;
+            const t = px * z.crackDx + pz * z.crackDz; // projection along crack direction
+            if (t > 0 && t < z.crackLength) {
+              // Perpendicular distance from player to crack line
+              const perpX = px - t * z.crackDx;
+              const perpZ = pz - t * z.crackDz;
+              const perpDist = Math.hypot(perpX, perpZ);
+              if (perpDist < z.crackWidth) {
+                p.health -= z.damage * 0.7;
+                if (p.health <= 0) { p.health = 0; p.dead = true; }
+              }
+            }
+          }
+          z.crackAttack = false;
+          z.attackTimer = 1.5;
         }
       }
       // Handle charge movement
@@ -899,10 +921,12 @@ function gameLoop() {
         la: ll.armL ? 1 : 0, ra: ll.armR ? 1 : 0, ll: ll.legL ? 1 : 0, rl: ll.legR ? 1 : 0,
         rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,
         chg: z.charging ? 1 : 0, slm: z.slamEffect ? 1 : 0, rng: z.rangedEffect ? 1 : 0,
+        crk: z.crackEffect ? 1 : 0, cdx: z.crackDx || 0, cdz: z.crackDz || 0, clen: z.crackLength || 0,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;
       if (z.rangedEffect) z.rangedEffect = 0;
+      if (z.crackEffect) z.crackEffect = 0;
       if (z.dying) {
         return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
       }
