@@ -671,6 +671,7 @@ class ZombieMultiplayerClient {
       if (p.tr && p.tr.length > 0) {
         for (const t of p.tr) {
           this.spawnTracer(t.x1, t.y1, t.z1, t.x2, t.y2, t.z2, t.gun);
+          if (t.hit) this.spawnImpactHole(t.x2, t.y2, t.z2);
         }
       }
     }
@@ -774,18 +775,54 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh, life: cfg.life, maxLife: cfg.life });
   }
 
+  spawnImpactHole(x, y, z) {
+    // Red impact decal — a small red sphere + flat ring
+    const group = new THREE.Group();
+    // Red hole sphere
+    const holeMat = new THREE.MeshBasicMaterial({ color: 0xcc0000, transparent: true, opacity: 1 });
+    holeMat.userData.baseOpacity = 1;
+    const hole = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), holeMat);
+    group.add(hole);
+    // Red splatter ring on ground/wall
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xaa0000, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    ringMat.userData.baseOpacity = 0.7;
+    const ring = new THREE.Mesh(new THREE.CircleGeometry(0.2, 8), ringMat);
+    // If near ground, lay flat; otherwise face outward
+    if (y < 0.3) {
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.01;
+    } else {
+      ring.lookAt(this.camera.position);
+    }
+    group.add(ring);
+    group.position.set(x, Math.max(y, 0.01), z);
+    this.scene.add(group);
+    this.bullets.push({ mesh: group, life: 3.0, maxLife: 3.0, isHole: true });
+  }
+
   updateBullets(dt) {
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i];
       b.life -= dt;
       if (b.life <= 0) {
         this.scene.remove(b.mesh);
-        b.mesh.geometry.dispose();
-        b.mesh.material.dispose();
+        if (b.isHole) {
+          // Dispose group children
+          b.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
+        } else {
+          b.mesh.geometry.dispose();
+          b.mesh.material.dispose();
+        }
         this.bullets.splice(i, 1);
         continue;
       }
-      b.mesh.material.opacity = (b.life / b.maxLife) * 0.8;
+      if (b.isHole) {
+        // Fade out holes gradually in last 1 second
+        const fadeRatio = Math.min(b.life / 1.0, 1);
+        b.mesh.children.forEach(c => { c.material.opacity = (c.material.userData.baseOpacity || 1) * fadeRatio; });
+      } else {
+        b.mesh.material.opacity = (b.life / b.maxLife) * 0.9;
+      }
     }
   }
 

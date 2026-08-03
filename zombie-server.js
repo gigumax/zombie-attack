@@ -362,7 +362,7 @@ function handleShoot(playerId) {
     }
     // Knife slash tracer — short line in front of player
     const slashEnd = { x: p.x + dir.x * meleeRange, y: p.y + dir.y * meleeRange, z: p.z + dir.z * meleeRange };
-    p.shootTracers.push({ x1: p.x, y1: p.y - 0.2, z1: p.z, x2: slashEnd.x, y2: slashEnd.y - 0.2, z2: slashEnd.z, life: 0.1, gun: 'knife' });
+    p.shootTracers.push({ x1: p.x, y1: p.y - 0.2, z1: p.z, x2: slashEnd.x, y2: slashEnd.y - 0.2, z2: slashEnd.z, life: 0.1, gun: 'knife', hit: closestHit ? 1 : 0 });
     if (closestHit) {
       closestHit.zombie.health -= damage;
       if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
@@ -388,14 +388,20 @@ function handleShoot(playerId) {
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
     // Tracer endpoint
+    const hitZombie = closestHit !== null;
     const endX = p.x + dir.x * Math.min(closestDist, CONFIG.bulletRange);
     const endY = p.y + dir.y * Math.min(closestDist, CONFIG.bulletRange);
     const endZ = p.z + dir.z * Math.min(closestDist, CONFIG.bulletRange);
+    // Check environment hit (ground at y=0 or world boundary)
+    let envHit = false;
+    if (endY <= 0) envHit = true;
+    const halfWorld = CONFIG.worldSize - 1;
+    if (Math.abs(endX) > halfWorld || Math.abs(endZ) > halfWorld) envHit = true;
     // Start tracer from slightly below camera (gun muzzle position)
     const muzzleY = p.y - 0.3;
     const muzzleX = p.x + Math.cos(p.yaw) * 0.3;
     const muzzleZ = p.z - Math.sin(p.yaw) * 0.3;
-    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun });
+    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0 });
 
     if (closestHit) {
       closestHit.zombie.health -= damage;
