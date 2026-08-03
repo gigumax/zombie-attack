@@ -584,6 +584,7 @@ function updateZombies(dt) {
       z.x += (dx / dist) * z.speed * dt;
       z.z += (dz / dist) * z.speed * dt;
       z.walkPhase += dt * z.speed * 2;
+      z.rot = Math.atan2(dx, dz);
     }
 
     // Attack
@@ -701,7 +702,7 @@ function gameLoop() {
     zombies: zombies.map(z => ({
       id: z.id, x: z.x, z: z.z, type: z.type,
       health: z.health, maxHealth: z.maxHealth,
-      isBoss: z.isBoss, walkPhase: z.walkPhase,
+      isBoss: z.isBoss, walkPhase: z.walkPhase, rot: z.rot || 0,
     })),
     goldPickups: goldPickups.map(g => ({ id: g.id, x: g.x, z: g.z, value: g.value })),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
@@ -710,7 +711,7 @@ function gameLoop() {
   io.emit('state', state);
 }
 
-setInterval(gameLoop, 50); // 20 TPS
+setInterval(gameLoop, 33); // ~30 TPS for smoother gameplay
 
 // ─── Socket handlers ───
 io.on('connection', (socket) => {

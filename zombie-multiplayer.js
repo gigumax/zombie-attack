@@ -492,7 +492,7 @@ class ZombieMultiplayerClient {
         this.zombieMeshes[z.id] = mesh;
       }
       mesh.position.set(z.x, 0, z.z);
-      // Face nearest player (approximate — face myPlayer if closer)
+      mesh.rotation.y = z.rot || 0;
       // Walk animation
       const legL = mesh.userData.legL, legR = mesh.userData.legR;
       if (legL && legR) {
@@ -550,7 +550,7 @@ class ZombieMultiplayerClient {
         this.otherPlayerMeshes[p.id] = mesh;
       }
       mesh.position.set(p.x, 0, p.z);
-      mesh.rotation.y = p.yaw;
+      mesh.rotation.y = p.yaw + Math.PI;
       mesh.visible = !p.dead;
       // Name tag
       if (mesh.userData.nameTag) {
@@ -620,8 +620,12 @@ class ZombieMultiplayerClient {
       if (this.myPlayer.shopOpen) {
         this.renderShop();
         document.getElementById('shop-overlay').classList.remove('hidden');
+        if (document.pointerLockElement) document.exitPointerLock();
       } else {
         document.getElementById('shop-overlay').classList.add('hidden');
+        if (!document.pointerLockElement && this.playing && !this.myPlayer.dead) {
+          this.canvas.requestPointerLock();
+        }
       }
     }
   }
