@@ -46,6 +46,7 @@ class ZombieMultiplayerClient {
     this.socket = null;
     this.connected = false;
     this.playing = false;
+    this.kidFriendly = false;
 
     // Input
     this.keys = {};
@@ -170,7 +171,10 @@ class ZombieMultiplayerClient {
     });
 
     this.socket.on('escapeStart', (data) => {
-      document.getElementById('escape-overlay').textContent = data.text;
+      const kidText = this.kidFriendly
+        ? 'Oh no! The big boss bumped you into a cozy room! Your toy blaster is gone, but you still have your trusty foam knife. A silly guard is holding the shiny key — bonk them to get it!'
+        : data.text;
+      document.getElementById('escape-overlay').textContent = kidText;
       document.getElementById('escape-overlay').classList.remove('hidden');
       document.getElementById('start-screen').classList.add('hidden');
       document.getElementById('game-over-screen').classList.add('hidden');
@@ -195,9 +199,16 @@ class ZombieMultiplayerClient {
     this.socket.on('gameOver', (data) => {
       if (this.myPlayer) {
         document.getElementById('final-score').textContent =
-          `${this.myPlayer.k} kills · Wave ${data.wave} · Score ${data.score}`;
+          `${this.myPlayer.k} knockouts · Wave ${data.wave} · Score ${data.score}`;
       }
       this.clearPrisonCell();
+      if (this.kidFriendly) {
+        document.querySelector('#game-over-screen h1').textContent = 'OH NO!';
+        document.getElementById('final-text').textContent = 'The silly zombies tagged you! But your gold and toys are saved!';
+      } else {
+        document.querySelector('#game-over-screen h1').textContent = 'YOU DIED!';
+        document.getElementById('final-text').textContent = 'The zombies got you... but your gold and weapons are saved!';
+      }
       document.getElementById('game-over-screen').classList.remove('hidden');
       if (document.pointerLockElement) document.exitPointerLock();
     });
@@ -403,6 +414,8 @@ class ZombieMultiplayerClient {
     });
 
     document.getElementById('start-btn').addEventListener('click', () => {
+      this.kidFriendly = document.getElementById('kid-friendly-toggle').checked;
+      this.socket.emit('setKidFriendly', this.kidFriendly);
       document.getElementById('start-screen').classList.add('hidden');
       this.playing = true;
       document.getElementById('hud').style.display = 'flex';
@@ -536,9 +549,9 @@ class ZombieMultiplayerClient {
       group.userData = { armL, armR, legL, legR, head, torso, revivePhase: phase };
       return group;
     }
-    const skinMat = new THREE.MeshLambertMaterial({color:0x4a7a4a});
-    const shirtMat = new THREE.MeshLambertMaterial({color:0x3a6aad});
-    const pantsMat = new THREE.MeshLambertMaterial({color:0x2a2a5a});
+    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x66bb66 : 0x4a7a4a});
+    const shirtMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x44aaff : 0x3a6aad});
+    const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x6644cc : 0x2a2a5a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), skinMat);
     head.position.y = 1.8; head.castShadow = true; group.add(head);
     const eyeMat = new THREE.MeshBasicMaterial({color:0x000000});
@@ -560,9 +573,9 @@ class ZombieMultiplayerClient {
   createBuffZombieMesh() {
     const group = new THREE.Group();
     const scale = 1.4;
-    const skinMat = new THREE.MeshLambertMaterial({color:0x8a2a2a});
-    const shirtMat = new THREE.MeshLambertMaterial({color:0x4a1a1a});
-    const pantsMat = new THREE.MeshLambertMaterial({color:0x2a0a0a});
+    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xff8844 : 0x8a2a2a});
+    const shirtMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffaa00 : 0x4a1a1a});
+    const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x4488ff : 0x2a0a0a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale,0.55*scale,0.55*scale), skinMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
     const eyeMat = new THREE.MeshBasicMaterial({color:0xff0000});
@@ -584,8 +597,8 @@ class ZombieMultiplayerClient {
   createSkeletonMesh() {
     const group = new THREE.Group();
     const scale = 1.05;
-    const boneMat = new THREE.MeshLambertMaterial({color:0xdddddd});
-    const darkMat = new THREE.MeshLambertMaterial({color:0x2a2a2a});
+    const boneMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffffff : 0xdddddd});
+    const darkMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88aaff : 0x2a2a2a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.45*scale,0.45*scale), boneMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
     const eyeMat = new THREE.MeshBasicMaterial({color:0xff0000});
@@ -609,6 +622,7 @@ class ZombieMultiplayerClient {
   }
 
   createCreepyZombieMesh() {
+    if (this.kidFriendly) return this.createZombieMesh(); // kid-friendly: no creepy zombies, use normal
     const group = new THREE.Group();
     const scale = 1.15;
     // Creepy zombie — pitch black skin, glowing white eyes, long limbs
@@ -1055,11 +1069,15 @@ class ZombieMultiplayerClient {
       vz: (Math.random() - 0.5) * 6,
       rotVel: (Math.random() - 0.5) * 8,
     });
-    // Explosion particles — red blood/gore burst
+    // Explosion particles — red blood/gore burst, or sparkles in kid mode
+    const kidMode = this.kidFriendly;
+    const particleColors = kidMode ? [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff] : [0xcc0000];
     for (let i = 0; i < 12; i++) {
-      const pMat = new THREE.MeshBasicMaterial({ color: 0xcc0000, transparent: true, opacity: 1 });
-      const pSize = 0.05 + Math.random() * 0.08;
-      const particle = new THREE.Mesh(new THREE.SphereGeometry(pSize, 4, 4), pMat);
+      const pColor = kidMode ? particleColors[i % particleColors.length] : 0xcc0000;
+      const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
+      const pSize = kidMode ? 0.06 + Math.random() * 0.06 : 0.05 + Math.random() * 0.08;
+      const pGeo = kidMode ? new THREE.OctahedronGeometry(pSize, 0) : new THREE.SphereGeometry(pSize, 4, 4);
+      const particle = new THREE.Mesh(pGeo, pMat);
       particle.position.set(wx, offsetY, wz);
       this.scene.add(particle);
       this.bullets.push({
@@ -1069,9 +1087,11 @@ class ZombieMultiplayerClient {
         vz: (Math.random() - 0.5) * 8,
       });
     }
-    // Flash sphere — quick expanding red glow
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.8 });
-    const flash = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), flashMat);
+    // Flash sphere — quick expanding glow (yellow stars in kid mode, red gore otherwise)
+    const flashColor = kidMode ? 0xffff00 : 0xff3300;
+    const flashMat = new THREE.MeshBasicMaterial({ color: flashColor, transparent: true, opacity: 0.8 });
+    const flashGeo = kidMode ? new THREE.OctahedronGeometry(0.35, 0) : new THREE.SphereGeometry(0.3, 8, 8);
+    const flash = new THREE.Mesh(flashGeo, flashMat);
     flash.position.set(wx, offsetY, wz);
     this.scene.add(flash);
     this.bullets.push({ mesh: flash, life: 0.2, maxLife: 0.2, isFlash: true });

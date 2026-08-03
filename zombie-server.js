@@ -117,12 +117,16 @@ function createPlayer(id) {
 }
 
 // ─── Zombie spawning ───
+function anyKidFriendly() {
+  return Object.values(players).some(p => p.kidFriendly);
+}
+
 function spawnZombie() {
   let type = 'normal';
   const r = Math.random();
   if (wave >= 4 && r < 0.15) type = 'skeleton';
   else if (wave >= 3 && r < 0.35) type = 'buff';
-  else if (wave >= 2 && r < 0.20) type = 'creepy';
+  else if (wave >= 2 && r < 0.20 && !anyKidFriendly()) type = 'creepy';
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
@@ -167,7 +171,7 @@ function spawnBoss() {
     reviveCount: 0, reviveTimer: 0, reviving: false,
     specialAttackTimer: 5, // timer for special attacks
   });
-  broadcastKillFeed('BOSS HAS APPEARED!');
+  broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS APPEARED!' : 'BOSS HAS APPEARED!');
 }
 
 function spawnGuard() {
@@ -213,7 +217,7 @@ function killZombie(zombie, killerId) {
     const downGold = 30 + wave * 5;
     player.score += downScore;
     player.gold += downGold;
-    broadcastKillFeed(`${player.name}: BOSS DOWNED! Reviving... (${zombie.reviveCount + 1}/3)`);
+    broadcastKillFeed(anyKidFriendly() ? `${player.name}: BIG BOSS TAGGED! Getting up... (${zombie.reviveCount + 1}/3)` : `${player.name}: BOSS DOWNED! Reviving... (${zombie.reviveCount + 1}/3)`);
     return;
   }
 
@@ -239,12 +243,13 @@ function killZombie(zombie, killerId) {
   }
 
   // Kill feed
+  const kid = anyKidFriendly();
   let msg = '';
-  if (zombie.isBoss) msg = `BOSS ELIMINATED! +${score}`;
-  else if (zombie.type === 'guard') msg = `GUARD ELIMINATED! +${score}`;
-  else if (zombie.type === 'buff') msg = `BUFF ZOMBIE ELIMINATED! +${score}`;
-  else if (zombie.type === 'skeleton') msg = `SKELETON ELIMINATED! +${score}`;
-  else msg = `+${score} Zombie eliminated!`;
+  if (zombie.isBoss) msg = kid ? `BIG BOSS TAGGED! +${score}` : `BOSS ELIMINATED! +${score}`;
+  else if (zombie.type === 'guard') msg = kid ? `GUARD BONKED! +${score}` : `GUARD ELIMINATED! +${score}`;
+  else if (zombie.type === 'buff') msg = kid ? `BIG ZOMBIE TAGGED! +${score}` : `BUFF ZOMBIE ELIMINATED! +${score}`;
+  else if (zombie.type === 'skeleton') msg = kid ? `BONEY ZOMBIE TAGGED! +${score}` : `SKELETON ELIMINATED! +${score}`;
+  else msg = `+${score} ${kid ? 'Zombie tagged' : 'Zombie eliminated'}!`;
   broadcastKillFeed(`${player.name}: ${msg}`);
 
   // Check wave complete or escape win (only count active zombies)
@@ -685,7 +690,7 @@ function updateZombies(dt) {
         z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.2);
         z.lostLimbs = {}; // limbs grow back creepier
         z.limbDamage = {};
-        broadcastKillFeed(`BOSS REVIVED! Phase ${z.reviveCount}/3 — STRONGER!`);
+        broadcastKillFeed(anyKidFriendly() ? `BIG BOSS GETS UP! Round ${z.reviveCount}/3` : `BOSS REVIVED! Phase ${z.reviveCount}/3 — STRONGER!`);
       }
       continue; // don't process AI while reviving
     }
@@ -726,7 +731,7 @@ function updateZombies(dt) {
           z.chargeTimer = 1.0;
           z.chargeDx = dx / dist;
           z.chargeDz = dz / dist;
-          broadcastKillFeed('BOSS CHARGES!');
+          broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS IS CHARGING!' : 'BOSS CHARGES!');
         } else if (attackType === 1 || attackType === 2) {
           // GROUND CRACK — boss smashes ground, crack line shoots toward target
           z.crackAttack = true;
@@ -737,7 +742,7 @@ function updateZombies(dt) {
           z.crackWidth = 2.0;
           z.slamEffect = 1; // visual: boss slams ground
           z.attackTimer = 2.0;
-          broadcastKillFeed('BOSS SMASHES THE GROUND!');
+          broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS SMASHES THE GROUND!' : 'BOSS SMASHES THE GROUND!');
         } else {
           // RANGED — shoot projectile at target (instant hit, long range)
           if (dist < 30) {
@@ -745,7 +750,7 @@ function updateZombies(dt) {
             if (target.health <= 0) { target.health = 0; target.dead = true; }
             z.rangedEffect = 1; // visual flag
             z.attackTimer = 1.0;
-            broadcastKillFeed('BOSS HURLS A PROJECTILE!');
+            broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS THROWS A BALL!' : 'BOSS HURLS A PROJECTILE!');
           }
         }
       }
@@ -1053,6 +1058,11 @@ io.on('connection', (socket) => {
   // Send full player meta to the new player
   sendPlayerMeta(socket.id);
   io.emit('playerList', Object.values(players).map(p => ({ id: p.id, name: p.name })));
+
+  socket.on('setKidFriendly', (val) => {
+    const p = players[socket.id];
+    if (p) p.kidFriendly = !!val;
+  });
 
   socket.on('input', (data) => {
     const p = players[socket.id];
