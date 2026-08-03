@@ -417,17 +417,23 @@ class ZombieMultiplayerClient {
   }
 
   // ─── Zombie mesh creation (same as single-player) ───
-  createZombieMesh(isBoss = false) {
+  createZombieMesh(isBoss = false, revivePhase = 0) {
     const group = new THREE.Group();
     if (isBoss) {
-      const skinMat = new THREE.MeshLambertMaterial({color:0x5a8a4a});
-      const shirtMat = new THREE.MeshLambertMaterial({color:0x2a9a9a});
-      const pantsMat = new THREE.MeshLambertMaterial({color:0x4a2a8a});
+      // Creepier colors with each revival phase
+      const phase = revivePhase || 0;
+      const skinColors = [0x5a8a4a, 0x3a5a2a, 0x2a3a1a, 0x1a1a0a];
+      const shirtColors = [0x2a9a9a, 0x1a5a5a, 0x0a2a2a, 0x000000];
+      const pantsColors = [0x4a2a8a, 0x2a1a4a, 0x1a0a2a, 0x000000];
+      const eyeColors = [0x000000, 0xff0000, 0xff0000, 0xff3300];
+      const skinMat = new THREE.MeshLambertMaterial({color: skinColors[phase]});
+      const shirtMat = new THREE.MeshLambertMaterial({color: shirtColors[phase]});
+      const pantsMat = new THREE.MeshLambertMaterial({color: pantsColors[phase]});
+      const eyeMat = new THREE.MeshBasicMaterial({color: eyeColors[phase]});
       const torso = new THREE.Mesh(new THREE.BoxGeometry(1.6,1.2,0.9), shirtMat);
       torso.position.set(0,2.0,0.2); torso.rotation.x = 0.25; torso.castShadow = true; group.add(torso);
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), skinMat);
       head.position.set(0,2.9,0.75); head.rotation.x = 0.15; head.castShadow = true; group.add(head);
-      const eyeMat = new THREE.MeshBasicMaterial({color:0x000000});
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.18,0.08), eyeMat);
       eyeL.position.set(-0.18,3.0,1.14); group.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.18; group.add(eyeR);
@@ -440,8 +446,25 @@ class ZombieMultiplayerClient {
       const legGeo = new THREE.BoxGeometry(0.45,1.3,0.55);
       const legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.4,0.65,0); legL.castShadow = true; group.add(legL);
       const legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.4,0.65,0); legR.castShadow = true; group.add(legR);
-      group.scale.set(2.2,2.2,2.2);
-      group.userData = { armL, armR, legL, legR, head, torso };
+      // Horns for phase 2+
+      if (phase >= 2) {
+        const hornMat = new THREE.MeshLambertMaterial({color: 0x1a0a0a});
+        const hornL = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 4), hornMat);
+        hornL.position.set(-0.3, 3.4, 0.6); hornL.rotation.x = -0.3; group.add(hornL);
+        const hornR = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 4), hornMat);
+        hornR.position.set(0.3, 3.4, 0.6); hornR.rotation.x = -0.3; group.add(hornR);
+      }
+      // Spikes on back for phase 3
+      if (phase >= 3) {
+        const spikeMat = new THREE.MeshLambertMaterial({color: 0x0a0a0a});
+        for (let i = 0; i < 4; i++) {
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.6, 4), spikeMat);
+          spike.position.set(0, 1.5 + i * 0.5, -0.5); group.add(spike);
+        }
+      }
+      const bossScale = 2.2 + phase * 0.3;
+      group.scale.set(bossScale, bossScale, bossScale);
+      group.userData = { armL, armR, legL, legR, head, torso, revivePhase: phase };
       return group;
     }
     const skinMat = new THREE.MeshLambertMaterial({color:0x4a7a4a});
@@ -516,8 +539,8 @@ class ZombieMultiplayerClient {
     return this.createBuffZombieMesh();
   }
 
-  createZombieMeshByType(type, isBoss) {
-    if (isBoss) return this.createZombieMesh(true);
+  createZombieMeshByType(type, isBoss, revivePhase = 0) {
+    if (isBoss) return this.createZombieMesh(true, revivePhase);
     if (type === 'buff') return this.createBuffZombieMesh();
     if (type === 'skeleton') return this.createSkeletonMesh();
     if (type === 'guard') return this.createGuardMesh();
@@ -537,8 +560,13 @@ class ZombieMultiplayerClient {
     for (const z of state.zombies) {
       seenZombieIds.add(z.id);
       let mesh = this.zombieMeshes[z.id];
+      // Recreate boss mesh if revive phase changed
+      if (mesh && z.boss && mesh.userData.revivePhase !== (z.rv || 0)) {
+        this.scene.remove(mesh);
+        mesh = null;
+      }
       if (!mesh) {
-        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss);
+        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0);
         this.scene.add(mesh);
         this.zombieMeshes[z.id] = mesh;
       }
@@ -566,6 +594,27 @@ class ZombieMultiplayerClient {
       if (z.ra && ud.armR && ud.armR.visible) {
         ud.armR.visible = false;
         this.spawnDetachedLimb(z.x, 1.3, z.z, ud.armR, z.r || 0);
+      }
+      // Boss reviving — pulse red and shake
+      if (z.rvv) {
+        const t = performance.now() / 1000;
+        const pulse = Math.sin(t * 10) * 0.5 + 0.5;
+        mesh.position.y = Math.sin(t * 15) * 0.1; // shake
+        mesh.rotation.z = Math.sin(t * 20) * 0.05;
+        // Flash all materials red
+        mesh.traverse(child => {
+          if (child.material && child.material.color) {
+            child.material.emissive = new THREE.Color(pulse, 0, 0);
+            child.material.emissiveIntensity = pulse;
+          }
+        });
+      } else if (z.boss) {
+        // Reset emissive when not reviving
+        mesh.traverse(child => {
+          if (child.material && child.material.emissive) {
+            child.material.emissiveIntensity = 0;
+          }
+        });
       }
       if (z.dy) {
         // Dying zombie — fall immediately

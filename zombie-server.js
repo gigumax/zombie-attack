@@ -160,6 +160,7 @@ function spawnBoss() {
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
     lostArms: {},
+    reviveCount: 0, reviveTimer: 0, reviving: false,
   });
   broadcastKillFeed('BOSS HAS APPEARED!');
 }
@@ -195,6 +196,21 @@ function killZombie(zombie, killerId) {
   const player = players[killerId];
   if (!player) return;
 
+  // Boss revive logic — revives 3 times before truly dying
+  if (zombie.isBoss && zombie.reviveCount < 3 && !zombie.reviving) {
+    zombie.reviving = true;
+    zombie.reviveTimer = 3; // 3 seconds to revive
+    zombie.health = 0;
+    zombie.lostArms = {}; // reset arms on revive
+    // Give partial reward for downing the boss
+    const downScore = 50 * wave;
+    const downGold = 30 + wave * 5;
+    player.score += downScore;
+    player.gold += downGold;
+    broadcastKillFeed(`${player.name}: BOSS DOWNED! Reviving... (${zombie.reviveCount + 1}/3)`);
+    return;
+  }
+
   // Mark zombie as dying instead of removing immediately — stays 10 seconds
   zombie.dying = true;
   zombie.deathTimer = 10;
@@ -225,8 +241,8 @@ function killZombie(zombie, killerId) {
   else msg = `+${score} Zombie eliminated!`;
   broadcastKillFeed(`${player.name}: ${msg}`);
 
-  // Check wave complete or escape win (only count non-dying zombies)
-  const aliveZombies = zombies.filter(z => !z.dying);
+  // Check wave complete or escape win (only count active zombies)
+  const aliveZombies = zombies.filter(z => !z.dying && !z.reviving);
   if (escapeMode) {
     checkEscapeWin();
   } else if (aliveZombies.length === 0 && zombiesToSpawn === 0) {
@@ -332,7 +348,7 @@ function unlockCell(playerId) {
 
 function checkEscapeWin() {
   if (escapeStep !== 'fight') return;
-  const aliveCount = zombies.filter(z => !z.dying).length;
+  const aliveCount = zombies.filter(z => !z.dying && !z.reviving).length;
   if (aliveCount === 0) endEscape();
 }
 
@@ -365,7 +381,7 @@ function handleShoot(playerId) {
     const dir = getLookDir(p);
     let closestHit = null, closestDist = meleeRange;
     for (const z of zombies) {
-      if (z.dying) continue; // can't hit dead zombies
+      if (z.dying || z.reviving) continue;
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
@@ -393,9 +409,9 @@ function handleShoot(playerId) {
     const dir = getLookDir(p, spread);
     let closestHit = null, closestDist = CONFIG.bulletRange;
     for (const z of zombies) {
-      if (z.dying) continue; // can't hit dead zombies
+      if (z.dying || z.reviving) continue; // can't hit dead or reviving zombies
       const hit = rayHitZombie(p, dir, z, closestDist);
-      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; }
     }
     // Tracer endpoint
     const hitZombie = closestHit !== null;
@@ -622,9 +638,29 @@ function updateZombies(dt) {
     }
   }
 
+  // Process boss revives
+  for (const z of zombies) {
+    if (z.reviving) {
+      z.reviveTimer -= dt;
+      if (z.reviveTimer <= 0) {
+        z.reviving = false;
+        z.reviveCount++;
+        // Each revival: more health, more damage, slightly faster
+        const baseHealth = 1500 + (wave - 6) * 400;
+        z.maxHealth = Math.floor(baseHealth * (1 + z.reviveCount * 0.5));
+        z.health = z.maxHealth;
+        z.damage = CONFIG.zombieDamage * 5 * (1 + z.reviveCount * 0.3);
+        z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.15);
+        z.lostArms = {}; // arms grow back creepier
+        broadcastKillFeed(`BOSS REVIVED! Phase ${z.reviveCount}/3 — STRONGER!`);
+      }
+      continue; // don't process AI while reviving
+    }
+  }
+
   // Find nearest alive player for each zombie
   for (const z of zombies) {
-    if (z.dying) continue; // skip dead zombies
+    if (z.dying || z.reviving) continue; // skip dead/reviving zombies
     let target = null, minDist = Infinity;
     for (const p of Object.values(players)) {
       if (p.dead) continue;
@@ -758,16 +794,18 @@ function gameLoop() {
       if (z.dying) {
         return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
           boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-          dy: 1, dt: Math.ceil(z.deathTimer), la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0 };
+          dy: 1, dt: Math.ceil(z.deathTimer), la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0,
+          rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0 };
       }
       return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
         hp: Math.ceil(z.health), mhp: z.maxHealth,
         boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-        dy: 0, dt: 0, la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0 };
+        dy: 0, dt: 0, la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0,
+        rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0 };
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
-    zRemain: zombies.filter(z => !z.dying).length + zombiesToSpawn,
+    zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
   };
   io.emit('state', state);
 }
