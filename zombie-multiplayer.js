@@ -558,6 +558,15 @@ class ZombieMultiplayerClient {
       // Walk animation — legs, arms, head bob, torso sway
       const ud = mesh.userData;
       const swing = Math.sin(z.wp);
+      // Handle arm loss — hide arms and spawn falling detached arm
+      if (z.la && ud.armL && ud.armL.visible) {
+        ud.armL.visible = false;
+        this.spawnDetachedLimb(z.x, 1.3, z.z, ud.armL, z.r || 0);
+      }
+      if (z.ra && ud.armR && ud.armR.visible) {
+        ud.armR.visible = false;
+        this.spawnDetachedLimb(z.x, 1.3, z.z, ud.armR, z.r || 0);
+      }
       if (z.dy) {
         // Dying zombie — fall immediately
         if (!ud.fallTimer) ud.fallTimer = 0;
@@ -795,6 +804,37 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh, life: cfg.life, maxLife: cfg.life });
   }
 
+  spawnDetachedLimb(x, y, z, originalMesh, yaw) {
+    // Clone the limb mesh geometry/material for a falling detached limb
+    const clone = new THREE.Mesh(
+      originalMesh.geometry.clone(),
+      originalMesh.material.clone()
+    );
+    // Position at the zombie's side, offset by the original arm's local position
+    const offsetX = originalMesh.position.x;
+    const offsetY = originalMesh.position.y;
+    const offsetZ = originalMesh.position.z;
+    // Rotate offset by zombie yaw
+    const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+    clone.position.set(
+      x + offsetX * cosY - offsetZ * sinY,
+      offsetY,
+      z + offsetX * sinY + offsetZ * cosY
+    );
+    clone.rotation.copy(originalMesh.rotation);
+    clone.rotation.y += yaw;
+    clone.castShadow = true;
+    this.scene.add(clone);
+    // Add to bullets array with physics for falling
+    this.bullets.push({
+      mesh: clone, life: 3.0, maxLife: 3.0, isLimb: true,
+      vx: (Math.random() - 0.5) * 3,
+      vy: 2 + Math.random() * 2,
+      vz: (Math.random() - 0.5) * 3,
+      rotVel: (Math.random() - 0.5) * 5,
+    });
+  }
+
   spawnImpactHole(x, y, z, zid) {
     // Limit total holes to prevent lag
     const holeCount = this.bullets.filter(b => b.isHole).length;
@@ -862,7 +902,26 @@ class ZombieMultiplayerClient {
         this.bullets.splice(i, 1);
         continue;
       }
-      if (b.isHole) {
+      if (b.isLimb) {
+        // Physics: gravity, rotation, ground collision
+        b.vy -= 15 * dt;
+        b.mesh.position.x += b.vx * dt;
+        b.mesh.position.y += b.vy * dt;
+        b.mesh.position.z += b.vz * dt;
+        b.mesh.rotation.x += b.rotVel * dt;
+        b.mesh.rotation.z += b.rotVel * dt;
+        // Hit ground
+        if (b.mesh.position.y < 0.1) {
+          b.mesh.position.y = 0.1;
+          b.vy = -b.vy * 0.3; // bounce
+          b.vx *= 0.5; b.vz *= 0.5;
+          b.rotVel *= 0.3;
+        }
+        // Fade in last 1 second
+        const fadeRatio = Math.min(b.life / 1.0, 1);
+        b.mesh.material.opacity = fadeRatio;
+        b.mesh.material.transparent = true;
+      } else if (b.isHole) {
         // Fade out holes gradually in last 1 second
         const fadeRatio = Math.min(b.life / 1.0, 1);
         b.mesh.children.forEach(c => { c.material.opacity = (c.material.userData.baseOpacity || 1) * fadeRatio; });

@@ -142,6 +142,7 @@ function spawnZombie() {
     damage, attackRange, attackTimer: 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
+    lostArms: {},
   });
 }
 
@@ -158,6 +159,7 @@ function spawnBoss() {
     damage: CONFIG.zombieDamage * 5, attackRange: CONFIG.zombieAttackRange * 2.5,
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
+    lostArms: {},
   });
   broadcastKillFeed('BOSS HAS APPEARED!');
 }
@@ -170,6 +172,7 @@ function spawnGuard() {
     damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
     attackTimer: 0, walkPhase: 0,
     isBoss: false, hasKey: true,
+    lostArms: {},
   });
 }
 
@@ -183,6 +186,7 @@ function spawnEscapeZombie() {
     damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
     attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
+    lostArms: {},
   });
 }
 
@@ -407,9 +411,14 @@ function handleShoot(playerId) {
     const muzzleY = p.y - 0.3;
     const muzzleX = p.x + Math.cos(p.yaw) * 0.3;
     const muzzleZ = p.z - Math.sin(p.yaw) * 0.3;
-    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0, zid: hitZombie ? closestHit.zombie.id : -1 });
+    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0, zid: hitZombie ? closestHit.zombie.id : -1, part: hitZombie ? closestHit.part : '' });
 
     if (closestHit) {
+      // Handle arm shot — mark arm as lost
+      if (closestHit.part === 'armL' || closestHit.part === 'armR') {
+        if (!closestHit.zombie.lostArms) closestHit.zombie.lostArms = {};
+        closestHit.zombie.lostArms[closestHit.part] = true;
+      }
       closestHit.zombie.health -= damage;
       if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
     }
@@ -455,9 +464,26 @@ function rayHitZombie(p, dir, z, maxDist) {
   // Check height
   const hitY = oy + t * dy;
   if (hitY < 0 || hitY > height) return null;
+  const hitX = ox + t * dx;
+  const hitZ = oz + t * dz;
+  // Determine hit body part — arms are at sides, roughly y 1.0-1.6 for normal, scaled for boss
+  const armYMin = z.isBoss ? 1.5 : 1.0;
+  const armYMax = z.isBoss ? 4.5 : 1.6;
+  const armOffset = z.isBoss ? 1.15 : 0.38;
+  let part = 'body';
+  if (hitY >= armYMin && hitY <= armYMax) {
+    // Check if hit is to the left or right of center
+    const relX = hitX - z.x;
+    if (Math.abs(relX) > armOffset * 0.6) {
+      part = relX < 0 ? 'armL' : 'armR';
+      // Don't allow hitting an already-lost arm
+      if (z.lostArms && z.lostArms[part]) part = 'body';
+    }
+  }
   return {
     dist: t,
-    point: { x: ox + t * dx, y: hitY, z: oz + t * dz },
+    point: { x: hitX, y: hitY, z: hitZ },
+    part,
   };
 }
 
@@ -728,15 +754,16 @@ function gameLoop() {
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
     })),
     zombies: zombies.map(z => {
+      const la = z.lostArms || {};
       if (z.dying) {
         return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
           boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-          dy: 1, dt: Math.ceil(z.deathTimer) };
+          dy: 1, dt: Math.ceil(z.deathTimer), la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0 };
       }
       return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
         hp: Math.ceil(z.health), mhp: z.maxHealth,
         boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-        dy: 0, dt: 0 };
+        dy: 0, dt: 0, la: la.armL ? 1 : 0, ra: la.armR ? 1 : 0 };
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
