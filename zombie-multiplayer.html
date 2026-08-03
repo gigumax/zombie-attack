@@ -47,6 +47,8 @@
       height: 100%; background: linear-gradient(90deg, #e74c3c, #c0392b);
       border-radius: 8px; transition: width 0.3s; width: 100%;
     }
+    body.kid-friendly #health-val { color: #2980b9; }
+    body.kid-friendly #health-bar { background: linear-gradient(90deg, #2980b9, #2471a3); }
     #health-label {
       color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 4px;
       text-shadow: 0 2px 4px rgba(0,0,0,0.8);
@@ -57,6 +59,7 @@
       background: rgba(231,76,60,0); transition: background 0.15s;
     }
     #damage-overlay.hit { background: rgba(231,76,60,0.4); }
+    body.kid-friendly #damage-overlay.hit { background: rgba(41,128,185,0.4); }
 
     .overlay {
       position: fixed; inset: 0; display: flex; flex-direction: column;
@@ -231,7 +234,7 @@
   </div>
 
   <div id="game-over-screen" class="overlay hidden">
-    <h1 style="color:#e74c3c;">YOU DIED!</h1>
+    <h1 style="color:#e74c3c;" id="game-over-title">YOU DIED!</h1>
     <h2 id="final-text">The zombies got you... but your gold and weapons are saved!</h2>
     <p id="final-score" style="font-size:32px;font-weight:700;color:#f1c40f;margin-bottom:24px;">0 zombies killed · Wave 1</p>
     <button id="respawn-btn" class="btn">RESPAWN</button>

@@ -203,10 +203,14 @@ class ZombieMultiplayerClient {
       }
       this.clearPrisonCell();
       if (this.kidFriendly) {
-        document.querySelector('#game-over-screen h1').textContent = 'OH NO!';
+        const title = document.querySelector('#game-over-screen h1');
+        title.textContent = 'OH NO!';
+        title.style.color = '#2980b9';
         document.getElementById('final-text').textContent = 'The silly zombies tagged you! But your gold and toys are saved!';
       } else {
-        document.querySelector('#game-over-screen h1').textContent = 'YOU DIED!';
+        const title = document.querySelector('#game-over-screen h1');
+        title.textContent = 'YOU DIED!';
+        title.style.color = '#e74c3c';
         document.getElementById('final-text').textContent = 'The zombies got you... but your gold and weapons are saved!';
       }
       document.getElementById('game-over-screen').classList.remove('hidden');
@@ -426,6 +430,7 @@ class ZombieMultiplayerClient {
     document.getElementById('start-btn').addEventListener('click', () => {
       this.kidFriendly = document.getElementById('kid-friendly-toggle').checked;
       this.socket.emit('setKidFriendly', this.kidFriendly);
+      document.body.classList.toggle('kid-friendly', this.kidFriendly);
       document.getElementById('start-screen').classList.add('hidden');
       this.playing = true;
       document.getElementById('hud').style.display = 'flex';
@@ -467,11 +472,12 @@ class ZombieMultiplayerClient {
     if (isBoss) {
       // Creepier colors with each revival phase — progressively darker and more demonic
       const phase = revivePhase || 0;
-      const skinColors = [0x4a6a3a, 0x2a4a1a, 0x1a2a0a, 0x0a0a05];
-      const shirtColors = [0x1a4a4a, 0x0a2a2a, 0x050a0a, 0x000000];
-      const pantsColors = [0x2a1a4a, 0x1a0a2a, 0x0a050a, 0x000000];
-      const eyeColors = [0x660000, 0xff0000, 0xff3300, 0xffff00];
-      const hornColors = [0x3a2a1a, 0x2a1a0a, 0x1a0a05, 0x000000];
+      const kidBoss = this.kidFriendly;
+      const skinColors = kidBoss ? [0x66bb66, 0x44aa88, 0x3399aa, 0x2266bb] : [0x4a6a3a, 0x2a4a1a, 0x1a2a0a, 0x0a0a05];
+      const shirtColors = kidBoss ? [0xffaa00, 0xff8800, 0xff66aa, 0xaa66ff] : [0x1a4a4a, 0x0a2a2a, 0x050a0a, 0x000000];
+      const pantsColors = kidBoss ? [0x4488ff, 0x3366cc, 0x6644cc, 0x8844aa] : [0x2a1a4a, 0x1a0a2a, 0x0a050a, 0x000000];
+      const eyeColors = kidBoss ? [0x4444ff, 0x44aaff, 0x44ffaa, 0xffff44] : [0x660000, 0xff0000, 0xff3300, 0xffff00];
+      const hornColors = kidBoss ? [0xddaa44, 0xccaa66, 0xbbaa88, 0xaabbcc] : [0x3a2a1a, 0x2a1a0a, 0x1a0a05, 0x000000];
       const skinMat = new THREE.MeshLambertMaterial({color: skinColors[phase], emissive: phase >= 2 ? eyeColors[phase] : 0x000000, emissiveIntensity: phase >= 2 ? 0.05 : 0});
       const shirtMat = new THREE.MeshLambertMaterial({color: shirtColors[phase]});
       const pantsMat = new THREE.MeshLambertMaterial({color: pantsColors[phase]});
@@ -538,16 +544,17 @@ class ZombieMultiplayerClient {
           spike.position.set(0, 1.4 + i * 0.45, -0.5); group.add(spike);
         }
       }
-      // Glowing red core in chest for phase 3
+      // Glowing core in chest for phase 3 — blue in kid mode, red otherwise
       if (phase >= 3) {
-        const coreMat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.9});
+        const coreMat = new THREE.MeshBasicMaterial({color: kidBoss ? 0x44aaff : 0xff0000, transparent: true, opacity: 0.9});
         const core = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), coreMat);
         core.position.set(0, 2.0, 0.5); group.add(core);
         group.userData.core = core;
       }
-      // Blood drip dots for phase 1+
+      // Drip dots for phase 1+ — colorful in kid mode, blood otherwise
       if (phase >= 1) {
-        const bloodMat = new THREE.MeshBasicMaterial({color: 0x990000});
+        const dripBaseColor = kidBoss ? 0x44ff88 : 0x990000;
+        const bloodMat = new THREE.MeshBasicMaterial({color: dripBaseColor});
         for (let i = 0; i < 3 + phase * 2; i++) {
           const drip = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), bloodMat);
           drip.position.set((Math.random() - 0.5) * 1.4, 1.5 + Math.random() * 0.8, 0.4 + Math.random() * 0.3);
@@ -588,7 +595,7 @@ class ZombieMultiplayerClient {
     const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x4488ff : 0x2a0a0a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale,0.55*scale,0.55*scale), skinMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color:0xff0000});
+    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x4444ff : 0xff0000});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.13*scale,0.13*scale,0.06*scale), eyeMat);
     eyeL.position.set(-0.13*scale,1.85*scale,0.29*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.13*scale; group.add(eyeR);
@@ -611,7 +618,7 @@ class ZombieMultiplayerClient {
     const darkMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88aaff : 0x2a2a2a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.45*scale,0.45*scale), boneMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color:0xff0000});
+    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x44aaff : 0xff0000});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale), eyeMat);
     eyeL.position.set(-0.1*scale,1.82*scale,0.24*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.1*scale; group.add(eyeR);
@@ -770,16 +777,17 @@ class ZombieMultiplayerClient {
       if (z.crk) {
         this.spawnCrackEffect(z.x, z.z, z.cdx, z.cdz, z.clen);
       }
-      // Boss reviving — pulse red and shake
+      // Boss reviving — pulse and shake (red in normal, blue in kid mode)
       if (z.rvv) {
         const t = performance.now() / 1000;
         const pulse = Math.sin(t * 10) * 0.5 + 0.5;
         mesh.position.y = Math.sin(t * 15) * 0.1; // shake
         mesh.rotation.z = Math.sin(t * 20) * 0.05;
-        // Flash all materials red
+        // Flash all materials
+        const pulseColor = this.kidFriendly ? new THREE.Color(0, pulse * 0.5, pulse) : new THREE.Color(pulse, 0, 0);
         mesh.traverse(child => {
           if (child.material && child.material.color) {
-            child.material.emissive = new THREE.Color(pulse, 0, 0);
+            child.material.emissive = pulseColor;
             child.material.emissiveIntensity = pulse;
           }
         });
@@ -1003,6 +1011,18 @@ class ZombieMultiplayerClient {
     body.position.y = 1.15; body.castShadow = true; group.add(body);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), headMat);
     head.position.y = 1.85; head.castShadow = true; group.add(head);
+    // Face — eyes
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), eyeMat);
+    eyeL.position.set(-0.08, 1.9, 0.21); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.08; group.add(eyeR);
+    // Face — smile (curved mouth using small boxes)
+    const mouthMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    for (let i = -2; i <= 2; i++) {
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), mouthMat);
+      seg.position.set(i * 0.04, 1.78 - Math.abs(i) * 0.015, 0.21);
+      group.add(seg);
+    }
     const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
     const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(-0.4, 1.15, 0); armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(0.4, 1.15, 0); armR.castShadow = true; group.add(armR);
@@ -1081,7 +1101,7 @@ class ZombieMultiplayerClient {
     });
     // Explosion particles — red blood/gore burst, or sparkles in kid mode
     const kidMode = this.kidFriendly;
-    const particleColors = kidMode ? [0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff, 0x44ffff] : [0xcc0000];
+    const particleColors = kidMode ? [0x44ff44, 0x44ffaa, 0x4444ff, 0xffff44, 0x44ffff, 0xffaa44] : [0xcc0000];
     for (let i = 0; i < 12; i++) {
       const pColor = kidMode ? particleColors[i % particleColors.length] : 0xcc0000;
       const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
@@ -1098,7 +1118,7 @@ class ZombieMultiplayerClient {
       });
     }
     // Flash sphere — quick expanding glow (yellow stars in kid mode, red gore otherwise)
-    const flashColor = kidMode ? 0xffff00 : 0xff3300;
+    const flashColor = kidMode ? 0x44ff88 : 0xff3300;
     const flashMat = new THREE.MeshBasicMaterial({ color: flashColor, transparent: true, opacity: 0.8 });
     const flashGeo = kidMode ? new THREE.OctahedronGeometry(0.35, 0) : new THREE.SphereGeometry(0.3, 8, 8);
     const flash = new THREE.Mesh(flashGeo, flashMat);
@@ -1109,7 +1129,8 @@ class ZombieMultiplayerClient {
 
   spawnSlamEffect(x, z) {
     // Expanding shockwave ring on ground
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    const ringColor = this.kidFriendly ? 0x44ddff : 0xff6600;
+    const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.8, 16), ringMat);
     ring.rotation.x = -Math.PI / 2;
     ring.position.set(x, 0.05, z);
@@ -1120,7 +1141,8 @@ class ZombieMultiplayerClient {
   spawnCrackEffect(x, z, dx, dz, length) {
     const len = length || 30;
     // Main crack line — dark jagged line on ground
-    const crackMat = new THREE.MeshBasicMaterial({ color: 0x1a0a00, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    const crackColor = this.kidFriendly ? 0x336699 : 0x1a0a00;
+    const crackMat = new THREE.MeshBasicMaterial({ color: crackColor, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
     const crack = new THREE.Mesh(new THREE.PlaneGeometry(2.0, len), crackMat);
     crack.rotation.x = -Math.PI / 2;
     // Position at midpoint of crack
@@ -1130,7 +1152,8 @@ class ZombieMultiplayerClient {
     this.scene.add(crack);
     this.bullets.push({ mesh: crack, life: 3.0, maxLife: 3.0, isCrack: true });
     // Glowing edges — orange/red glow along the crack
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff3300, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    const glowColor = this.kidFriendly ? 0x44ddff : 0xff3300;
+    const glowMat = new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(3.0, len), glowMat);
     glow.rotation.x = -Math.PI / 2;
     glow.position.set(x + dx * len / 2, 0.02, z + dz * len / 2);
@@ -1142,7 +1165,7 @@ class ZombieMultiplayerClient {
       const t = (i + 1) / 16 * len;
       const px = x + dx * t + (Math.random() - 0.5) * 1.5;
       const pz = z + dz * t + (Math.random() - 0.5) * 1.5;
-      const pMat = new THREE.MeshBasicMaterial({ color: 0x3a1a00, transparent: true, opacity: 1 });
+      const pMat = new THREE.MeshBasicMaterial({ color: this.kidFriendly ? 0x886644 : 0x3a1a00, transparent: true, opacity: 1 });
       const pSize = 0.1 + Math.random() * 0.15;
       const particle = new THREE.Mesh(new THREE.BoxGeometry(pSize, pSize, pSize), pMat);
       particle.position.set(px, 0.5 + Math.random() * 1.5, pz);
@@ -1157,7 +1180,8 @@ class ZombieMultiplayerClient {
   }
 
   spawnRangedEffect(x, y, z, yaw) {
-    const projMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 1 });
+    const projColor = this.kidFriendly ? 0x44aaff : 0xff00ff;
+    const projMat = new THREE.MeshBasicMaterial({ color: projColor, transparent: true, opacity: 1 });
     const proj = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), projMat);
     proj.position.set(x, y, z);
     this.scene.add(proj);
@@ -1233,15 +1257,16 @@ class ZombieMultiplayerClient {
         }
       }
     }
-    // Red impact decal — a small red sphere + flat ring
+    // Impact decal — red in normal, blue in kid mode
     const group = new THREE.Group();
-    // Red hole sphere
-    const holeMat = new THREE.MeshBasicMaterial({ color: 0xcc0000, transparent: true, opacity: 1 });
+    const holeColor = this.kidFriendly ? 0x3366cc : 0xcc0000;
+    const holeMat = new THREE.MeshBasicMaterial({ color: holeColor, transparent: true, opacity: 1 });
     holeMat.userData.baseOpacity = 1;
     const hole = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), holeMat);
     group.add(hole);
     // Red splatter ring
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xaa0000, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    const ringColor = this.kidFriendly ? 0x3366cc : 0xaa0000;
+    const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
     ringMat.userData.baseOpacity = 0.7;
     const ring = new THREE.Mesh(new THREE.CircleGeometry(0.2, 8), ringMat);
     // If near ground, lay flat; otherwise face outward
