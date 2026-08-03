@@ -386,6 +386,16 @@ class ZombieMultiplayerClient {
       if (e.code === 'Digit5' && this.playing) this.socket.emit('switchGun', 'shotgun');
       if (e.code === 'Digit6' && this.playing) this.socket.emit('switchGun', 'rifle');
       if (e.code === 'Digit1' && this.playing) this.socket.emit('switchGun', 'pistol');
+      // Buy gun hotkeys
+      if (e.code === 'KeyF' && this.playing) this.socket.emit('buyGun', 'smg');
+      if (e.code === 'KeyH' && this.playing) this.socket.emit('buyGun', 'shotgun');
+      if (e.code === 'KeyJ' && this.playing) this.socket.emit('buyGun', 'katana');
+      if (e.code === 'KeyK' && this.playing) this.socket.emit('buyGun', 'rifle');
+      // Upgrade hotkeys
+      if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
+      if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
+      if (e.code === 'KeyC' && this.playing) this.socket.emit('buyUpgrade', 'magSize');
+      if (e.code === 'KeyV' && this.playing) this.socket.emit('buyUpgrade', 'health');
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.playing) this.socket.emit('escapeInteract');
       if (k === ' ') e.preventDefault();
       this.sendInput();
@@ -1389,6 +1399,8 @@ class ZombieMultiplayerClient {
     const meta = this.playerMeta;
     const el = document.getElementById('shop-content');
     const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6' };
+    const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K' };
+    const upgradeHotkeys = { damage: 'Z', fireRate: 'X', magSize: 'C', health: 'V' };
     let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${p.g}</div>`;
 
     // Inventory section — owned weapons with hotkeys
@@ -1412,7 +1424,7 @@ class ZombieMultiplayerClient {
       if (owned) continue;
       const canBuy = p.g >= gun.price;
       const stats = gun.melee ? `DMG ${gun.damage} · RNG ${gun.meleeRange}` : `DMG ${gun.damage} · MAG ${gun.magSize}`;
-      html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${gun.price}g</span></div>`;
+      html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name} ${buyHotkeys[key]?`<span style="color:#666;font-size:10px;">[${buyHotkeys[key]}]</span>`:''}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${gun.price}g</span></div>`;
     }
 
     // Upgrades
@@ -1422,12 +1434,13 @@ class ZombieMultiplayerClient {
       const maxed = lvl >= up.maxLevel;
       const price = up.price * (lvl + 1);
       const canBuy = !maxed && p.g >= price;
+      const uhk = upgradeHotkeys[key] || '';
       html += `<div class="shop-item ${maxed?'maxed':(canBuy?'':'disabled')}" ${canBuy?`data-action="buyUpgrade" data-key="${key}"`:''}>
-        <span>${up.name} <span style="color:#666;font-size:10px;">Lv.${lvl}/${up.maxLevel}</span></span>
+        <span>${up.name} ${uhk?`<span style="color:#666;font-size:10px;">[${uhk}]</span>`:''} <span style="color:#666;font-size:10px;">Lv.${lvl}/${up.maxLevel}</span></span>
         <span>${maxed?'MAX':price+'g'}</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> to toggle shop</div>`;
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> to toggle shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FireRate <kbd>C</kbd>Mag <kbd>V</kbd>HP</div>`;
     el.innerHTML = html;
   }
 
