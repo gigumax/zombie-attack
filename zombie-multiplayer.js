@@ -27,9 +27,9 @@ class ZombieMultiplayerClient {
     this.canvas = document.getElementById('game-canvas');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.BasicShadowMap;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1a2e);
@@ -62,6 +62,24 @@ class ZombieMultiplayerClient {
     // Local player state (from server)
     this.myPlayer = null;
     this.serverState = null;
+    this.playerMeta = { upgrades: {}, ownedGuns: { knife: true, pistol: true }, maxHealth: 100 };
+
+    // Interpolation: store previous positions for smooth movement
+    this.prevPositions = { zombies: {}, players: {}, gold: {} };
+    this.targetPositions = { zombies: {}, players: {}, gold: {} };
+    this.interpAlpha = 0;
+
+    // Cached vectors to avoid GC
+    this._tmpVec1 = new THREE.Vector3();
+    this._tmpVec2 = new THREE.Vector3();
+
+    // Input throttling
+    this._lastInputSend = 0;
+    this._inputDirty = false;
+
+    // Shop re-render throttle
+    this._lastShopRender = 0;
+    this._lastShopGold = -1;
 
     // Gun view model
     this.gun = null;
@@ -118,9 +136,23 @@ class ZombieMultiplayerClient {
       this.myName = data.name;
     });
 
+    this.socket.on('playerMeta', (meta) => {
+      this.playerMeta = meta;
+    });
+
     this.socket.on('state', (state) => {
+      // Store previous positions for interpolation
+      if (this.serverState) {
+        for (const z of (this.serverState.zombies || [])) {
+          this.prevPositions.zombies[z.id] = { x: z.x, z: z.z, r: z.r };
+        }
+        for (const p of (this.serverState.players || [])) {
+          this.prevPositions.players[p.id] = { x: p.x, y: p.y, z: p.z };
+        }
+      }
       this.serverState = state;
       this.myPlayer = state.players.find(p => p.id === this.myId);
+      this.interpAlpha = 0;
       this.updateScene(state);
       this.updateHUD();
     });
@@ -151,7 +183,7 @@ class ZombieMultiplayerClient {
       document.getElementById('escape-overlay').classList.add('hidden');
       if (this.myPlayer) {
         document.getElementById('escaped-score').textContent =
-          `${this.myPlayer.kills} kills · Wave ${this.myPlayer.wave} · Score ${this.myPlayer.score} · ${this.myPlayer.gold} gold`;
+          `${this.myPlayer.k} kills · Wave ${this.serverState ? this.serverState.wave : 1} · Score ${this.myPlayer.s} · ${this.myPlayer.g} gold`;
       }
       document.getElementById('escaped-screen').classList.remove('hidden');
       if (document.pointerLockElement) document.exitPointerLock();
@@ -160,7 +192,7 @@ class ZombieMultiplayerClient {
     this.socket.on('gameOver', (data) => {
       if (this.myPlayer) {
         document.getElementById('final-score').textContent =
-          `${this.myPlayer.kills} kills · Wave ${data.wave} · Score ${data.score}`;
+          `${this.myPlayer.k} kills · Wave ${data.wave} · Score ${data.score}`;
       }
       document.getElementById('game-over-screen').classList.remove('hidden');
       if (document.pointerLockElement) document.exitPointerLock();
@@ -183,8 +215,8 @@ class ZombieMultiplayerClient {
     const moon = new THREE.DirectionalLight(0x8888ff, 0.5);
     moon.position.set(20, 40, 20);
     moon.castShadow = true;
-    moon.shadow.mapSize.width = 2048;
-    moon.shadow.mapSize.height = 2048;
+    moon.shadow.mapSize.width = 1024;
+    moon.shadow.mapSize.height = 1024;
     moon.shadow.camera.left = -50;
     moon.shadow.camera.right = 50;
     moon.shadow.camera.top = 50;
@@ -296,7 +328,7 @@ class ZombieMultiplayerClient {
 
   updateGunVisual() {
     if (!this.myPlayer) return;
-    const gunName = this.myPlayer.currentGun;
+    const gunName = this.myPlayer.gun;
     const gun = GUNS[gunName];
     const isKnife = gun && gun.melee;
     this.gunParts.body.visible = !isKnife;
@@ -368,6 +400,15 @@ class ZombieMultiplayerClient {
 
   sendInput() {
     if (!this.socket || !this.connected) return;
+    this._inputDirty = true;
+  }
+
+  flushInput() {
+    if (!this._inputDirty) return;
+    const now = performance.now();
+    if (now - this._lastInputSend < 50) return; // max 20/sec
+    this._lastInputSend = now;
+    this._inputDirty = false;
     this.socket.emit('input', { keys: this.keys, yaw: this.yaw, pitch: this.pitch });
   }
 
@@ -480,29 +521,40 @@ class ZombieMultiplayerClient {
   }
 
   // ─── Scene sync ───
+  // Map short type char to full type name
+  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard' };
+
   updateScene(state) {
+    const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
+    const now = performance.now();
+
     // Update zombies
     const seenZombieIds = new Set();
     for (const z of state.zombies) {
       seenZombieIds.add(z.id);
       let mesh = this.zombieMeshes[z.id];
       if (!mesh) {
-        mesh = this.createZombieMeshByType(z.type, z.isBoss);
+        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss);
         this.scene.add(mesh);
         this.zombieMeshes[z.id] = mesh;
       }
-      mesh.position.set(z.x, 0, z.z);
-      mesh.rotation.y = z.rot || 0;
+      // Interpolate position
+      const prev = this.prevPositions.zombies[z.id];
+      if (prev) {
+        const t = Math.min(this.interpAlpha, 1);
+        mesh.position.x = prev.x + (z.x - prev.x) * t;
+        mesh.position.z = prev.z + (z.z - prev.z) * t;
+        mesh.rotation.y = prev.r + (z.r - prev.r) * t;
+      } else {
+        mesh.position.set(z.x, 0, z.z);
+        mesh.rotation.y = z.r || 0;
+      }
       // Walk animation
       const legL = mesh.userData.legL, legR = mesh.userData.legR;
       if (legL && legR) {
-        const swing = Math.sin(z.walkPhase) * 0.3;
+        const swing = Math.sin(z.wp) * 0.3;
         legL.rotation.x = swing;
         legR.rotation.x = -swing;
-      }
-      // Health bar above zombie
-      if (z.health < z.maxHealth) {
-        // Could add health bar — skip for now
       }
     }
     // Remove dead zombies
@@ -510,25 +562,27 @@ class ZombieMultiplayerClient {
       if (!seenZombieIds.has(parseInt(id))) {
         this.scene.remove(this.zombieMeshes[id]);
         delete this.zombieMeshes[id];
+        delete this.prevPositions.zombies[id];
       }
     }
 
-    // Update gold pickups
+    // Update gold pickups — state.gold is now [id, x, z] arrays
     const seenGoldIds = new Set();
-    for (const g of state.goldPickups) {
-      seenGoldIds.add(g.id);
-      let mesh = this.goldMeshes[g.id];
+    const goldArr = state.gold || [];
+    for (const g of goldArr) {
+      const gid = g[0], gx = g[1], gz = g[2];
+      seenGoldIds.add(gid);
+      let mesh = this.goldMeshes[gid];
       if (!mesh) {
         mesh = new THREE.Mesh(
           new THREE.BoxGeometry(0.3, 0.3, 0.3),
           new THREE.MeshLambertMaterial({ color: 0xffdd00, emissive: 0x886600, emissiveIntensity: 0.5 })
         );
-        mesh.position.set(g.x, 0.5, g.z);
         mesh.castShadow = true;
         this.scene.add(mesh);
-        this.goldMeshes[g.id] = mesh;
+        this.goldMeshes[gid] = mesh;
       }
-      mesh.position.set(g.x, 0.5 + Math.sin(Date.now() / 300 + g.id) * 0.15, g.z);
+      mesh.position.set(gx, 0.5 + Math.sin(now / 300 + gid) * 0.15, gz);
       mesh.rotation.y += 0.02;
     }
     for (const id of Object.keys(this.goldMeshes)) {
@@ -549,7 +603,16 @@ class ZombieMultiplayerClient {
         this.scene.add(mesh);
         this.otherPlayerMeshes[p.id] = mesh;
       }
-      mesh.position.set(p.x, 0, p.z);
+      // Interpolate position
+      const prev = this.prevPositions.players[p.id];
+      if (prev) {
+        const t = Math.min(this.interpAlpha, 1);
+        mesh.position.x = prev.x + (p.x - prev.x) * t;
+        mesh.position.z = prev.z + (p.z - prev.z) * t;
+        mesh.position.y = prev.y + (p.y - prev.y) * t;
+      } else {
+        mesh.position.set(p.x, 0, p.z);
+      }
       mesh.rotation.y = p.yaw + Math.PI;
       mesh.visible = !p.dead;
       // Name tag
@@ -562,28 +625,15 @@ class ZombieMultiplayerClient {
       if (!seenPlayerIds.has(id)) {
         this.scene.remove(this.otherPlayerMeshes[id]);
         delete this.otherPlayerMeshes[id];
+        delete this.prevPositions.players[id];
       }
     }
 
-    // Render tracers from myPlayer
-    if (this.myPlayer && this.myPlayer.shootTracers) {
-      for (const t of this.myPlayer.shootTracers) {
-        this.spawnTracer(
-          new THREE.Vector3(t.x1, t.y1, t.z1),
-          new THREE.Vector3(t.x2, t.y2, t.z2)
-        );
-      }
-    }
-
-    // Render tracers from other players
+    // Render tracers from all players
     for (const p of state.players) {
-      if (p.id === this.myId) continue;
-      if (p.shootTracers) {
-        for (const t of p.shootTracers) {
-          this.spawnTracer(
-            new THREE.Vector3(t.x1, t.y1, t.z1),
-            new THREE.Vector3(t.x2, t.y2, t.z2)
-          );
+      if (p.tr && p.tr.length > 0) {
+        for (const t of p.tr) {
+          this.spawnTracer(t.x1, t.y1, t.z1, t.x2, t.y2, t.z2);
         }
       }
     }
@@ -596,30 +646,28 @@ class ZombieMultiplayerClient {
       this.camera.rotation.x = this.pitch;
 
       // Gun recoil
-      if (this.myPlayer.gunRecoil !== undefined) {
-        this.gun.position.z = -0.5 + this.myPlayer.gunRecoil;
-        this.gun.position.y = -0.3 - this.myPlayer.gunRecoil * 0.3;
-      }
+      this.gun.position.z = -0.5 + (this.myPlayer.gr || 0);
+      this.gun.position.y = -0.3 - (this.myPlayer.gr || 0) * 0.3;
 
       // Muzzle flash
-      if (this.myPlayer.muzzleFlash > 0) {
-        this.muzzleFlash.material.opacity = this.myPlayer.muzzleFlash;
-      } else {
-        this.muzzleFlash.material.opacity = 0;
-      }
+      this.muzzleFlash.material.opacity = this.myPlayer.mf || 0;
 
       this.updateGunVisual();
 
-      // Flashlight
+      // Flashlight — use cached vectors
       this.flashlight.position.copy(this.camera.position);
-      const dir = new THREE.Vector3(0, 0, -1);
-      dir.applyEuler(this.camera.rotation);
-      this.flashlight.target.position.copy(this.camera.position).add(dir.multiplyScalar(20));
+      this._tmpVec1.set(0, 0, -1).applyEuler(this.camera.rotation);
+      this.flashlight.target.position.copy(this.camera.position).add(this._tmpVec1.multiplyScalar(20));
 
-      // Shop rendering
-      if (this.myPlayer.shopOpen) {
-        this.renderShop();
-        document.getElementById('shop-overlay').classList.remove('hidden');
+      // Shop rendering — only re-render if gold changed or every 500ms
+      if (this.myPlayer.shop) {
+        const shopEl = document.getElementById('shop-overlay');
+        shopEl.classList.remove('hidden');
+        if (this.myPlayer.g !== this._lastShopGold || now - this._lastShopRender > 500) {
+          this.renderShop();
+          this._lastShopGold = this.myPlayer.g;
+          this._lastShopRender = now;
+        }
         if (document.pointerLockElement) document.exitPointerLock();
       } else {
         document.getElementById('shop-overlay').classList.add('hidden');
@@ -666,18 +714,18 @@ class ZombieMultiplayerClient {
   }
 
   // ─── Tracers ───
-  spawnTracer(origin, endPoint) {
-    const dir = new THREE.Vector3().subVectors(endPoint, origin);
-    const len = dir.length();
+  spawnTracer(x1, y1, z1, x2, y2, z2) {
+    const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
+    const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
     if (len < 0.1) return;
-    const geo = new THREE.CylinderGeometry(0.02, 0.02, len, 6);
+    const geo = new THREE.CylinderGeometry(0.02, 0.02, len, 5);
     const mat = new THREE.MeshBasicMaterial({ color: 0xffee44, transparent: true, opacity: 0.8 });
     const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(origin).add(endPoint).multiplyScalar(0.5);
-    mesh.lookAt(endPoint);
+    mesh.position.set((x1+x2)/2, (y1+y2)/2, (z1+z2)/2);
+    mesh.lookAt(x2, y2, z2);
     mesh.rotateX(Math.PI / 2);
     this.scene.add(mesh);
-    this.bullets.push({ mesh, life: 0.08 });
+    this.bullets.push({ mesh, life: 0.06, maxLife: 0.06 });
   }
 
   updateBullets(dt) {
@@ -691,7 +739,7 @@ class ZombieMultiplayerClient {
         this.bullets.splice(i, 1);
         continue;
       }
-      b.mesh.material.opacity = (b.life / 0.08) * 0.8;
+      b.mesh.material.opacity = (b.life / b.maxLife) * 0.8;
     }
   }
 
@@ -699,30 +747,30 @@ class ZombieMultiplayerClient {
   updateHUD() {
     if (!this.myPlayer) return;
     const p = this.myPlayer;
-    document.getElementById('health-val').textContent = Math.ceil(p.health);
-    document.getElementById('score-val').textContent = p.score;
-    document.getElementById('wave-val').textContent = p.wave;
-    document.getElementById('gold-val').textContent = p.gold;
-    const gunName = GUNS[p.currentGun] ? GUNS[p.currentGun].name : p.currentGun;
-    const autoTag = p.autoFire ? ' [AUTO]' : '';
-    if (p.reloading) {
+    document.getElementById('health-val').textContent = p.h;
+    document.getElementById('score-val').textContent = p.s;
+    document.getElementById('wave-val').textContent = this.serverState ? this.serverState.wave : 1;
+    document.getElementById('gold-val').textContent = p.g;
+    const gunName = GUNS[p.gun] ? GUNS[p.gun].name : p.gun;
+    const autoTag = p.af ? ' [AUTO]' : '';
+    if (p.r) {
       document.getElementById('ammo-val').textContent = `${gunName}${autoTag} — RELOADING...`;
     } else if (p.ammo === Infinity || p.ammo === 'Infinity') {
       document.getElementById('ammo-val').textContent = `${gunName}${autoTag} — ∞`;
     } else {
       document.getElementById('ammo-val').textContent = `${gunName}${autoTag} — ${p.ammo}/∞`;
     }
-    const maxHP = p.maxHealth || CONFIG.maxHealth;
-    const pct = (p.health / maxHP) * 100;
+    const maxHP = this.playerMeta.maxHealth || CONFIG.maxHealth;
+    const pct = (p.h / maxHP) * 100;
     document.getElementById('health-bar').style.width = pct + '%';
 
     // Damage overlay
-    if (p.health < (this._lastHealth || p.health)) {
+    if (p.h < (this._lastHealth || p.h)) {
       const overlay = document.getElementById('damage-overlay');
       overlay.classList.add('hit');
       setTimeout(() => overlay.classList.remove('hit'), 150);
     }
-    this._lastHealth = p.health;
+    this._lastHealth = p.h;
   }
 
   renderKillFeed(feed) {
@@ -751,29 +799,30 @@ class ZombieMultiplayerClient {
   renderShop() {
     if (!this.myPlayer) return;
     const p = this.myPlayer;
+    const meta = this.playerMeta;
     const el = document.getElementById('shop-content');
-    let html = `<div style="color:#ffdd00;font-size:24px;font-weight:900;margin-bottom:12px;">GOLD: ${p.gold}</div>`;
+    let html = `<div style="color:#ffdd00;font-size:24px;font-weight:900;margin-bottom:12px;">GOLD: ${p.g}</div>`;
 
     html += '<div style="color:#aaa;font-size:14px;font-weight:700;margin-bottom:6px;">WEAPONS</div>';
     for (const [key, gun] of Object.entries(GUNS)) {
-      const owned = p.ownedGuns[key];
-      const equipped = p.currentGun === key;
+      const owned = meta.ownedGuns[key];
+      const equipped = p.gun === key;
       if (equipped) {
         html += `<div class="shop-item equipped"><span>${gun.name}</span><span>EQUIPPED</span></div>`;
       } else if (owned) {
         html += `<div class="shop-item owned" onclick="client.socket.emit('switchGun','${key}')"><span>${gun.name}</span><span>Click to equip</span></div>`;
       } else {
-        const canBuy = p.gold >= gun.price;
+        const canBuy = p.g >= gun.price;
         html += `<div class="shop-item ${canBuy?'':'disabled'}" onclick="${canBuy?`client.socket.emit('buyGun','${key}')`:''}"><span>${gun.name}</span><span>${gun.price}g</span></div>`;
       }
     }
 
     html += '<div style="color:#aaa;font-size:14px;font-weight:700;margin:12px 0 6px;">UPGRADES</div>';
     for (const [key, up] of Object.entries(UPGRADES)) {
-      const lvl = p.upgrades[key];
+      const lvl = meta.upgrades[key] || 0;
       const maxed = lvl >= up.maxLevel;
       const price = up.price * (lvl + 1);
-      const canBuy = !maxed && p.gold >= price;
+      const canBuy = !maxed && p.g >= price;
       html += `<div class="shop-item ${maxed?'maxed':(canBuy?'':'disabled')}" onclick="${canBuy?`client.socket.emit('buyUpgrade','${key}')`:''}">
         <span>${up.name} <span style="color:#666;">Lv.${lvl}/${up.maxLevel}</span></span>
         <span>${maxed?'MAX':price+'g'}</span>
@@ -787,6 +836,10 @@ class ZombieMultiplayerClient {
   animate() {
     requestAnimationFrame(() => this.animate());
     const dt = Math.min(this.clock.getDelta(), 0.05);
+    // Advance interpolation alpha (server ticks every 40ms)
+    this.interpAlpha += dt / 0.04;
+    // Flush throttled input
+    this.flushInput();
     this.updateBullets(dt);
     this.renderer.render(this.scene, this.camera);
   }

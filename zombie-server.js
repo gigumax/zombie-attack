@@ -685,33 +685,43 @@ function gameLoop() {
     }
   }
 
-  // Broadcast state
+  // Broadcast state — optimized: only send what changes frequently
   const state = {
     players: Object.values(players).map(p => ({
-      id: p.id, name: p.name,
-      x: p.x, y: p.y, z: p.z, yaw: p.yaw, pitch: p.pitch,
-      health: p.health, maxHealth: getGunStat(p, 'maxHealth'),
-      score: p.score, kills: p.kills, gold: p.gold, wave,
-      currentGun: p.currentGun, ammo: p.ammo, reserveAmmo: p.reserveAmmo,
-      reloading: p.reloading, autoFire: p.autoFire, shopOpen: p.shopOpen,
-      dead: p.dead, escapeMode: p.escapeMode, escapeStep: p.escapeStep,
-      hasKey: p.hasKey, gunRecoil: p.gunRecoil, muzzleFlash: p.muzzleFlash,
-      upgrades: p.upgrades, ownedGuns: p.ownedGuns,
-      shootTracers: p.shootTracers,
+      id: p.id,
+      x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
+      yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
+      h: Math.ceil(p.health), s: p.score, k: p.kills, g: p.gold,
+      gun: p.currentGun, ammo: p.ammo,
+      r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
+      dead: p.dead ? 1 : 0, em: p.escapeMode ? 1 : 0, es: p.escapeStep,
+      hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
+      tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
     })),
     zombies: zombies.map(z => ({
-      id: z.id, x: z.x, z: z.z, type: z.type,
-      health: z.health, maxHealth: z.maxHealth,
-      isBoss: z.isBoss, walkPhase: z.walkPhase, rot: z.rot || 0,
+      id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
+      hp: Math.ceil(z.health), mhp: z.maxHealth,
+      boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
     })),
-    goldPickups: goldPickups.map(g => ({ id: g.id, x: g.x, z: g.z, value: g.value })),
+    gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
-    zombiesRemaining: zombies.length + zombiesToSpawn,
+    zRemain: zombies.length + zombiesToSpawn,
   };
   io.emit('state', state);
 }
 
-setInterval(gameLoop, 33); // ~30 TPS for smoother gameplay
+setInterval(gameLoop, 40); // 25 TPS — good balance of smoothness and bandwidth
+
+function sendPlayerMeta(playerId) {
+  const p = players[playerId];
+  if (!p) return;
+  io.to(playerId).emit('playerMeta', {
+    upgrades: p.upgrades,
+    ownedGuns: p.ownedGuns,
+    maxHealth: getGunStat(p, 'maxHealth'),
+    currentGun: p.currentGun,
+  });
+}
 
 // ─── Socket handlers ───
 io.on('connection', (socket) => {
@@ -730,6 +740,8 @@ io.on('connection', (socket) => {
   }
 
   socket.emit('connected', { id: socket.id, name: players[socket.id].name });
+  // Send full player meta to the new player
+  sendPlayerMeta(socket.id);
   io.emit('playerList', Object.values(players).map(p => ({ id: p.id, name: p.name })));
 
   socket.on('input', (data) => {
@@ -742,9 +754,9 @@ io.on('connection', (socket) => {
 
   socket.on('shoot', () => handleShoot(socket.id));
   socket.on('reload', () => startReload(socket.id));
-  socket.on('switchGun', (gun) => switchGun(socket.id, gun));
-  socket.on('buyGun', (gun) => buyGun(socket.id, gun));
-  socket.on('buyUpgrade', (key) => buyUpgrade(socket.id, key));
+  socket.on('buyGun', (gun) => { buyGun(socket.id, gun); sendPlayerMeta(socket.id); });
+  socket.on('buyUpgrade', (key) => { buyUpgrade(socket.id, key); sendPlayerMeta(socket.id); });
+  socket.on('switchGun', (gun) => { switchGun(socket.id, gun); sendPlayerMeta(socket.id); });
   socket.on('toggleShop', () => {
     const p = players[socket.id];
     if (p) p.shopOpen = !p.shopOpen;
@@ -766,6 +778,7 @@ io.on('connection', (socket) => {
     p.health = getGunStat(p, 'maxHealth');
     p.x = 0; p.y = CONFIG.playerHeight; p.z = 0;
     p.vx = 0; p.vy = 0; p.vz = 0;
+    sendPlayerMeta(socket.id);
   });
 
   socket.on('disconnect', () => {
