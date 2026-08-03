@@ -766,6 +766,9 @@ function updateZombies(dt) {
           }
         }
         if (z.chargeTimer <= 0) z.charging = false;
+        // If boss killed someone during charge, trigger escape
+        const anyDead = Object.values(players).some(p => p.dead);
+        if (anyDead && !escapeMode) { startEscape(); return; }
         // Keep world bounds
         const half = CONFIG.worldSize - 1;
         z.x = Math.max(-half, Math.min(half, z.x));
@@ -778,6 +781,11 @@ function updateZombies(dt) {
         if (target.health <= 0) {
           target.health = 0;
           target.dead = true;
+          // Boss knocks player out → trigger escape sequence
+          if (!escapeMode) {
+            startEscape();
+            return;
+          }
         }
       }
     } else if (dist < attackRange && z.attackTimer <= 0) {

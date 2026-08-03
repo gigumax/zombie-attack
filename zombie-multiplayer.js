@@ -174,6 +174,7 @@ class ZombieMultiplayerClient {
       document.getElementById('escape-overlay').classList.remove('hidden');
       document.getElementById('start-screen').classList.add('hidden');
       document.getElementById('game-over-screen').classList.add('hidden');
+      this.buildPrisonCell();
     });
 
     this.socket.on('escapeUpdate', (text) => {
@@ -182,6 +183,7 @@ class ZombieMultiplayerClient {
 
     this.socket.on('escapeWin', () => {
       document.getElementById('escape-overlay').classList.add('hidden');
+      this.clearPrisonCell();
       if (this.myPlayer) {
         document.getElementById('escaped-score').textContent =
           `${this.myPlayer.k} kills · Wave ${this.serverState ? this.serverState.wave : 1} · Score ${this.myPlayer.s} · ${this.myPlayer.g} gold`;
@@ -195,6 +197,7 @@ class ZombieMultiplayerClient {
         document.getElementById('final-score').textContent =
           `${this.myPlayer.k} kills · Wave ${data.wave} · Score ${data.score}`;
       }
+      this.clearPrisonCell();
       document.getElementById('game-over-screen').classList.remove('hidden');
       if (document.pointerLockElement) document.exitPointerLock();
     });
@@ -816,6 +819,36 @@ class ZombieMultiplayerClient {
       }
     }
 
+    // Escape mode: update door and key visuals
+    if (state.escapeMode) {
+      // Door open/close
+      if (this.doorMesh) {
+        if (state.doorOpen) {
+          this.doorMesh.position.x = 3.8;
+          this.doorMesh.position.y = 0.2;
+          this.doorMesh.rotation.y = -Math.PI / 2;
+        } else {
+          this.doorMesh.position.set(0, 2.25, 6);
+          this.doorMesh.rotation.y = 0;
+        }
+      }
+      // Key on ground
+      if (state.keyDropped && state.keyPos && !this.keyMesh) {
+        const keyMat = new THREE.MeshBasicMaterial({ color: 0xffdd00 });
+        this.keyMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.6), keyMat);
+        this.keyMesh.position.set(state.keyPos.x, 0.5, state.keyPos.z);
+        this.scene.add(this.keyMesh);
+      } else if ((!state.keyDropped || !state.keyPos) && this.keyMesh) {
+        this.scene.remove(this.keyMesh);
+        this.keyMesh.geometry.dispose();
+        this.keyMesh.material.dispose();
+        this.keyMesh = null;
+      } else if (this.keyMesh && state.keyPos) {
+        this.keyMesh.position.set(state.keyPos.x, 0.5, state.keyPos.z);
+        this.keyMesh.rotation.y += dt * 2;
+      }
+    }
+
     // Update camera to my player
     if (this.myPlayer) {
       this.camera.position.set(this.myPlayer.x, this.myPlayer.y, this.myPlayer.z);
@@ -973,12 +1006,65 @@ class ZombieMultiplayerClient {
   }
 
   spawnRangedEffect(x, y, z, yaw) {
-    // Glowing projectile orb that fades
     const projMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 1 });
     const proj = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), projMat);
     proj.position.set(x, y, z);
     this.scene.add(proj);
     this.bullets.push({ mesh: proj, life: 0.4, maxLife: 0.4, isProjectile: true });
+  }
+
+  buildPrisonCell() {
+    this.clearPrisonCell();
+    this.prisonObjects = [];
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a4a });
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x222222 });
+    const doorMat = new THREE.MeshLambertMaterial({ color: 0x5a3a1a });
+
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.2, 12), floorMat);
+    floor.position.set(0, -0.1, 0); floor.receiveShadow = true;
+    this.scene.add(floor); this.prisonObjects.push(floor);
+
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(12, 5, 0.5), wallMat);
+    backWall.position.set(0, 2.5, -6); backWall.castShadow = true;
+    this.scene.add(backWall); this.prisonObjects.push(backWall);
+
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 12), wallMat);
+    leftWall.position.set(-6, 2.5, 0); leftWall.castShadow = true;
+    this.scene.add(leftWall); this.prisonObjects.push(leftWall);
+
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5, 12), wallMat);
+    rightWall.position.set(6, 2.5, 0); rightWall.castShadow = true;
+    this.scene.add(rightWall); this.prisonObjects.push(rightWall);
+
+    const frontWallL = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.5), wallMat);
+    frontWallL.position.set(-4, 2.5, 6); frontWallL.castShadow = true;
+    this.scene.add(frontWallL); this.prisonObjects.push(frontWallL);
+
+    const frontWallR = new THREE.Mesh(new THREE.BoxGeometry(4, 5, 0.5), wallMat);
+    frontWallR.position.set(4, 2.5, 6); frontWallR.castShadow = true;
+    this.scene.add(frontWallR); this.prisonObjects.push(frontWallR);
+
+    this.doorMesh = new THREE.Mesh(new THREE.BoxGeometry(4, 4.5, 0.3), doorMat);
+    this.doorMesh.position.set(0, 2.25, 6); this.doorMesh.castShadow = true;
+    this.scene.add(this.doorMesh); this.prisonObjects.push(this.doorMesh);
+  }
+
+  clearPrisonCell() {
+    if (this.prisonObjects) {
+      for (const obj of this.prisonObjects) {
+        this.scene.remove(obj);
+        obj.geometry.dispose();
+        obj.material.dispose();
+      }
+      this.prisonObjects = null;
+    }
+    if (this.keyMesh) {
+      this.scene.remove(this.keyMesh);
+      this.keyMesh.geometry.dispose();
+      this.keyMesh.material.dispose();
+      this.keyMesh = null;
+    }
+    this.doorMesh = null;
   }
 
   spawnImpactHole(x, y, z, zid) {
