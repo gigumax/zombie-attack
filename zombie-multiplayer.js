@@ -153,7 +153,7 @@ class ZombieMultiplayerClient {
       this.serverState = state;
       this.myPlayer = state.players.find(p => p.id === this.myId);
       this.interpAlpha = 0;
-      this.updateScene(state);
+      this.updateScene(state, this._lastDt || 0.016);
       this.updateHUD();
     });
 
@@ -524,7 +524,7 @@ class ZombieMultiplayerClient {
   // Map short type char to full type name
   static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard' };
 
-  updateScene(state) {
+  updateScene(state, dt) {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
     const now = performance.now();
 
@@ -549,13 +549,30 @@ class ZombieMultiplayerClient {
         mesh.position.set(z.x, 0, z.z);
         mesh.rotation.y = z.r || 0;
       }
-      // Walk animation
-      const legL = mesh.userData.legL, legR = mesh.userData.legR;
-      if (legL && legR) {
-        const swing = Math.sin(z.wp) * 0.3;
-        legL.rotation.x = swing;
-        legR.rotation.x = -swing;
+      // Walk animation — legs, arms, head bob, torso sway
+      const ud = mesh.userData;
+      const swing = Math.sin(z.wp);
+      if (ud.legL && ud.legR) {
+        ud.legL.rotation.x = swing * 0.4;
+        ud.legR.rotation.x = -swing * 0.4;
       }
+      if (ud.armL && ud.armR) {
+        // Arms reach forward and sway
+        const baseArm = -Math.PI / 2; // forward reach
+        ud.armL.rotation.x = baseArm + swing * 0.15;
+        ud.armR.rotation.x = baseArm - swing * 0.15;
+      }
+      if (ud.head) {
+        ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
+        if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
+        ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
+        ud.head.rotation.z = swing * 0.05;
+      }
+      if (ud.torso) {
+        ud.torso.rotation.z = swing * 0.03;
+      }
+      // Whole body bob up/down
+      mesh.position.y = Math.abs(swing) * 0.05;
     }
     // Remove dead zombies
     for (const id of Object.keys(this.zombieMeshes)) {
@@ -615,6 +632,22 @@ class ZombieMultiplayerClient {
       }
       mesh.rotation.y = p.yaw + Math.PI;
       mesh.visible = !p.dead;
+      // Walk animation for other players — detect movement by comparing positions
+      const ud = mesh.userData;
+      const prevPos = this.prevPositions.players[p.id];
+      const moving = prevPos && (Math.abs(p.x - prevPos.x) > 0.01 || Math.abs(p.z - prevPos.z) > 0.01);
+      if (!ud.walkPhase) ud.walkPhase = 0;
+      if (moving) ud.walkPhase += dt * 8;
+      if (ud.legL && ud.legR) {
+        const s = Math.sin(ud.walkPhase);
+        ud.legL.rotation.x = s * 0.3;
+        ud.legR.rotation.x = -s * 0.3;
+      }
+      if (ud.armL && ud.armR) {
+        const s = Math.sin(ud.walkPhase);
+        ud.armL.rotation.x = -s * 0.2;
+        ud.armR.rotation.x = s * 0.2;
+      }
       // Name tag
       if (mesh.userData.nameTag) {
         mesh.userData.nameTag.position.set(0, 2.5, 0);
@@ -708,7 +741,7 @@ class ZombieMultiplayerClient {
     sprite.scale.set(1.5, 0.4, 1);
     sprite.position.set(0, 2.5, 0);
     group.add(sprite);
-    group.userData = { nameTag: sprite };
+    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, walkPhase: 0 };
 
     return group;
   }
@@ -836,11 +869,28 @@ class ZombieMultiplayerClient {
   animate() {
     requestAnimationFrame(() => this.animate());
     const dt = Math.min(this.clock.getDelta(), 0.05);
+    this._lastDt = dt;
     // Advance interpolation alpha (server ticks every 40ms)
     this.interpAlpha += dt / 0.04;
     // Flush throttled input
     this.flushInput();
     this.updateBullets(dt);
+    // Gun bob animation — subtle sway based on time
+    if (this.playing && this.myPlayer && !this.myPlayer.dead) {
+      const t = performance.now() / 1000;
+      const bobX = Math.sin(t * 2.5) * 0.008;
+      const bobY = Math.abs(Math.sin(t * 2.5)) * 0.008;
+      this.gun.position.x = 0.35 + bobX;
+      // Keep z/y from recoil but add bob
+      const recoil = this.myPlayer.gr || 0;
+      this.gun.position.z = -0.5 + recoil;
+      this.gun.position.y = -0.3 - recoil * 0.3 + bobY;
+      // Muzzle flash scale pulse
+      if (this.myPlayer.mf > 0) {
+        const s = 1 + Math.sin(t * 30) * 0.2;
+        this.muzzleFlash.scale.set(s, s, s);
+      }
+    }
     this.renderer.render(this.scene, this.camera);
   }
 }
