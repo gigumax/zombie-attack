@@ -328,6 +328,19 @@ class ZombieMultiplayerClient {
     this.knifeMesh.visible = false;
     this.gun.add(this.knifeMesh);
 
+    // Katana
+    this.katanaMesh = new THREE.Group();
+    const katHandle = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.16,0.55), new THREE.MeshBasicMaterial({color:0x1a1a1a}));
+    katHandle.position.set(0, 0, 0.3); this.katanaMesh.add(katHandle);
+    const katGuard = new THREE.Mesh(new THREE.BoxGeometry(0.3,0.1,0.12), new THREE.MeshBasicMaterial({color:0x8a7a3a}));
+    katGuard.position.set(0, 0.03, 0.02); this.katanaMesh.add(katGuard);
+    const katBlade = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.12,1.8), new THREE.MeshBasicMaterial({color:0xe8e8e8}));
+    katBlade.position.set(0, 0.06, -0.9); this.katanaMesh.add(katBlade);
+    const katTip = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.12,0.2), new THREE.MeshBasicMaterial({color:0xc8c8c8}));
+    katTip.position.set(0, 0.06, -1.85); this.katanaMesh.add(katTip);
+    this.katanaMesh.visible = false;
+    this.gun.add(this.katanaMesh);
+
     this.gun.position.set(0.4, -0.35, -0.6);
     this.camera.add(this.gun);
     this.scene.add(this.camera);
@@ -337,12 +350,14 @@ class ZombieMultiplayerClient {
     if (!this.myPlayer) return;
     const gunName = this.myPlayer.gun;
     const gun = GUNS[gunName];
-    const isKnife = gun && gun.melee;
-    this.gunParts.body.visible = !isKnife;
-    this.gunParts.barrel.visible = !isKnife;
-    this.gunParts.mag.visible = !isKnife;
-    this.knifeMesh.visible = isKnife;
-    this.muzzleFlash.visible = !isKnife;
+    const isMelee = gun && gun.melee;
+    const isKatana = gunName === 'katana';
+    this.gunParts.body.visible = !isMelee;
+    this.gunParts.barrel.visible = !isMelee;
+    this.gunParts.mag.visible = !isMelee;
+    this.knifeMesh.visible = isMelee && !isKatana;
+    this.katanaMesh.visible = isMelee && isKatana;
+    this.muzzleFlash.visible = !isMelee;
   }
 
   // ─── Input ───
@@ -355,6 +370,7 @@ class ZombieMultiplayerClient {
       if (e.code === 'KeyB' && this.playing) { this.socket.emit('toggleShop'); e.preventDefault(); }
       if (e.code === 'KeyG' && this.playing) this.socket.emit('toggleAutoFire');
       if (e.code === 'Digit2' && this.playing) this.socket.emit('switchGun', 'knife');
+      if (e.code === 'Digit3' && this.playing) this.socket.emit('switchGun', 'katana');
       if (e.code === 'Digit1' && this.playing) this.socket.emit('switchGun', 'pistol');
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.playing) this.socket.emit('escapeInteract');
       if (k === ' ') e.preventDefault();

@@ -30,7 +30,8 @@ const CONFIG = {
 };
 
 const GUNS = {
-  knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true },
+  knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
+  katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
   pistol: { name:'Pistol', magSize:12, reloadTime:1.2, fireRate:0.25, damage:34, pellets:1, spread:0.01, price:0 },
   smg:    { name:'SMG', magSize:100, reloadTime:1.8, fireRate:0.08, damage:25, pellets:1, spread:0.03, price:150 },
   shotgun:{ name:'Shotgun', magSize:6, reloadTime:2.5, fireRate:0.6, damage:20, pellets:8, spread:0.12, price:250 },
@@ -378,7 +379,7 @@ function handleShoot(playerId) {
     p.gunRecoil = 0.12;
     p.muzzleFlash = 0.5; // visual feedback for knife swing
     const damage = getGunStat(p, 'damage');
-    const meleeRange = 3.0;
+    const meleeRange = gun.meleeRange || 3.0;
     // Direction from yaw/pitch
     const dir = getLookDir(p);
     let closestHit = null, closestDist = meleeRange;
