@@ -187,6 +187,7 @@ function spawnEscapeZombie() {
 }
 
 function killZombie(zombie, killerId) {
+  if (zombie.dying) return; // already dead, no double rewards
   const player = players[killerId];
   if (!player) return;
 
@@ -359,6 +360,7 @@ function handleShoot(playerId) {
     const dir = getLookDir(p);
     let closestHit = null, closestDist = meleeRange;
     for (const z of zombies) {
+      if (z.dying) continue; // can't hit dead zombies
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
@@ -386,6 +388,7 @@ function handleShoot(playerId) {
     const dir = getLookDir(p, spread);
     let closestHit = null, closestDist = CONFIG.bulletRange;
     for (const z of zombies) {
+      if (z.dying) continue; // can't hit dead zombies
       const hit = rayHitZombie(p, dir, z, closestDist);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
@@ -723,12 +726,16 @@ function gameLoop() {
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
     })),
-    zombies: zombies.map(z => ({
-      id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
-      hp: Math.ceil(z.health), mhp: z.maxHealth,
-      boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
-      dy: z.dying ? 1 : 0, dt: z.dying ? Math.ceil(z.deathTimer) : 0,
-    })),
+    zombies: zombies.map(z => {
+      if (z.dying) {
+        return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
+          boss: z.isBoss ? 1 : 0, dy: 1, dt: Math.ceil(z.deathTimer) };
+      }
+      return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
+        hp: Math.ceil(z.health), mhp: z.maxHealth,
+        boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
+        dy: 0, dt: 0 };
+    }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
     zRemain: zombies.length + zombiesToSpawn,

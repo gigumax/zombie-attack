@@ -794,6 +794,20 @@ class ZombieMultiplayerClient {
   }
 
   spawnImpactHole(x, y, z, zid) {
+    // Limit total holes to prevent lag
+    const holeCount = this.bullets.filter(b => b.isHole).length;
+    if (holeCount >= 30) {
+      // Remove oldest hole
+      for (let i = 0; i < this.bullets.length; i++) {
+        if (this.bullets[i].isHole) {
+          const b = this.bullets[i];
+          if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
+          b.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
+          this.bullets.splice(i, 1);
+          break;
+        }
+      }
+    }
     // Red impact decal — a small red sphere + flat ring
     const group = new THREE.Group();
     // Red hole sphere
@@ -826,7 +840,7 @@ class ZombieMultiplayerClient {
       group.position.set(x, Math.max(y, 0.01), z);
       this.scene.add(group);
     }
-    this.bullets.push({ mesh: group, life: 3.0, maxLife: 3.0, isHole: true });
+    this.bullets.push({ mesh: group, life: 2.0, maxLife: 2.0, isHole: true });
   }
 
   updateBullets(dt) {
