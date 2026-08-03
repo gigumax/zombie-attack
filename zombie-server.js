@@ -150,13 +150,13 @@ function spawnBoss() {
   const dist = CONFIG.worldSize - 5;
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
-  const speed = CONFIG.zombieSpeed * 0.7 + (wave - 1) * CONFIG.waveSpeedIncrease * 0.5;
-  const health = 800 + (wave - 6) * 200;
+  const speed = CONFIG.zombieSpeed * 0.85 + (wave - 1) * CONFIG.waveSpeedIncrease * 0.6;
+  const health = 1500 + (wave - 6) * 400;
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
-    damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 2,
-    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    damage: CONFIG.zombieDamage * 5, attackRange: CONFIG.zombieAttackRange * 2.5,
+    attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
   });
   broadcastKillFeed('BOSS HAS APPEARED!');
@@ -187,12 +187,13 @@ function spawnEscapeZombie() {
 }
 
 function killZombie(zombie, killerId) {
-  const idx = zombies.indexOf(zombie);
-  if (idx < 0) return;
-  zombies.splice(idx, 1);
-
   const player = players[killerId];
   if (!player) return;
+
+  // Mark zombie as dying instead of removing immediately — stays 10 seconds
+  zombie.dying = true;
+  zombie.deathTimer = 10;
+  zombie.dead = true;
 
   let score = 10 * wave, goldDrop = 5 + Math.floor(Math.random()*10) + wave;
   if (zombie.isBoss) { score = 200 * wave; goldDrop = 100 + wave * 20; }
@@ -219,10 +220,11 @@ function killZombie(zombie, killerId) {
   else msg = `+${score} Zombie eliminated!`;
   broadcastKillFeed(`${player.name}: ${msg}`);
 
-  // Check wave complete or escape win
+  // Check wave complete or escape win (only count non-dying zombies)
+  const aliveZombies = zombies.filter(z => !z.dying);
   if (escapeMode) {
     checkEscapeWin();
-  } else if (zombies.length === 0 && zombiesToSpawn === 0) {
+  } else if (aliveZombies.length === 0 && zombiesToSpawn === 0) {
     endWave();
   }
 }
@@ -401,7 +403,7 @@ function handleShoot(playerId) {
     const muzzleY = p.y - 0.3;
     const muzzleX = p.x + Math.cos(p.yaw) * 0.3;
     const muzzleZ = p.z - Math.sin(p.yaw) * 0.3;
-    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0 });
+    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0, zid: hitZombie ? closestHit.zombie.id : -1 });
 
     if (closestHit) {
       closestHit.zombie.health -= damage;
@@ -582,8 +584,17 @@ function updatePlayer(p, dt) {
 
 // ─── Zombie AI ───
 function updateZombies(dt) {
+  // Remove expired dying zombies
+  for (let i = zombies.length - 1; i >= 0; i--) {
+    if (zombies[i].dying) {
+      zombies[i].deathTimer -= dt;
+      if (zombies[i].deathTimer <= 0) zombies.splice(i, 1);
+    }
+  }
+
   // Find nearest alive player for each zombie
   for (const z of zombies) {
+    if (z.dying) continue; // skip dead zombies
     let target = null, minDist = Infinity;
     for (const p of Object.values(players)) {
       if (p.dead) continue;
@@ -716,6 +727,7 @@ function gameLoop() {
       id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
       hp: Math.ceil(z.health), mhp: z.maxHealth,
       boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
+      dy: z.dying ? 1 : 0, dt: z.dying ? Math.ceil(z.deathTimer) : 0,
     })),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,

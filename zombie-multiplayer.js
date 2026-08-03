@@ -556,27 +556,45 @@ class ZombieMultiplayerClient {
       // Walk animation — legs, arms, head bob, torso sway
       const ud = mesh.userData;
       const swing = Math.sin(z.wp);
-      if (ud.legL && ud.legR) {
-        ud.legL.rotation.x = swing * 0.4;
-        ud.legR.rotation.x = -swing * 0.4;
+      if (z.dy) {
+        // Dying zombie — animate falling over
+        // Fall rotation: rotate around X axis to lie face down
+        const fallProgress = Math.min((10 - (z.dt || 0)) / 0.5, 1); // fall over 0.5 seconds
+        mesh.rotation.x = fallProgress * (Math.PI / 2);
+        // Sink slightly into ground
+        mesh.position.y = -fallProgress * 0.3;
+        // Stop walk animation — limbs go limp
+        if (ud.legL && ud.legR) {
+          ud.legL.rotation.x = 0;
+          ud.legR.rotation.x = 0;
+        }
+        if (ud.armL && ud.armR) {
+          ud.armL.rotation.x = 0;
+          ud.armR.rotation.x = 0;
+        }
+      } else {
+        if (ud.legL && ud.legR) {
+          ud.legL.rotation.x = swing * 0.4;
+          ud.legR.rotation.x = -swing * 0.4;
+        }
+        if (ud.armL && ud.armR) {
+          // Arms reach forward and sway
+          const baseArm = -Math.PI / 2; // forward reach
+          ud.armL.rotation.x = baseArm + swing * 0.15;
+          ud.armR.rotation.x = baseArm - swing * 0.15;
+        }
+        if (ud.head) {
+          ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
+          if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
+          ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
+          ud.head.rotation.z = swing * 0.05;
+        }
+        if (ud.torso) {
+          ud.torso.rotation.z = swing * 0.03;
+        }
+        // Whole body bob up/down
+        mesh.position.y = Math.abs(swing) * 0.05;
       }
-      if (ud.armL && ud.armR) {
-        // Arms reach forward and sway
-        const baseArm = -Math.PI / 2; // forward reach
-        ud.armL.rotation.x = baseArm + swing * 0.15;
-        ud.armR.rotation.x = baseArm - swing * 0.15;
-      }
-      if (ud.head) {
-        ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
-        if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
-        ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
-        ud.head.rotation.z = swing * 0.05;
-      }
-      if (ud.torso) {
-        ud.torso.rotation.z = swing * 0.03;
-      }
-      // Whole body bob up/down
-      mesh.position.y = Math.abs(swing) * 0.05;
     }
     // Remove dead zombies
     for (const id of Object.keys(this.zombieMeshes)) {
@@ -671,7 +689,7 @@ class ZombieMultiplayerClient {
       if (p.tr && p.tr.length > 0) {
         for (const t of p.tr) {
           this.spawnTracer(t.x1, t.y1, t.z1, t.x2, t.y2, t.z2, t.gun);
-          if (t.hit) this.spawnImpactHole(t.x2, t.y2, t.z2);
+          if (t.hit) this.spawnImpactHole(t.x2, t.y2, t.z2, t.zid);
         }
       }
     }
@@ -775,7 +793,7 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh, life: cfg.life, maxLife: cfg.life });
   }
 
-  spawnImpactHole(x, y, z) {
+  spawnImpactHole(x, y, z, zid) {
     // Red impact decal — a small red sphere + flat ring
     const group = new THREE.Group();
     // Red hole sphere
@@ -783,7 +801,7 @@ class ZombieMultiplayerClient {
     holeMat.userData.baseOpacity = 1;
     const hole = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), holeMat);
     group.add(hole);
-    // Red splatter ring on ground/wall
+    // Red splatter ring
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xaa0000, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
     ringMat.userData.baseOpacity = 0.7;
     const ring = new THREE.Mesh(new THREE.CircleGeometry(0.2, 8), ringMat);
@@ -795,8 +813,19 @@ class ZombieMultiplayerClient {
       ring.lookAt(this.camera.position);
     }
     group.add(ring);
-    group.position.set(x, Math.max(y, 0.01), z);
-    this.scene.add(group);
+
+    // If zid is valid, attach to zombie mesh so hole follows the zombie
+    if (zid !== undefined && zid >= 0 && this.zombieMeshes[zid]) {
+      const zMesh = this.zombieMeshes[zid];
+      // Convert world position to local position relative to zombie mesh
+      const localPos = new THREE.Vector3(x, y, z);
+      zMesh.worldToLocal(localPos);
+      group.position.copy(localPos);
+      zMesh.add(group);
+    } else {
+      group.position.set(x, Math.max(y, 0.01), z);
+      this.scene.add(group);
+    }
     this.bullets.push({ mesh: group, life: 3.0, maxLife: 3.0, isHole: true });
   }
 
@@ -805,7 +834,8 @@ class ZombieMultiplayerClient {
       const b = this.bullets[i];
       b.life -= dt;
       if (b.life <= 0) {
-        this.scene.remove(b.mesh);
+        // Remove from whatever parent it's attached to (scene or zombie mesh)
+        if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
         if (b.isHole) {
           // Dispose group children
           b.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
