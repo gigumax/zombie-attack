@@ -21,11 +21,11 @@ app.use(express.static(path.join(__dirname)));
 
 // ─── Config (mirrors zombie.js) ───
 const CONFIG = {
-  worldSize: 60, playerSpeed: 8, playerSprintSpeed: 13, playerJump: 9,
+  worldSize: 60, playerSpeed: 5.5, playerSprintSpeed: 9, playerJump: 8,
   gravity: 25, playerHeight: 1.7, playerRadius: 0.4, maxHealth: 100,
-  bulletRange: 100, zombieHealth: 100, zombieSpeed: 2.5, zombieDamage: 15,
+  bulletRange: 100, zombieHealth: 100, zombieSpeed: 1.8, zombieDamage: 15,
   zombieAttackRange: 1.8, zombieAttackCooldown: 1.0,
-  waveBaseCount: 5, waveSpeedIncrease: 0.3, waveCountIncrease: 3,
+  waveBaseCount: 5, waveSpeedIncrease: 0.2, waveCountIncrease: 3,
   waveBreakTime: 5, goldPickupRadius: 1.5, maxGoldPickups: 8, goldSpawnInterval: 8,
 };
 
@@ -488,7 +488,7 @@ function switchGun(playerId, gunName) {
 
 function buyGun(playerId, gunName) {
   const p = players[playerId];
-  if (!p || p.ownedGuns[gunName] || p.gold < GUNS[gunName].price) return;
+  if (!p || p.dead || p.ownedGuns[gunName] || p.gold < GUNS[gunName].price) return;
   p.gold -= GUNS[gunName].price;
   p.ownedGuns[gunName] = true;
   switchGun(playerId, gunName);
@@ -496,7 +496,7 @@ function buyGun(playerId, gunName) {
 
 function buyUpgrade(playerId, key) {
   const p = players[playerId];
-  if (!p) return;
+  if (!p || p.dead) return;
   const up = UPGRADES[key];
   const lvl = p.upgrades[key];
   if (lvl >= up.maxLevel) return;
@@ -772,24 +772,57 @@ io.on('connection', (socket) => {
 
   socket.on('input', (data) => {
     const p = players[socket.id];
-    if (!p) return;
-    p.keys = data.keys || {};
-    p.yaw = data.yaw !== undefined ? data.yaw : p.yaw;
-    p.pitch = data.pitch !== undefined ? data.pitch : p.pitch;
+    if (!p || p.dead) return;
+    // Validate keys — only accept known keys, ignore extras
+    const validKeys = ['w','a','s','d',' ','shift'];
+    const cleanKeys = {};
+    if (data.keys) {
+      for (const k of validKeys) {
+        if (data.keys[k]) cleanKeys[k] = true;
+      }
+    }
+    p.keys = cleanKeys;
+    // Clamp yaw/pitch to valid ranges
+    if (data.yaw !== undefined) p.yaw = data.yaw;
+    if (data.pitch !== undefined) p.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, data.pitch));
   });
 
-  socket.on('shoot', () => handleShoot(socket.id));
+  // Rate-limit shooting — server enforces fire rate, but also limit shoot events
+  socket.on('shoot', () => {
+    const p = players[socket.id];
+    if (!p) return;
+    // Server-side fire rate check in handleShoot, but also prevent event spam
+    const now = Date.now();
+    if (!p._lastShootEvent) p._lastShootEvent = 0;
+    if (now - p._lastShootEvent < 30) return; // max ~33 shoots/sec
+    p._lastShootEvent = now;
+    handleShoot(socket.id);
+  });
   socket.on('reload', () => startReload(socket.id));
-  socket.on('buyGun', (gun) => { buyGun(socket.id, gun); sendPlayerMeta(socket.id); });
-  socket.on('buyUpgrade', (key) => { buyUpgrade(socket.id, key); sendPlayerMeta(socket.id); });
-  socket.on('switchGun', (gun) => { switchGun(socket.id, gun); sendPlayerMeta(socket.id); });
+  socket.on('buyGun', (gun) => {
+    if (typeof gun !== 'string' || !GUNS[gun]) return;
+    buyGun(socket.id, gun); sendPlayerMeta(socket.id);
+  });
+  socket.on('buyUpgrade', (key) => {
+    if (typeof key !== 'string' || !UPGRADES[key]) return;
+    buyUpgrade(socket.id, key); sendPlayerMeta(socket.id);
+  });
+  socket.on('switchGun', (gun) => {
+    if (typeof gun !== 'string' || !GUNS[gun]) return;
+    switchGun(socket.id, gun); sendPlayerMeta(socket.id);
+  });
   socket.on('toggleShop', () => {
     const p = players[socket.id];
-    if (p) p.shopOpen = !p.shopOpen;
+    if (!p || p.dead) return;
+    p.shopOpen = !p.shopOpen;
   });
   socket.on('toggleAutoFire', () => {
     const p = players[socket.id];
-    if (p) p.autoFire = !p.autoFire;
+    if (!p || p.dead || p.escapeMode) return;
+    // Only allow auto-fire on guns that support it
+    const gun = GUNS[p.currentGun];
+    if (!gun || gun.melee) return;
+    p.autoFire = !p.autoFire;
   });
   socket.on('escapeInteract', () => {
     const p = players[socket.id];
