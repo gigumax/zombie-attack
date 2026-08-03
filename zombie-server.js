@@ -122,24 +122,26 @@ function spawnZombie() {
   const r = Math.random();
   if (wave >= 4 && r < 0.15) type = 'skeleton';
   else if (wave >= 3 && r < 0.35) type = 'buff';
+  else if (wave >= 2 && r < 0.20) type = 'creepy';
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
 
-  const speed = CONFIG.zombieSpeed; // never gets faster
+  const speed = CONFIG.zombieSpeed;
   let health = CONFIG.zombieHealth;
   let damage = CONFIG.zombieDamage;
   let attackRange = CONFIG.zombieAttackRange;
 
   if (type === 'buff') { health *= 3; damage *= 2; attackRange *= 1.3; }
   else if (type === 'skeleton') { health *= 0.6; damage *= 1.2; attackRange *= 1.2; }
+  else if (type === 'creepy') { health *= 1.5; damage *= 1.8; attackRange *= 1.5; }
 
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : speed,
+    speed: type === 'skeleton' ? speed * 1.6 : type === 'creepy' ? speed * 1.3 : type === 'buff' ? speed * 0.75 : speed,
     damage, attackRange, attackTimer: 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
@@ -853,6 +855,28 @@ function updateZombies(dt) {
           const kdx = (target.x - z.x) / dist, kdz = (target.z - z.z) / dist;
           target.x += kdx * 3;
           target.z += kdz * 3;
+          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          z.slamEffect = 1;
+        }
+      } else if (z.type === 'creepy') {
+        // CREEPY — shadow dash: teleports behind player and slashes
+        z.specialAttackTimer -= dt;
+        if (z.specialAttackTimer <= 0 && dist > attackRange && dist < 15) {
+          z.specialAttackTimer = 4 + Math.random() * 3;
+          // Teleport behind player
+          const pdir = Math.atan2(target.x - z.x, target.z - z.z);
+          target.yaw = target.yaw || 0;
+          // Place behind player based on their facing
+          const behindX = target.x - Math.sin(target.yaw) * 2;
+          const behindZ = target.z - Math.cos(target.yaw) * 2;
+          z.x = behindX;
+          z.z = behindZ;
+          z.rangedEffect = 1; // visual: teleport flash
+          z.attackTimer = 0.5; // brief delay before slash
+        }
+        if (dist < attackRange && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 1.3;
+          target.health -= z.damage;
           if (target.health <= 0) { target.health = 0; target.dead = true; }
           z.slamEffect = 1;
         }
