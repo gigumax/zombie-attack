@@ -542,16 +542,18 @@ class ZombieMultiplayerClient {
         this.scene.add(mesh);
         this.zombieMeshes[z.id] = mesh;
       }
-      // Interpolate position
-      const prev = this.prevPositions.zombies[z.id];
-      if (prev) {
-        const t = Math.min(this.interpAlpha, 1);
-        mesh.position.x = prev.x + (z.x - prev.x) * t;
-        mesh.position.z = prev.z + (z.z - prev.z) * t;
-        mesh.rotation.y = prev.r + (z.r - prev.r) * t;
-      } else {
-        mesh.position.set(z.x, 0, z.z);
-        mesh.rotation.y = z.r || 0;
+      // Interpolate position (skip for dying zombies — they stay put)
+      if (!z.dy) {
+        const prev = this.prevPositions.zombies[z.id];
+        if (prev) {
+          const t = Math.min(this.interpAlpha, 1);
+          mesh.position.x = prev.x + (z.x - prev.x) * t;
+          mesh.position.z = prev.z + (z.z - prev.z) * t;
+          mesh.rotation.y = prev.r + ((z.r || 0) - prev.r) * t;
+        } else {
+          mesh.position.set(z.x, 0, z.z);
+          mesh.rotation.y = z.r || 0;
+        }
       }
       // Walk animation — legs, arms, head bob, torso sway
       const ud = mesh.userData;

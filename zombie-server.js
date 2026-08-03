@@ -730,7 +730,8 @@ function gameLoop() {
     zombies: zombies.map(z => {
       if (z.dying) {
         return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
-          boss: z.isBoss ? 1 : 0, dy: 1, dt: Math.ceil(z.deathTimer) };
+          boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
+          dy: 1, dt: Math.ceil(z.deathTimer) };
       }
       return { id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
         hp: Math.ceil(z.health), mhp: z.maxHealth,
