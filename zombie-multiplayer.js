@@ -517,23 +517,42 @@ class ZombieMultiplayerClient {
       group.userData = { armL, armR, legL, legR, head, torso, revivePhase: phase };
       return group;
     }
-    const skinMat = new THREE.MeshLambertMaterial({color:0x4a7a4a});
-    const shirtMat = new THREE.MeshLambertMaterial({color:0x3a6aad});
-    const pantsMat = new THREE.MeshLambertMaterial({color:0x2a2a5a});
+    // Creepy normal zombie — rotting green-grey skin, glowing eyes, blood
+    const skinMat = new THREE.MeshLambertMaterial({color:0x3a5a3a, emissive:0x001100, emissiveIntensity:0.15});
+    const shirtMat = new THREE.MeshLambertMaterial({color:0x1a2a3a});
+    const pantsMat = new THREE.MeshLambertMaterial({color:0x0a0a1a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), skinMat);
-    head.position.y = 1.8; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color:0x000000});
+    head.position.y = 1.8; head.castShadow = true; head.rotation.x = 0.1; group.add(head);
+    // Glowing yellow eyes
+    const eyeMat = new THREE.MeshBasicMaterial({color:0xccaa00});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.05), eyeMat);
     eyeL.position.set(-0.12,1.85,0.26); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.12; group.add(eyeR);
+    // Jagged teeth
+    const teethMat = new THREE.MeshBasicMaterial({color:0xddd5b0});
+    for (let i = -2; i <= 2; i++) {
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.03), teethMat);
+      tooth.position.set(i * 0.06, 1.62, 0.25); group.add(tooth);
+    }
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.75,0.3), shirtMat);
-    torso.position.y = 1.15; torso.castShadow = true; group.add(torso);
+    torso.position.y = 1.15; torso.rotation.x = 0.08; torso.castShadow = true; group.add(torso);
     const armGeo = new THREE.BoxGeometry(0.25,0.5,0.25);
     const armL = new THREE.Mesh(armGeo, skinMat); armL.position.set(-0.38,1.3,0.3); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, skinMat); armR.position.set(0.38,1.3,0.3); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
     const legGeo = new THREE.BoxGeometry(0.22,0.75,0.22);
     const legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.13,0.375,0); legL.castShadow = true; group.add(legL);
     const legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.13,0.375,0); legR.castShadow = true; group.add(legR);
+    // Blood drips on torso
+    const bloodMat = new THREE.MeshBasicMaterial({color:0x660000});
+    for (let i = 0; i < 3; i++) {
+      const drip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 4, 4), bloodMat);
+      drip.position.set((Math.random()-0.5)*0.3, 0.9 + Math.random()*0.3, 0.16);
+      group.add(drip);
+    }
+    // Exposed bone on left arm
+    const boneMat = new THREE.MeshLambertMaterial({color:0xcccccc});
+    const bone = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.15, 0.08), boneMat);
+    bone.position.set(-0.38, 1.05, 0.3); bone.rotation.x = -Math.PI/2; group.add(bone);
     group.userData = { armL, armR, legL, legR, head };
     return group;
   }
@@ -541,23 +560,36 @@ class ZombieMultiplayerClient {
   createBuffZombieMesh() {
     const group = new THREE.Group();
     const scale = 1.4;
-    const skinMat = new THREE.MeshLambertMaterial({color:0x8a2a2a});
-    const shirtMat = new THREE.MeshLambertMaterial({color:0x4a1a1a});
-    const pantsMat = new THREE.MeshLambertMaterial({color:0x2a0a0a});
+    // Creepy buff zombie — dark red rotting flesh, glowing red eyes
+    const skinMat = new THREE.MeshLambertMaterial({color:0x5a1a1a, emissive:0x110000, emissiveIntensity:0.2});
+    const shirtMat = new THREE.MeshLambertMaterial({color:0x2a0a0a});
+    const pantsMat = new THREE.MeshLambertMaterial({color:0x1a0505});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale,0.55*scale,0.55*scale), skinMat);
-    head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
+    head.position.y = 1.8*scale; head.rotation.x = 0.1; head.castShadow = true; group.add(head);
     const eyeMat = new THREE.MeshBasicMaterial({color:0xff0000});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.13*scale,0.13*scale,0.06*scale), eyeMat);
     eyeL.position.set(-0.13*scale,1.85*scale,0.29*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.13*scale; group.add(eyeR);
+    // Fangs
+    const fangMat = new THREE.MeshBasicMaterial({color:0xeeeeee});
+    const fangL = new THREE.Mesh(new THREE.ConeGeometry(0.04*scale, 0.12*scale, 4), fangMat);
+    fangL.position.set(-0.1*scale, 1.6*scale, 0.27*scale); fangL.rotation.x = Math.PI; group.add(fangL);
+    const fangR = fangL.clone(); fangR.position.x = 0.1*scale; group.add(fangR);
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65*scale,0.85*scale,0.4*scale), shirtMat);
-    torso.position.y = 1.15*scale; torso.castShadow = true; group.add(torso);
+    torso.position.y = 1.15*scale; torso.rotation.x = 0.08; torso.castShadow = true; group.add(torso);
     const armGeo = new THREE.BoxGeometry(0.35*scale,0.65*scale,0.35*scale);
     const armL = new THREE.Mesh(armGeo, skinMat); armL.position.set(-0.45*scale,1.35*scale,0.35*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, skinMat); armR.position.set(0.45*scale,1.35*scale,0.35*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
     const legGeo = new THREE.BoxGeometry(0.28*scale,0.85*scale,0.28*scale);
     const legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.15*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
     const legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.15*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
+    // Blood drips
+    const bloodMat = new THREE.MeshBasicMaterial({color:0x990000});
+    for (let i = 0; i < 4; i++) {
+      const drip = new THREE.Mesh(new THREE.SphereGeometry(0.04*scale, 4, 4), bloodMat);
+      drip.position.set((Math.random()-0.5)*0.5*scale, 0.8*scale + Math.random()*0.4*scale, 0.2*scale);
+      group.add(drip);
+    }
     group.userData = { armL, armR, legL, legR, head };
     return group;
   }
@@ -565,16 +597,24 @@ class ZombieMultiplayerClient {
   createSkeletonMesh() {
     const group = new THREE.Group();
     const scale = 1.05;
-    const boneMat = new THREE.MeshLambertMaterial({color:0xdddddd});
-    const darkMat = new THREE.MeshLambertMaterial({color:0x2a2a2a});
+    // Creepy skeleton — aged yellowed bone, dark eye sockets with glow
+    const boneMat = new THREE.MeshLambertMaterial({color:0xc8c2a0});
+    const darkMat = new THREE.MeshLambertMaterial({color:0x1a1a1a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.45*scale,0.45*scale), boneMat);
-    head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color:0xff0000});
+    head.position.y = 1.8*scale; head.rotation.x = 0.1; head.castShadow = true; group.add(head);
+    // Glowing green eye sockets
+    const eyeMat = new THREE.MeshBasicMaterial({color:0x00ff33});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale), eyeMat);
     eyeL.position.set(-0.1*scale,1.82*scale,0.24*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.1*scale; group.add(eyeR);
+    // Jaw teeth
+    const teethMat = new THREE.MeshBasicMaterial({color:0xaaa890});
+    for (let i = -2; i <= 2; i++) {
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.03*scale, 0.06*scale, 0.02*scale), teethMat);
+      tooth.position.set(i * 0.05*scale, 1.62*scale, 0.22*scale); group.add(tooth);
+    }
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.35*scale,0.75*scale,0.25*scale), darkMat);
-    torso.position.y = 1.15*scale; torso.castShadow = true; group.add(torso);
+    torso.position.y = 1.15*scale; torso.rotation.x = 0.08; torso.castShadow = true; group.add(torso);
     const armGeo = new THREE.BoxGeometry(0.12*scale,0.75*scale,0.12*scale);
     const armL = new THREE.Mesh(armGeo, boneMat); armL.position.set(-0.32*scale,1.3*scale,0.3*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, boneMat); armR.position.set(0.32*scale,1.3*scale,0.3*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
