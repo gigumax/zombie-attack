@@ -293,17 +293,20 @@ class ZombieMultiplayerClient {
   // ─── Gun view model ───
   setupGun() {
     this.gun = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.15,0.2,0.8), new THREE.MeshLambertMaterial({color:0x2a2a2a}));
+    // Use MeshBasicMaterial so gun is always visible regardless of lighting
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.25,0.9), new THREE.MeshBasicMaterial({color:0x2a2a2a}));
     this.gun.add(body);
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.08,0.5), new THREE.MeshLambertMaterial({color:0x1a1a1a}));
-    barrel.position.set(0, 0.04, -0.6); this.gun.add(barrel);
-    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.3,0.15), new THREE.MeshLambertMaterial({color:0x333333}));
-    mag.position.set(0, -0.2, 0.1); this.gun.add(mag);
+    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.1,0.6), new THREE.MeshBasicMaterial({color:0x1a1a1a}));
+    barrel.position.set(0, 0.05, -0.7); this.gun.add(barrel);
+    const mag = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.35,0.18), new THREE.MeshBasicMaterial({color:0x333333}));
+    mag.position.set(0, -0.25, 0.15); this.gun.add(mag);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.06,0.04), new THREE.MeshBasicMaterial({color:0x555555}));
+    sight.position.set(0, 0.15, -0.1); this.gun.add(sight);
     this.muzzleFlash = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.4, 0.4),
+      new THREE.PlaneGeometry(0.5, 0.5),
       new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0, side: THREE.DoubleSide })
     );
-    this.muzzleFlash.position.set(0, 0.04, -0.9);
+    this.muzzleFlash.position.set(0, 0.05, -1.05);
     this.gun.add(this.muzzleFlash);
 
     this.gunParts = { body, barrel, mag };
@@ -313,16 +316,16 @@ class ZombieMultiplayerClient {
 
     // Knife
     this.knifeMesh = new THREE.Group();
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.15,0.45), new THREE.MeshLambertMaterial({color:0x3a2a1a}));
-    handle.position.set(0, 0, 0.2); this.knifeMesh.add(handle);
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.06,0.9), new THREE.MeshLambertMaterial({color:0xcccccc}));
-    blade.position.set(0, 0.02, -0.5); this.knifeMesh.add(blade);
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.06,0.08), new THREE.MeshLambertMaterial({color:0x888888}));
-    guard.position.set(0, 0.02, 0); this.knifeMesh.add(guard);
+    const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.18,0.5), new THREE.MeshBasicMaterial({color:0x3a2a1a}));
+    handle.position.set(0, 0, 0.25); this.knifeMesh.add(handle);
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.08,1.0), new THREE.MeshBasicMaterial({color:0xcccccc}));
+    blade.position.set(0, 0.03, -0.55); this.knifeMesh.add(blade);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.08,0.1), new THREE.MeshBasicMaterial({color:0x888888}));
+    guard.position.set(0, 0.03, 0); this.knifeMesh.add(guard);
     this.knifeMesh.visible = false;
     this.gun.add(this.knifeMesh);
 
-    this.gun.position.set(0.35, -0.3, -0.5);
+    this.gun.position.set(0.4, -0.35, -0.6);
     this.camera.add(this.gun);
     this.scene.add(this.camera);
   }
@@ -621,13 +624,13 @@ class ZombieMultiplayerClient {
         this.scene.add(mesh);
         this.otherPlayerMeshes[p.id] = mesh;
       }
-      // Interpolate position
+      // Interpolate position — mesh origin is at feet (y=0), server sends camera height (y=1.7)
       const prev = this.prevPositions.players[p.id];
       if (prev) {
         const t = Math.min(this.interpAlpha, 1);
         mesh.position.x = prev.x + (p.x - prev.x) * t;
         mesh.position.z = prev.z + (p.z - prev.z) * t;
-        mesh.position.y = prev.y + (p.y - prev.y) * t;
+        mesh.position.y = 0; // always at ground level
       } else {
         mesh.position.set(p.x, 0, p.z);
       }
