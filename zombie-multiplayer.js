@@ -371,6 +371,9 @@ class ZombieMultiplayerClient {
       if (e.code === 'KeyG' && this.playing) this.socket.emit('toggleAutoFire');
       if (e.code === 'Digit2' && this.playing) this.socket.emit('switchGun', 'knife');
       if (e.code === 'Digit3' && this.playing) this.socket.emit('switchGun', 'katana');
+      if (e.code === 'Digit4' && this.playing) this.socket.emit('switchGun', 'smg');
+      if (e.code === 'Digit5' && this.playing) this.socket.emit('switchGun', 'shotgun');
+      if (e.code === 'Digit6' && this.playing) this.socket.emit('switchGun', 'rifle');
       if (e.code === 'Digit1' && this.playing) this.socket.emit('switchGun', 'pistol');
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.playing) this.socket.emit('escapeInteract');
       if (k === ' ') e.preventDefault();
@@ -929,7 +932,7 @@ class ZombieMultiplayerClient {
       this._tmpVec1.set(0, 0, -1).applyEuler(this.camera.rotation);
       this.flashlight.target.position.copy(this.camera.position).add(this._tmpVec1.multiplyScalar(20));
 
-      // Shop rendering — only re-render if gold changed or every 500ms
+      // Shop rendering — side panel, game keeps running
       if (this.myPlayer.shop) {
         const shopEl = document.getElementById('shop-overlay');
         shopEl.classList.remove('hidden');
@@ -938,12 +941,8 @@ class ZombieMultiplayerClient {
           this._lastShopGold = this.myPlayer.g;
           this._lastShopRender = now;
         }
-        if (document.pointerLockElement) document.exitPointerLock();
       } else {
         document.getElementById('shop-overlay').classList.add('hidden');
-        if (!document.pointerLockElement && this.playing && !this.myPlayer.dead) {
-          this.canvas.requestPointerLock();
-        }
       }
     }
   }
@@ -1345,34 +1344,46 @@ class ZombieMultiplayerClient {
     const p = this.myPlayer;
     const meta = this.playerMeta;
     const el = document.getElementById('shop-content');
-    let html = `<div style="color:#ffdd00;font-size:24px;font-weight:900;margin-bottom:12px;">GOLD: ${p.g}</div>`;
+    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6' };
+    let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${p.g}</div>`;
 
-    html += '<div style="color:#aaa;font-size:14px;font-weight:700;margin-bottom:6px;">WEAPONS</div>';
+    // Inventory section — owned weapons with hotkeys
+    html += '<div style="color:#8bc;font-size:11px;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Inventory</div>';
     for (const [key, gun] of Object.entries(GUNS)) {
       const owned = meta.ownedGuns[key];
+      if (!owned) continue;
       const equipped = p.gun === key;
+      const hk = hotkeys[key] || '';
       if (equipped) {
-        html += `<div class="shop-item equipped"><span>${gun.name}</span><span>EQUIPPED</span></div>`;
-      } else if (owned) {
-        html += `<div class="shop-item owned" data-action="switchGun" data-key="${key}"><span>${gun.name}</span><span>Click to equip</span></div>`;
+        html += `<div class="shop-item equipped"><span>${gun.name} ${hk?`<span style="color:#666;font-size:10px;">[${hk}]</span>`:''}</span><span>EQUIPPED</span></div>`;
       } else {
-        const canBuy = p.g >= gun.price;
-        html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name}</span><span>${gun.price}g</span></div>`;
+        html += `<div class="shop-item owned" data-action="switchGun" data-key="${key}"><span>${gun.name} ${hk?`<span style="color:#666;font-size:10px;">[${hk}]</span>`:''}</span><span>Equip</span></div>`;
       }
     }
 
-    html += '<div style="color:#aaa;font-size:14px;font-weight:700;margin:12px 0 6px;">UPGRADES</div>';
+    // Buy section — weapons not yet owned
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Buy Weapons</div>';
+    for (const [key, gun] of Object.entries(GUNS)) {
+      const owned = meta.ownedGuns[key];
+      if (owned) continue;
+      const canBuy = p.g >= gun.price;
+      const stats = gun.melee ? `DMG ${gun.damage} · RNG ${gun.meleeRange}` : `DMG ${gun.damage} · MAG ${gun.magSize}`;
+      html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${gun.price}g</span></div>`;
+    }
+
+    // Upgrades
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Upgrades</div>';
     for (const [key, up] of Object.entries(UPGRADES)) {
       const lvl = meta.upgrades[key] || 0;
       const maxed = lvl >= up.maxLevel;
       const price = up.price * (lvl + 1);
       const canBuy = !maxed && p.g >= price;
       html += `<div class="shop-item ${maxed?'maxed':(canBuy?'':'disabled')}" ${canBuy?`data-action="buyUpgrade" data-key="${key}"`:''}>
-        <span>${up.name} <span style="color:#666;">Lv.${lvl}/${up.maxLevel}</span></span>
+        <span>${up.name} <span style="color:#666;font-size:10px;">Lv.${lvl}/${up.maxLevel}</span></span>
         <span>${maxed?'MAX':price+'g'}</span>
       </div>`;
     }
-    html += `<div style="margin-top:16px;font-size:12px;color:#666;">Press <kbd>B</kbd> to close shop</div>`;
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> to toggle shop</div>`;
     el.innerHTML = html;
   }
 

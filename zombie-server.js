@@ -371,7 +371,7 @@ function endEscape() {
 // ─── Shooting (server-side raycast) ───
 function handleShoot(playerId) {
   const p = players[playerId];
-  if (!p || p.dead || p.shopOpen || p.reloading || p.fireTimer > 0) return;
+  if (!p || p.dead || p.reloading || p.fireTimer > 0) return;
 
   const gun = GUNS[p.currentGun];
   if (gun.melee) {
@@ -654,7 +654,7 @@ function updatePlayer(p, dt) {
     if (p.shootTracers[i].life <= 0) p.shootTracers.splice(i, 1);
   }
   // Auto-fire
-  if (p.autoFire && !p.shopOpen && !p.reloading && !p.dead) handleShoot(p.id);
+  if (p.autoFire && !p.reloading && !p.dead) handleShoot(p.id);
 }
 
 // ─── Zombie AI ───
