@@ -152,7 +152,7 @@ function spawnBoss() {
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
   const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
-  const health = (1500 + (wave - 6) * 400) * 3; // 3x harder
+  const health = 27500; // 500 rifle hits (55 dmg each) to kill
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
@@ -673,12 +673,12 @@ function updateZombies(dt) {
       if (z.reviveTimer <= 0) {
         z.reviving = false;
         z.reviveCount++;
-        // Each revival: more health, more damage, slightly faster (3x base)
-        const baseHealth = (1500 + (wave - 6) * 400) * 3;
-        z.maxHealth = Math.floor(baseHealth * (1 + z.reviveCount * 0.5));
+        // Each revival: 500 rifle hits per phase, increasing damage and speed
+        const baseHealth = 27500;
+        z.maxHealth = Math.floor(baseHealth * (1 + z.reviveCount * 0.3));
         z.health = z.maxHealth;
-        z.damage = CONFIG.zombieDamage * 15 * (1 + z.reviveCount * 0.3);
-        z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.15);
+        z.damage = CONFIG.zombieDamage * 15 * (1 + z.reviveCount * 0.5);
+        z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.2);
         z.lostLimbs = {}; // limbs grow back creepier
         z.limbDamage = {};
         broadcastKillFeed(`BOSS REVIVED! Phase ${z.reviveCount}/3 — STRONGER!`);

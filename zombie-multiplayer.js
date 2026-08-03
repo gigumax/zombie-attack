@@ -420,49 +420,96 @@ class ZombieMultiplayerClient {
   createZombieMesh(isBoss = false, revivePhase = 0) {
     const group = new THREE.Group();
     if (isBoss) {
-      // Creepier colors with each revival phase
+      // Creepier colors with each revival phase — progressively darker and more demonic
       const phase = revivePhase || 0;
-      const skinColors = [0x5a8a4a, 0x3a5a2a, 0x2a3a1a, 0x1a1a0a];
-      const shirtColors = [0x2a9a9a, 0x1a5a5a, 0x0a2a2a, 0x000000];
-      const pantsColors = [0x4a2a8a, 0x2a1a4a, 0x1a0a2a, 0x000000];
-      const eyeColors = [0x000000, 0xff0000, 0xff0000, 0xff3300];
-      const skinMat = new THREE.MeshLambertMaterial({color: skinColors[phase]});
+      const skinColors = [0x4a6a3a, 0x2a4a1a, 0x1a2a0a, 0x0a0a05];
+      const shirtColors = [0x1a4a4a, 0x0a2a2a, 0x050a0a, 0x000000];
+      const pantsColors = [0x2a1a4a, 0x1a0a2a, 0x0a050a, 0x000000];
+      const eyeColors = [0x660000, 0xff0000, 0xff3300, 0xffff00];
+      const hornColors = [0x3a2a1a, 0x2a1a0a, 0x1a0a05, 0x000000];
+      const skinMat = new THREE.MeshLambertMaterial({color: skinColors[phase], emissive: phase >= 2 ? eyeColors[phase] : 0x000000, emissiveIntensity: phase >= 2 ? 0.05 : 0});
       const shirtMat = new THREE.MeshLambertMaterial({color: shirtColors[phase]});
       const pantsMat = new THREE.MeshLambertMaterial({color: pantsColors[phase]});
       const eyeMat = new THREE.MeshBasicMaterial({color: eyeColors[phase]});
+      const hornMat = new THREE.MeshLambertMaterial({color: hornColors[phase]});
       const torso = new THREE.Mesh(new THREE.BoxGeometry(1.6,1.2,0.9), shirtMat);
       torso.position.set(0,2.0,0.2); torso.rotation.x = 0.25; torso.castShadow = true; group.add(torso);
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), skinMat);
       head.position.set(0,2.9,0.75); head.rotation.x = 0.15; head.castShadow = true; group.add(head);
-      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.18,0.08), eyeMat);
+      // Glowing eyes — bigger and more menacing with phase
+      const eyeSize = 0.18 + phase * 0.04;
+      const eyeL = new THREE.Mesh(new THREE.BoxGeometry(eyeSize, eyeSize, 0.08), eyeMat);
       eyeL.position.set(-0.18,3.0,1.14); group.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.18; group.add(eyeR);
+      // Fangs for phase 1+
+      if (phase >= 1) {
+        const fangMat = new THREE.MeshBasicMaterial({color: 0xffffff});
+        const fangL = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.2, 4), fangMat);
+        fangL.position.set(-0.15, 2.7, 1.1); fangL.rotation.x = Math.PI; group.add(fangL);
+        const fangR = fangL.clone(); fangR.position.x = 0.15; group.add(fangR);
+      }
       const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.7,0.7,0.9), shirtMat);
       shoulderL.position.set(-0.9,2.4,0.1); shoulderL.rotation.x = 0.25; group.add(shoulderL);
       const shoulderR = shoulderL.clone(); shoulderR.position.x = 0.9; group.add(shoulderR);
+      // Shoulder spikes for phase 2+
+      if (phase >= 2) {
+        const sl = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.6, 4), hornMat);
+        sl.position.set(-0.9, 2.9, 0.1); group.add(sl);
+        const sr = sl.clone(); sr.position.x = 0.9; group.add(sr);
+      }
       const armGeo = new THREE.BoxGeometry(0.55,2.0,0.55);
       const armL = new THREE.Mesh(armGeo, skinMat); armL.position.set(-1.15,1.4,0.05); armL.castShadow = true; group.add(armL);
       const armR = new THREE.Mesh(armGeo, skinMat); armR.position.set(1.15,1.4,0.05); armR.castShadow = true; group.add(armR);
+      // Claws for phase 1+
+      if (phase >= 1) {
+        const clawMat = new THREE.MeshLambertMaterial({color: 0x1a1a1a});
+        for (const ax of [-1.15, 1.15]) {
+          for (let c = -1; c <= 1; c++) {
+            const claw = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.25, 4), clawMat);
+            claw.position.set(ax + c * 0.15, 0.35, 0.1); claw.rotation.x = Math.PI; group.add(claw);
+          }
+        }
+      }
       const legGeo = new THREE.BoxGeometry(0.45,1.3,0.55);
       const legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.4,0.65,0); legL.castShadow = true; group.add(legL);
       const legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.4,0.65,0); legR.castShadow = true; group.add(legR);
-      // Horns for phase 2+
+      // Horns — bigger and more with each phase
+      const hornSize = 0.3 + phase * 0.15;
+      const hornLen = 0.4 + phase * 0.2;
+      const hornL = new THREE.Mesh(new THREE.ConeGeometry(hornSize, hornLen, 4), hornMat);
+      hornL.position.set(-0.3, 3.4, 0.6); hornL.rotation.x = -0.3; group.add(hornL);
+      const hornR = new THREE.Mesh(new THREE.ConeGeometry(hornSize, hornLen, 4), hornMat);
+      hornR.position.set(0.3, 3.4, 0.6); hornR.rotation.x = -0.3; group.add(hornR);
+      // Side horns for phase 2+
       if (phase >= 2) {
-        const hornMat = new THREE.MeshLambertMaterial({color: 0x1a0a0a});
-        const hornL = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 4), hornMat);
-        hornL.position.set(-0.3, 3.4, 0.6); hornL.rotation.x = -0.3; group.add(hornL);
-        const hornR = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.5, 4), hornMat);
-        hornR.position.set(0.3, 3.4, 0.6); hornR.rotation.x = -0.3; group.add(hornR);
+        const shL = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 4), hornMat);
+        shL.position.set(-0.5, 3.2, 0.5); shL.rotation.z = 0.5; group.add(shL);
+        const shR = shL.clone(); shR.position.x = 0.5; shR.rotation.z = -0.5; group.add(shR);
       }
-      // Spikes on back for phase 3
-      if (phase >= 3) {
-        const spikeMat = new THREE.MeshLambertMaterial({color: 0x0a0a0a});
-        for (let i = 0; i < 4; i++) {
-          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.6, 4), spikeMat);
-          spike.position.set(0, 1.5 + i * 0.5, -0.5); group.add(spike);
+      // Back spikes for phase 2+
+      if (phase >= 2) {
+        for (let i = 0; i < 5; i++) {
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1 + phase * 0.03, 0.5 + phase * 0.1, 4), hornMat);
+          spike.position.set(0, 1.4 + i * 0.45, -0.5); group.add(spike);
         }
       }
-      const bossScale = 2.2 + phase * 0.3;
+      // Glowing red core in chest for phase 3
+      if (phase >= 3) {
+        const coreMat = new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.9});
+        const core = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), coreMat);
+        core.position.set(0, 2.0, 0.5); group.add(core);
+        group.userData.core = core;
+      }
+      // Blood drip dots for phase 1+
+      if (phase >= 1) {
+        const bloodMat = new THREE.MeshBasicMaterial({color: 0x990000});
+        for (let i = 0; i < 3 + phase * 2; i++) {
+          const drip = new THREE.Mesh(new THREE.SphereGeometry(0.04, 4, 4), bloodMat);
+          drip.position.set((Math.random() - 0.5) * 1.4, 1.5 + Math.random() * 0.8, 0.4 + Math.random() * 0.3);
+          group.add(drip);
+        }
+      }
+      const bossScale = 2.2 + phase * 0.4;
       group.scale.set(bossScale, bossScale, bossScale);
       group.userData = { armL, armR, legL, legR, head, torso, revivePhase: phase };
       return group;
