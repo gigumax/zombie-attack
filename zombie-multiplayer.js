@@ -670,7 +670,7 @@ class ZombieMultiplayerClient {
     for (const p of state.players) {
       if (p.tr && p.tr.length > 0) {
         for (const t of p.tr) {
-          this.spawnTracer(t.x1, t.y1, t.z1, t.x2, t.y2, t.z2);
+          this.spawnTracer(t.x1, t.y1, t.z1, t.x2, t.y2, t.z2, t.gun);
         }
       }
     }
@@ -751,18 +751,27 @@ class ZombieMultiplayerClient {
   }
 
   // ─── Tracers ───
-  spawnTracer(x1, y1, z1, x2, y2, z2) {
+  static GUN_TRACER = {
+    pistol:  { color: 0xffee44, radius: 0.03, life: 0.08 },
+    smg:     { color: 0xffdd33, radius: 0.025, life: 0.06 },
+    shotgun: { color: 0xff9933, radius: 0.05, life: 0.1 },
+    rifle:   { color: 0x66ffff, radius: 0.02, life: 0.07 },
+    knife:   { color: 0xffffff, radius: 0.08, life: 0.12 },
+  };
+
+  spawnTracer(x1, y1, z1, x2, y2, z2, gunName) {
     const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
     const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
     if (len < 0.1) return;
-    const geo = new THREE.CylinderGeometry(0.02, 0.02, len, 5);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffee44, transparent: true, opacity: 0.8 });
+    const cfg = ZombieMultiplayerClient.GUN_TRACER[gunName] || ZombieMultiplayerClient.GUN_TRACER.pistol;
+    const geo = new THREE.CylinderGeometry(cfg.radius, cfg.radius, len, 6);
+    const mat = new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.9 });
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set((x1+x2)/2, (y1+y2)/2, (z1+z2)/2);
     mesh.lookAt(x2, y2, z2);
     mesh.rotateX(Math.PI / 2);
     this.scene.add(mesh);
-    this.bullets.push({ mesh, life: 0.06, maxLife: 0.06 });
+    this.bullets.push({ mesh, life: cfg.life, maxLife: cfg.life });
   }
 
   updateBullets(dt) {

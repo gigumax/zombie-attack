@@ -350,6 +350,7 @@ function handleShoot(playerId) {
   if (gun.melee) {
     p.fireTimer = getGunStat(p, 'fireRate');
     p.gunRecoil = 0.12;
+    p.muzzleFlash = 0.5; // visual feedback for knife swing
     const damage = getGunStat(p, 'damage');
     const meleeRange = 3.0;
     // Direction from yaw/pitch
@@ -359,6 +360,9 @@ function handleShoot(playerId) {
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
+    // Knife slash tracer — short line in front of player
+    const slashEnd = { x: p.x + dir.x * meleeRange, y: p.y + dir.y * meleeRange, z: p.z + dir.z * meleeRange };
+    p.shootTracers.push({ x1: p.x, y1: p.y - 0.2, z1: p.z, x2: slashEnd.x, y2: slashEnd.y - 0.2, z2: slashEnd.z, life: 0.1, gun: 'knife' });
     if (closestHit) {
       closestHit.zombie.health -= damage;
       if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
@@ -387,7 +391,11 @@ function handleShoot(playerId) {
     const endX = p.x + dir.x * Math.min(closestDist, CONFIG.bulletRange);
     const endY = p.y + dir.y * Math.min(closestDist, CONFIG.bulletRange);
     const endZ = p.z + dir.z * Math.min(closestDist, CONFIG.bulletRange);
-    p.shootTracers.push({ x1: p.x, y1: p.y, z1: p.z, x2: endX, y2: endY, z2: endZ, life: 0.08 });
+    // Start tracer from slightly below camera (gun muzzle position)
+    const muzzleY = p.y - 0.3;
+    const muzzleX = p.x + Math.cos(p.yaw) * 0.3;
+    const muzzleZ = p.z - Math.sin(p.yaw) * 0.3;
+    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun });
 
     if (closestHit) {
       closestHit.zombie.health -= damage;
