@@ -23,7 +23,7 @@ app.use(express.static(path.join(__dirname)));
 const CONFIG = {
   worldSize: 60, playerSpeed: 5.5, playerSprintSpeed: 9, playerJump: 8,
   gravity: 25, playerHeight: 1.7, playerRadius: 0.4, maxHealth: 100,
-  bulletRange: 100, zombieHealth: 100, zombieSpeed: 1.8, zombieDamage: 15,
+  bulletRange: 100, zombieHealth: 102, zombieSpeed: 1.8, zombieDamage: 15,
   zombieAttackRange: 1.8, zombieAttackCooldown: 1.0,
   waveBaseCount: 5, waveSpeedIncrease: 0.2, waveCountIncrease: 3,
   waveBreakTime: 5, goldPickupRadius: 1.5, maxGoldPickups: 8, goldSpawnInterval: 8,
@@ -127,7 +127,7 @@ function spawnZombie() {
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
 
-  const speed = CONFIG.zombieSpeed + (wave - 1) * CONFIG.waveSpeedIncrease;
+  const speed = CONFIG.zombieSpeed; // never gets faster
   let health = CONFIG.zombieHealth;
   let damage = CONFIG.zombieDamage;
   let attackRange = CONFIG.zombieAttackRange;
@@ -150,7 +150,7 @@ function spawnBoss() {
   const dist = CONFIG.worldSize - 5;
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
-  const speed = CONFIG.zombieSpeed * 0.85 + (wave - 1) * CONFIG.waveSpeedIncrease * 0.6;
+  const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
   const health = 1500 + (wave - 6) * 400;
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
@@ -328,7 +328,8 @@ function unlockCell(playerId) {
 
 function checkEscapeWin() {
   if (escapeStep !== 'fight') return;
-  if (zombies.length === 0) endEscape();
+  const aliveCount = zombies.filter(z => !z.dying).length;
+  if (aliveCount === 0) endEscape();
 }
 
 function endEscape() {
@@ -738,7 +739,7 @@ function gameLoop() {
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
-    zRemain: zombies.length + zombiesToSpawn,
+    zRemain: zombies.filter(z => !z.dying).length + zombiesToSpawn,
   };
   io.emit('state', state);
 }

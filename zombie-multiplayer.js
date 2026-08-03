@@ -557,11 +557,11 @@ class ZombieMultiplayerClient {
       const ud = mesh.userData;
       const swing = Math.sin(z.wp);
       if (z.dy) {
-        // Dying zombie — animate falling over
-        // Fall rotation: rotate around X axis to lie face down
-        const fallProgress = Math.min((10 - (z.dt || 0)) / 0.5, 1); // fall over 0.5 seconds
+        // Dying zombie — fall immediately
+        if (!ud.fallTimer) ud.fallTimer = 0;
+        ud.fallTimer += dt;
+        const fallProgress = Math.min(ud.fallTimer / 0.3, 1); // fall over 0.3 seconds
         mesh.rotation.x = fallProgress * (Math.PI / 2);
-        // Sink slightly into ground
         mesh.position.y = -fallProgress * 0.3;
         // Stop walk animation — limbs go limp
         if (ud.legL && ud.legR) {
