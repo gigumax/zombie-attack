@@ -93,6 +93,7 @@ class ZombieMultiplayerClient {
     this.setupGun();
     this.setupInput();
     this.setupConnectScreen();
+    this.setupShopClicks();
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -843,10 +844,10 @@ class ZombieMultiplayerClient {
       if (equipped) {
         html += `<div class="shop-item equipped"><span>${gun.name}</span><span>EQUIPPED</span></div>`;
       } else if (owned) {
-        html += `<div class="shop-item owned" onclick="client.socket.emit('switchGun','${key}')"><span>${gun.name}</span><span>Click to equip</span></div>`;
+        html += `<div class="shop-item owned" data-action="switchGun" data-key="${key}"><span>${gun.name}</span><span>Click to equip</span></div>`;
       } else {
         const canBuy = p.g >= gun.price;
-        html += `<div class="shop-item ${canBuy?'':'disabled'}" onclick="${canBuy?`client.socket.emit('buyGun','${key}')`:''}"><span>${gun.name}</span><span>${gun.price}g</span></div>`;
+        html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name}</span><span>${gun.price}g</span></div>`;
       }
     }
 
@@ -856,13 +857,26 @@ class ZombieMultiplayerClient {
       const maxed = lvl >= up.maxLevel;
       const price = up.price * (lvl + 1);
       const canBuy = !maxed && p.g >= price;
-      html += `<div class="shop-item ${maxed?'maxed':(canBuy?'':'disabled')}" onclick="${canBuy?`client.socket.emit('buyUpgrade','${key}')`:''}">
+      html += `<div class="shop-item ${maxed?'maxed':(canBuy?'':'disabled')}" ${canBuy?`data-action="buyUpgrade" data-key="${key}"`:''}>
         <span>${up.name} <span style="color:#666;">Lv.${lvl}/${up.maxLevel}</span></span>
         <span>${maxed?'MAX':price+'g'}</span>
       </div>`;
     }
     html += `<div style="margin-top:16px;font-size:12px;color:#666;">Press <kbd>B</kbd> to close shop</div>`;
     el.innerHTML = html;
+  }
+
+  setupShopClicks() {
+    const el = document.getElementById('shop-content');
+    el.addEventListener('click', (e) => {
+      const item = e.target.closest('[data-action]');
+      if (!item) return;
+      const action = item.dataset.action;
+      const key = item.dataset.key;
+      if (action && key && this.socket) {
+        this.socket.emit(action, key);
+      }
+    });
   }
 
   // ─── Main loop ───
