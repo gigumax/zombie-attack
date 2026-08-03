@@ -144,6 +144,7 @@ function spawnZombie() {
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
     lostLimbs: {}, limbDamage: {},
+    specialAttackTimer: 2 + Math.random() * 2,
   });
 }
 
@@ -811,13 +812,69 @@ function updateZombies(dt) {
           }
         }
       }
-    } else if (dist < attackRange && z.attackTimer <= 0) {
-      z.attackTimer = CONFIG.zombieAttackCooldown;
-      target.health -= (z.damage || CONFIG.zombieDamage);
-      if (target.health <= 0) {
-        target.health = 0;
-        target.dead = true;
-        // Check if all players dead
+    } else {
+      // Non-boss zombie attacks — different per type
+      if (z.type === 'skeleton') {
+        // SKELETON — ranged bone throw every 3s from distance, plus weak melee
+        z.specialAttackTimer -= dt;
+        if (z.specialAttackTimer <= 0 && dist < 20 && dist > attackRange) {
+          z.specialAttackTimer = 3 + Math.random() * 2;
+          target.health -= z.damage * 0.5;
+          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          z.rangedEffect = 1;
+          z.attackTimer = 1.0;
+        }
+        if (dist < attackRange && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 1.2;
+          target.health -= z.damage * 0.6;
+          if (target.health <= 0) { target.health = 0; target.dead = true; }
+        }
+      } else if (z.type === 'buff') {
+        // BUFF — heavy slam attack, 2x damage, longer cooldown, AoE
+        if (dist < attackRange * 1.3 && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 2;
+          // AoE damage to all nearby players
+          for (const p of Object.values(players)) {
+            if (p.dead) continue;
+            const pd = Math.hypot(p.x - z.x, p.z - z.z);
+            if (pd < attackRange * 1.3) {
+              p.health -= z.damage * 1.5;
+              if (p.health <= 0) { p.health = 0; p.dead = true; }
+            }
+          }
+          z.slamEffect = 1;
+        }
+      } else if (z.type === 'guard') {
+        // GUARD — shield bash: knocks player back, moderate damage
+        if (dist < attackRange && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
+          target.health -= z.damage;
+          // Knockback
+          const kdx = (target.x - z.x) / dist, kdz = (target.z - z.z) / dist;
+          target.x += kdx * 3;
+          target.z += kdz * 3;
+          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          z.slamEffect = 1;
+        }
+      } else {
+        // NORMAL — lunge attack: quick burst toward player, bite
+        if (dist < attackRange * 1.5 && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown;
+          // Lunge forward
+          if (dist > 0.01) {
+            z.x += (dx / dist) * 1.5;
+            z.z += (dz / dist) * 1.5;
+          }
+          // Check if still in range after lunge
+          const newDist = Math.hypot(target.x - z.x, target.z - z.z);
+          if (newDist < attackRange) {
+            target.health -= z.damage;
+            if (target.health <= 0) { target.health = 0; target.dead = true; }
+          }
+        }
+      }
+      // Check all dead
+      if (target.dead) {
         const allDead = Object.values(players).every(p => p.dead);
         if (allDead && !escapeMode) {
           io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
