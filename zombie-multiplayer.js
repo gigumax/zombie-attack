@@ -343,6 +343,27 @@ class ZombieMultiplayerClient {
     this.gunParts.barrel.visible = true;
     this.gunParts.mag.visible = true;
 
+    // Hands holding the gun (skin-colored boxes)
+    const handMat = new THREE.MeshBasicMaterial({color:0xf5c89a});
+    const handGeo = new THREE.BoxGeometry(0.14, 0.14, 0.22);
+    // Right hand on grip
+    const handR = new THREE.Mesh(handGeo, handMat);
+    handR.position.set(0.04, -0.12, 0.1); this.gun.add(handR);
+    // Left hand supporting barrel
+    const handL = new THREE.Mesh(handGeo, handMat);
+    handL.position.set(-0.04, -0.05, -0.45); this.gun.add(handL);
+    // Forearms leading back toward camera
+    const forearmMat = new THREE.MeshBasicMaterial({color:0x3498db});
+    const forearmGeo = new THREE.BoxGeometry(0.12, 0.12, 0.35);
+    const forearmR = new THREE.Mesh(forearmGeo, forearmMat);
+    forearmR.position.set(0.04, -0.12, 0.35); this.gun.add(forearmR);
+    const forearmL = new THREE.Mesh(forearmGeo, forearmMat);
+    forearmL.position.set(-0.04, -0.05, -0.2); this.gun.add(forearmL);
+    this.gunParts.handR = handR;
+    this.gunParts.handL = handL;
+    this.gunParts.forearmR = forearmR;
+    this.gunParts.forearmL = forearmL;
+
     // Knife
     this.knifeMesh = new THREE.Group();
     const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14,0.18,0.5), new THREE.MeshBasicMaterial({color:0x3a2a1a}));
@@ -381,6 +402,10 @@ class ZombieMultiplayerClient {
     this.gunParts.body.visible = !isMelee;
     this.gunParts.barrel.visible = !isMelee;
     this.gunParts.mag.visible = !isMelee;
+    this.gunParts.handR.visible = !isMelee;
+    this.gunParts.handL.visible = !isMelee;
+    this.gunParts.forearmR.visible = !isMelee;
+    this.gunParts.forearmL.visible = !isMelee;
     this.knifeMesh.visible = isMelee && !isKatana;
     this.katanaMesh.visible = isMelee && isKatana;
     this.muzzleFlash.visible = !isMelee;
@@ -1006,6 +1031,26 @@ class ZombieMultiplayerClient {
       mesh.visible = !p.dead;
       // Walk animation for other players — detect movement by comparing positions
       const ud = mesh.userData;
+      // Show/hide gun based on weapon type
+      const pGunName = p.gun;
+      const pGun = GUNS[pGunName];
+      const pIsMelee = pGun && pGun.melee;
+      if (ud.gunGroup) {
+        ud.gunGroup.visible = !pIsMelee && !p.dead;
+        // Reload animation for other players — dip gun and raise arms
+        if (p.r === 1 && !pIsMelee) {
+          const rT = performance.now() / 1000;
+          const dip = Math.sin(Math.min(rT * 3, Math.PI)) * 0.15;
+          ud.gunGroup.position.y = 1.2 - dip;
+          ud.gunGroup.rotation.x = -Math.PI / 2 + dip * 2;
+          // Arms go up to reload position
+          if (ud.armR) ud.armR.rotation.x = -1.2 + dip * 3;
+          if (ud.armL) ud.armL.rotation.x = -0.8 + dip * 3;
+        } else {
+          ud.gunGroup.position.y = 1.2;
+          ud.gunGroup.rotation.x = -Math.PI / 2;
+        }
+      }
       const prevPos = this.prevPositions.players[p.id];
       const moving = prevPos && (Math.abs(p.x - prevPos.x) > 0.01 || Math.abs(p.z - prevPos.z) > 0.01);
       if (!ud.walkPhase) ud.walkPhase = 0;
@@ -1015,7 +1060,7 @@ class ZombieMultiplayerClient {
         ud.legL.rotation.x = s * 0.3;
         ud.legR.rotation.x = -s * 0.3;
       }
-      if (ud.armL && ud.armR) {
+      if (ud.armL && ud.armR && p.r !== 1) {
         const s = Math.sin(ud.walkPhase);
         ud.armL.rotation.x = -s * 0.2;
         ud.armR.rotation.x = s * 0.2;
@@ -1118,8 +1163,23 @@ class ZombieMultiplayerClient {
       }
 
       // Gun recoil
-      this.gun.position.z = -0.5 + (this.myPlayer.gr || 0);
-      this.gun.position.y = -0.3 - (this.myPlayer.gr || 0) * 0.3;
+      const recoil = this.myPlayer.gr || 0;
+      // Reload animation — dip gun down and rotate
+      const isReloading = this.myPlayer.r === 1;
+      if (isReloading) {
+        const reloadT = performance.now() / 1000;
+        const dip = Math.sin(Math.min(reloadT * 3, Math.PI)) * 0.25; // dip down then back up
+        const rot = Math.sin(Math.min(reloadT * 3, Math.PI)) * 0.4; // tilt gun
+        this.gun.position.z = -0.5 + recoil + dip * 0.3;
+        this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.2;
+        this.gun.rotation.x = rot;
+        this.gun.rotation.z = rot * 0.5;
+      } else {
+        this.gun.position.z = -0.5 + recoil;
+        this.gun.position.y = -0.3 - recoil * 0.3;
+        this.gun.rotation.x = 0;
+        this.gun.rotation.z = 0;
+      }
 
       // Muzzle flash
       this.muzzleFlash.material.opacity = this.myPlayer.mf || 0;
@@ -1173,6 +1233,24 @@ class ZombieMultiplayerClient {
     const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
     const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(-0.4, 1.15, 0); armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(0.4, 1.15, 0); armR.castShadow = true; group.add(armR);
+    // Gun in right hand
+    const gunGroup = new THREE.Group();
+    const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.6), new THREE.MeshLambertMaterial({color:0x2a2a2a}));
+    gunGroup.add(gunBody);
+    const gunBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.4), new THREE.MeshLambertMaterial({color:0x1a1a1a}));
+    gunBarrel.position.set(0, 0.03, -0.45); gunGroup.add(gunBarrel);
+    const gunMag = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.25, 0.12), new THREE.MeshLambertMaterial({color:0x333333}));
+    gunMag.position.set(0, -0.18, 0.1); gunGroup.add(gunMag);
+    // Hands on gun
+    const handMat = new THREE.MeshLambertMaterial({color:0xf5c89a});
+    const handR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
+    handR.position.set(0, -0.08, 0.05); gunGroup.add(handR);
+    const handL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
+    handL.position.set(0, -0.03, -0.3); gunGroup.add(handL);
+    // Position gun in right hand area, pointing forward
+    gunGroup.position.set(0.4, 1.2, -0.3);
+    gunGroup.rotation.x = -Math.PI / 2; // lay gun forward
+    group.add(gunGroup);
     const legGeo = new THREE.BoxGeometry(0.22, 0.75, 0.22);
     const legL = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color:0x2a2a4a})); legL.position.set(-0.15, 0.375, 0); legL.castShadow = true; group.add(legL);
     const legR = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color:0x2a2a4a})); legR.position.set(0.15, 0.375, 0); legR.castShadow = true; group.add(legR);
@@ -1192,7 +1270,7 @@ class ZombieMultiplayerClient {
     sprite.scale.set(1.5, 0.4, 1);
     sprite.position.set(0, 2.5, 0);
     group.add(sprite);
-    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, walkPhase: 0 };
+    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, gunGroup, walkPhase: 0 };
 
     return group;
   }
@@ -1764,8 +1842,8 @@ class ZombieMultiplayerClient {
     // Flush throttled input
     this.flushInput();
     this.updateBullets(dt);
-    // Gun bob animation — subtle sway based on time
-    if (this.playing && this.myPlayer && !this.myPlayer.dead) {
+    // Gun bob animation — subtle sway based on time (skip during reload)
+    if (this.playing && this.myPlayer && !this.myPlayer.dead && this.myPlayer.r !== 1) {
       const t = performance.now() / 1000;
       const bobX = Math.sin(t * 2.5) * 0.008;
       const bobY = Math.abs(Math.sin(t * 2.5)) * 0.008;
@@ -1779,6 +1857,9 @@ class ZombieMultiplayerClient {
         const s = 1 + Math.sin(t * 30) * 0.2;
         this.muzzleFlash.scale.set(s, s, s);
       }
+      // Reset rotation when not reloading
+      this.gun.rotation.x = 0;
+      this.gun.rotation.z = 0;
     }
     this.renderer.render(this.scene, this.camera);
   }
