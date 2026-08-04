@@ -77,6 +77,7 @@ let bossSpawned = false;
 let goldSpawnTimer = 3;
 let gameStarted = false;
 let escapeMode = false;
+let friendlyFire = false;
 let escapeStep = null;
 let doorOpen = false;
 let keyDropped = false;
@@ -445,12 +446,14 @@ function handleShoot(playerId) {
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
-    // PvP melee — check for player hits
+    // PvP melee — check for player hits (only if friendly fire is on)
     let closestPlayerHit = null;
-    for (const other of Object.values(players)) {
-      if (other.id === playerId || other.dead || other.paused) continue;
-      const hit = rayHitPlayer(p, dir, other, meleeRange);
-      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
+    if (friendlyFire) {
+      for (const other of Object.values(players)) {
+        if (other.id === playerId || other.dead || other.paused) continue;
+        const hit = rayHitPlayer(p, dir, other, meleeRange);
+        if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
+      }
     }
     // Knife slash tracer — short line in front of player
     const slashEnd = { x: p.x + dir.x * meleeRange, y: p.y + dir.y * meleeRange, z: p.z + dir.z * meleeRange };
@@ -477,17 +480,19 @@ function handleShoot(playerId) {
   for (let pellet = 0; pellet < pellets; pellet++) {
     const dir = getLookDir(p, spread);
     let closestHit = null, closestDist = CONFIG.bulletRange;
-    let closestPlayerHit = null;
     for (const z of zombies) {
       if (z.dying || z.reviving) continue;
       const hit = rayHitZombie(p, dir, z, closestDist);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; closestPlayerHit = null; }
     }
-    // PvP — check for player hits
-    for (const other of Object.values(players)) {
-      if (other.id === playerId || other.dead || other.paused) continue;
-      const hit = rayHitPlayer(p, dir, other, closestDist);
-      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
+    // PvP — check for player hits (only if friendly fire is on)
+    let closestPlayerHit = null;
+    if (friendlyFire) {
+      for (const other of Object.values(players)) {
+        if (other.id === playerId || other.dead || other.paused) continue;
+        const hit = rayHitPlayer(p, dir, other, closestDist);
+        if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
+      }
     }
     // Tracer endpoint
     const hitSomething = closestHit !== null || closestPlayerHit !== null;
@@ -1376,7 +1381,7 @@ function gameLoop() {
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
-    wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
+    wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
     zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
   };
   io.emit('state', state);
@@ -1492,6 +1497,10 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || p.dead) return;
     p.shopOpen = !p.shopOpen;
+  });
+  socket.on('toggleFriendlyFire', () => {
+    friendlyFire = !friendlyFire;
+    broadcastKillFeed(friendlyFire ? 'Friendly fire ON — PvP enabled!' : 'Friendly fire OFF — PvE only');
   });
   socket.on('toggleAutoFire', () => {
     const p = players[socket.id];

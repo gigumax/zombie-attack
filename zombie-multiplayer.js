@@ -165,6 +165,9 @@ class ZombieMultiplayerClient {
       }
       this.serverState = state;
       this.myPlayer = state.players.find(p => p.id === this.myId);
+      // PvP indicator
+      const pvpEl = document.getElementById('pvp-indicator');
+      if (pvpEl) pvpEl.style.display = state.friendlyFire ? 'block' : 'none';
       // Show/hide pause overlay
       const pauseEl = document.getElementById('pause-overlay');
       if (this.myPlayer && this.myPlayer.pau) {
@@ -442,6 +445,7 @@ class ZombieMultiplayerClient {
         e.preventDefault();
       }
       if (e.code === 'KeyB' && this.playing) { this.socket.emit('toggleShop'); e.preventDefault(); }
+      if (e.code === 'F4' && this.playing) { this.socket.emit('toggleFriendlyFire'); e.preventDefault(); }
       if (e.code === 'KeyG' && this.playing) this.socket.emit('toggleAutoFire');
       if (e.code === 'Digit2' && this.playing) this.socket.emit('switchGun', 'knife');
       if (e.code === 'Digit3' && this.playing) this.socket.emit('switchGun', 'katana');
