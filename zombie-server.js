@@ -238,6 +238,8 @@ function killZombie(zombie, killerId) {
   zombie.dying = true;
   zombie.deathTimer = 10;
   zombie.dead = true;
+  zombie.corpseVx = 0;
+  zombie.corpseVz = 0;
   // Creepy zombies can revive if a player goes near their corpse
   if (zombie.type === 'creepy' && !zombie.isBoss) {
     zombie.canRevive = true;
@@ -870,6 +872,36 @@ function updateZombies(dt) {
     const z = zombies[i];
     if (z.dying) {
       z.deathTimer -= dt;
+      // Corpse physics — apply velocity and friction
+      if (z.corpseVx || z.corpseVz) {
+        z.x += z.corpseVx * dt;
+        z.z += z.corpseVz * dt;
+        z.corpseVx *= 0.92; // friction
+        z.corpseVz *= 0.92;
+        if (Math.abs(z.corpseVx) < 0.1) z.corpseVx = 0;
+        if (Math.abs(z.corpseVz) < 0.1) z.corpseVz = 0;
+        // Keep corpse in bounds
+        const half = CONFIG.worldSize - 1;
+        z.x = Math.max(-half, Math.min(half, z.x));
+        z.z = Math.max(-half, Math.min(half, z.z));
+      }
+      // Player kicks corpse when walking into it
+      for (const p of Object.values(players)) {
+        if (p.dead || p.paused) continue;
+        const d = Math.hypot(p.x - z.x, p.z - z.z);
+        const kickRange = 1.2;
+        if (d < kickRange && d > 0.01) {
+          // Push corpse away from player
+          const kx = (z.x - p.x) / d;
+          const kz = (z.z - p.z) / d;
+          const kickForce = 8;
+          z.corpseVx += kx * kickForce;
+          z.corpseVz += kz * kickForce;
+          // Also push player back slightly
+          p.x -= kx * 0.1;
+          p.z -= kz * 0.1;
+        }
+      }
       // Creepy zombie revive — if a player walks near the corpse, it gets back up creepier
       if (z.canRevive && z.deathTimer > 0) {
         for (const p of Object.values(players)) {

@@ -826,7 +826,7 @@ class ZombieMultiplayerClient {
         this.scene.add(mesh);
         this.zombieMeshes[z.id] = mesh;
       }
-      // Interpolate position (skip for dying zombies — they stay put)
+      // Interpolate position (dying zombies can still be kicked around)
       if (!z.dy) {
         const prev = this.prevPositions.zombies[z.id];
         if (prev) {
@@ -837,6 +837,17 @@ class ZombieMultiplayerClient {
         } else {
           mesh.position.set(z.x, 0, z.z);
           mesh.rotation.y = z.r || 0;
+        }
+      } else {
+        // Dying zombie — still update position for corpse kicking
+        const prev = this.prevPositions.zombies[z.id];
+        if (prev) {
+          const t = Math.min(this.interpAlpha, 1);
+          mesh.position.x = prev.x + (z.x - prev.x) * t;
+          mesh.position.z = prev.z + (z.z - prev.z) * t;
+        } else {
+          mesh.position.x = z.x;
+          mesh.position.z = z.z;
         }
       }
       // Walk animation — legs, arms, head bob, torso sway
