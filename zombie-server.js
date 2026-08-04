@@ -240,8 +240,8 @@ function killZombie(zombie, killerId) {
   zombie.dead = true;
   zombie.corpseVx = 0;
   zombie.corpseVz = 0;
-  // Creepy zombies can revive if a player goes near their corpse
-  if (zombie.type === 'creepy' && !zombie.isBoss) {
+  // Creepy zombies can revive if a player goes near their corpse — only once
+  if (zombie.type === 'creepy' && !zombie.isBoss && !zombie.hasRevived) {
     zombie.canRevive = true;
     zombie.reviveCount = zombie.reviveCount || 0;
   }
@@ -912,6 +912,7 @@ function updateZombies(dt) {
             z.dying = false;
             z.dead = false;
             z.canRevive = false;
+            z.hasRevived = true;
             z.reviveCount = (z.reviveCount || 0) + 1;
             z.health = z.maxHealth * (1 + z.reviveCount * 0.8);
             z.maxHealth = z.health;
