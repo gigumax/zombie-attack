@@ -1076,6 +1076,7 @@ function updateZombies(dt) {
           target.health -= z.damage;
           if (target.health <= 0) { target.health = 0; target.dead = true; }
           z.slamEffect = 1;
+          z.attacking = 1; // visual: mouth open + head shake
         }
       } else {
         // NORMAL — lunge attack: quick burst toward player, bite
@@ -1212,11 +1213,13 @@ function gameLoop() {
         rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,
         chg: z.charging ? 1 : 0, slm: z.slamEffect ? 1 : 0, rng: z.rangedEffect ? 1 : 0,
         crk: z.crackEffect ? 1 : 0, cdx: z.crackDx || 0, cdz: z.crackDz || 0, clen: z.crackLength || 0,
+        atk: z.attacking ? 1 : 0,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;
       if (z.rangedEffect) z.rangedEffect = 0;
       if (z.crackEffect) z.crackEffect = 0;
+      if (z.attacking) z.attacking = 0;
       if (z.dying) {
         return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
       }

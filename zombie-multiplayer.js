@@ -55,6 +55,7 @@ class ZombieMultiplayerClient {
     this.playing = false;
     this.kidFriendly = false;
     this.playerEmoji = '😀';
+    this.cameraShake = 0;
     this._seenEff = new Set();
 
     // Input
@@ -679,12 +680,24 @@ class ZombieMultiplayerClient {
     const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.1*scale, 6, 6), glowMat);
     glowL.position.set(-0.12*scale,1.95*scale,0.28*scale); group.add(glowL);
     const glowR = glowL.clone(); glowR.position.x = 0.12*scale; group.add(glowR);
-    // Jagged fangs
+    // Jagged fangs — upper jaw (fixed) and lower jaw (moves to open mouth)
     const fangMat = new THREE.MeshBasicMaterial({color:0xcccccc});
+    const jawGroup = new THREE.Group();
+    // Upper fangs (fixed to head)
     for (let i = -2; i <= 2; i++) {
       const fang = new THREE.Mesh(new THREE.ConeGeometry(0.03*scale, 0.1*scale, 3), fangMat);
       fang.position.set(i * 0.06*scale, 1.65*scale, 0.25*scale); fang.rotation.x = Math.PI; group.add(fang);
     }
+    // Lower jaw with bottom fangs — pivots to open mouth
+    const jawMat = new THREE.MeshLambertMaterial({color:0x0a0a0a, emissive:0x000033, emissiveIntensity:0.3});
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.35*scale, 0.15*scale, 0.3*scale), jawMat);
+    jaw.position.set(0, 1.55*scale, 0.22*scale); jawGroup.add(jaw);
+    for (let i = -2; i <= 2; i++) {
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(0.03*scale, 0.1*scale, 3), fangMat);
+      fang.position.set(i * 0.06*scale, 1.5*scale, 0.25*scale); fang.rotation.x = 0; jawGroup.add(fang);
+    }
+    jawGroup.position.set(0, 1.7*scale, 0.25*scale); // pivot at top of jaw
+    group.add(jawGroup);
     // Hunched torso
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.8*scale,0.3*scale), darkMat);
     torso.position.y = 1.2*scale; torso.rotation.x = 0.12; torso.castShadow = true; group.add(torso);
@@ -720,7 +733,7 @@ class ZombieMultiplayerClient {
       spike.rotation.x = -0.3;
       group.add(spike);
     }
-    group.userData = { armL, armR, legL, legR, head };
+    group.userData = { armL, armR, legL, legR, head, jawGroup, isCreepy: true };
     return group;
   }
 
@@ -820,6 +833,38 @@ class ZombieMultiplayerClient {
             child.material.emissiveIntensity = 0;
           }
         });
+      }
+      // Creepy zombie attack animation — mouth chomp + head shake
+      if (z.atk && ud.isCreepy) {
+        ud.attackAnim = 0.5; // 0.5s attack animation
+      }
+      if (ud.attackAnim && ud.attackAnim > 0) {
+        ud.attackAnim -= dt;
+        const atkT = performance.now() / 1000;
+        // Mouth chomp — open and close rapidly
+        if (ud.jawGroup) {
+          ud.jawGroup.rotation.x = Math.abs(Math.sin(atkT * 25)) * 0.5; // rapid open/close
+        }
+        // Head shake — rapid side-to-side
+        if (ud.head) {
+          if (!ud.head.userData.baseRotZ) ud.head.userData.baseRotZ = 0;
+          ud.head.rotation.z = Math.sin(atkT * 30) * 0.15; // rapid shake
+          ud.head.rotation.y = Math.sin(atkT * 28) * 0.1;
+        }
+      } else if (ud.isCreepy) {
+        // Reset mouth and head when not attacking
+        if (ud.jawGroup) {
+          ud.jawGroup.rotation.x *= 0.8; // ease back to closed
+        }
+        if (ud.head && ud.head.rotation.z !== 0 && !z.rvv) {
+          ud.head.rotation.z *= 0.8;
+          ud.head.rotation.y *= 0.8;
+        }
+      }
+      // Camera shake when a creepy zombie attacks you
+      if (z.atk && this.myPlayer) {
+        const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
+        if (d < 4) this.cameraShake = 0.4;
       }
       if (z.dy) {
         // Dying zombie — fall immediately
@@ -1055,6 +1100,18 @@ class ZombieMultiplayerClient {
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = this.yaw;
       this.camera.rotation.x = this.pitch;
+
+      // Camera shake from creepy zombie attacks
+      if (this.cameraShake > 0) {
+        this.cameraShake -= dt;
+        const shakeT = performance.now() / 1000;
+        const shakeAmt = this.cameraShake * 0.15;
+        this.camera.position.x += Math.sin(shakeT * 40) * shakeAmt;
+        this.camera.position.y += Math.cos(shakeT * 35) * shakeAmt;
+        this.camera.rotation.z = Math.sin(shakeT * 45) * shakeAmt;
+      } else {
+        this.camera.rotation.z = 0;
+      }
 
       // Gun recoil
       this.gun.position.z = -0.5 + (this.myPlayer.gr || 0);
