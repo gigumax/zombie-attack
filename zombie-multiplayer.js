@@ -1090,16 +1090,33 @@ class ZombieMultiplayerClient {
     body.position.y = 1.15; body.castShadow = true; group.add(body);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), headMat);
     head.position.y = 1.85; head.castShadow = true; group.add(head);
-    // Face — eyes
+    // Face — emoji-style eyes and mouth (smile in kid mode, frown in normal)
+    const kid = this.kidFriendly;
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.02), eyeMat);
-    eyeL.position.set(-0.08, 1.9, 0.21); group.add(eyeL);
+    // Eyes — round dots (bigger/cuter in kid mode)
+    const eyeSize = kid ? 0.05 : 0.045;
+    const eyeL = new THREE.Mesh(new THREE.CircleGeometry(eyeSize, 12), eyeMat);
+    eyeL.position.set(-0.08, 1.92, 0.201); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.08; group.add(eyeR);
-    // Face — smile (curved mouth using small boxes)
+    // Eyebrows in normal mode (serious look)
+    if (!kid) {
+      const browMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+      const browL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.015, 0.02), browMat);
+      browL.position.set(-0.08, 1.99, 0.201); browL.rotation.z = -0.15; group.add(browL);
+      const browR = browL.clone(); browR.position.x = 0.08; browR.rotation.z = 0.15; group.add(browR);
+    }
+    // Mouth — smile (curve up at sides) in kid mode, frown (curve down) in normal
     const mouthMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    const mouthSegs = kid ? 5 : 5;
     for (let i = -2; i <= 2; i++) {
-      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.02), mouthMat);
-      seg.position.set(i * 0.04, 1.78 - Math.abs(i) * 0.015, 0.21);
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.02), mouthMat);
+      if (kid) {
+        // Smile — center lower, corners higher
+        seg.position.set(i * 0.04, 1.78 + (Math.abs(i) - 1) * 0.02, 0.201);
+      } else {
+        // Frown — center higher, corners lower
+        seg.position.set(i * 0.04, 1.78 - (Math.abs(i) - 1) * 0.02, 0.201);
+      }
       group.add(seg);
     }
     const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
