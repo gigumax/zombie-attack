@@ -803,9 +803,10 @@ class ZombieMultiplayerClient {
     canvas.width = 64; canvas.height = 8;
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
-    sprite.scale.set(1.0, 0.12, 1);
+    sprite.scale.set(0.7, 0.08, 1);
     sprite.position.set(0, yOffset, 0);
-    sprite.userData = { canvas, tex, healthBar: true };
+    sprite.visible = false;
+    sprite.userData = { canvas, tex, healthBar: true, lastHitTime: 0 };
     return sprite;
   }
 
@@ -967,13 +968,24 @@ class ZombieMultiplayerClient {
         const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
         if (d < 5) this.cameraShake = 0.4;
       }
-      // Update health bar
+      // Update health bar — only show when recently attacked
       if (ud.healthBar) {
         if (z.dy) {
           ud.healthBar.visible = false;
         } else {
-          ud.healthBar.visible = true;
-          this.updateHealthBar(ud.healthBar, z.hp || 0, z.mhp || 1);
+          const prevHp = ud.lastHp;
+          const nowSec = performance.now() / 1000;
+          if (prevHp !== undefined && z.hp < prevHp) {
+            ud.healthBar.userData.lastHitTime = nowSec;
+          }
+          ud.lastHp = z.hp;
+          const sinceHit = nowSec - (ud.healthBar.userData.lastHitTime || 0);
+          if (sinceHit < 3) {
+            ud.healthBar.visible = true;
+            this.updateHealthBar(ud.healthBar, z.hp || 0, z.mhp || 1);
+          } else {
+            ud.healthBar.visible = false;
+          }
         }
       }
       if (z.dy) {
@@ -1199,9 +1211,21 @@ class ZombieMultiplayerClient {
         mesh.userData.nameTag.position.set(0, 2.5, 0);
         mesh.userData.nameTag.lookAt(this.camera.position);
       }
-      // Health bar
+      // Health bar — only show when recently attacked
       if (ud.healthBar) {
-        this.updateHealthBar(ud.healthBar, p.h || 100, p.mhp || 100);
+        const prevHp = ud.lastHp;
+        const nowSec = performance.now() / 1000;
+        if (prevHp !== undefined && p.h < prevHp) {
+          ud.healthBar.userData.lastHitTime = nowSec;
+        }
+        ud.lastHp = p.h;
+        const sinceHit = nowSec - (ud.healthBar.userData.lastHitTime || 0);
+        if (sinceHit < 3) {
+          ud.healthBar.visible = true;
+          this.updateHealthBar(ud.healthBar, p.h || 100, p.mhp || 100);
+        } else {
+          ud.healthBar.visible = false;
+        }
       }
     }
     for (const id of Object.keys(this.otherPlayerMeshes)) {
