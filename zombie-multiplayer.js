@@ -1085,36 +1085,43 @@ class ZombieMultiplayerClient {
         ud.gunGroup.visible = !pIsMelee && !p.dead;
         const twoHanded = pGunName === 'rifle' || pGunName === 'smg' || pGunName === 'shotgun';
         // Adjust left hand on gun for two-handed weapons
-        if (ud.gunGroup.userData.handL) {
+        if (ud.gunGroup.userData && ud.gunGroup.userData.handL) {
           if (twoHanded) {
             ud.gunGroup.userData.handL.position.set(0, -0.03, -0.45);
           } else {
             ud.gunGroup.userData.handL.position.set(0, -0.03, -0.3);
           }
         }
-        // Reload animation for other players — dip gun and raise arms
+        // Reload animation for other players — dip gun down to reload
         if (p.r === 1 && !pIsMelee) {
           const rT = performance.now() / 1000;
           const dip = Math.sin(Math.min(rT * 3, Math.PI)) * 0.15;
-          ud.gunGroup.position.y = 1.2 - dip;
-          ud.gunGroup.rotation.x = -Math.PI / 2 + dip * 2;
-          if (ud.armR) ud.armR.rotation.x = -1.2 + dip * 3;
+          ud.gunGroup.position.set(0.45, 1.25 - dip, 0.1);
+          ud.gunGroup.rotation.x = -0.15 - dip * 0.5; // dip down for reload
+          if (ud.armR) ud.armR.rotation.x = -1.2 - dip;
           if (ud.armL) {
             if (twoHanded) {
-              ud.armL.rotation.x = -1.4 + dip * 4;
-              ud.armL.rotation.z = 0.3 + dip * 0.3;
+              ud.armL.rotation.x = -1.4 - dip * 0.5;
+              ud.armL.rotation.z = 0.3;
             } else {
-              ud.armL.rotation.x = -0.8 + dip * 3;
+              ud.armL.rotation.x = -0.8 - dip * 0.3;
               ud.armL.rotation.z = 0;
             }
           }
         } else {
-          ud.gunGroup.position.y = 1.2;
-          ud.gunGroup.rotation.x = -Math.PI / 2;
-          if (twoHanded) {
-            if (ud.armL) {
+          // Idle / walking — gun held forward and up
+          ud.gunGroup.position.set(0.45, 1.25, 0.1);
+          ud.gunGroup.rotation.x = -0.15; // barrel forward, slight upward aim
+          // Right arm holds gun
+          if (ud.armR) ud.armR.rotation.x = -1.2;
+          // Left arm: two-handed weapons hold barrel, pistol swings free
+          if (ud.armL) {
+            if (twoHanded) {
               ud.armL.rotation.x = -1.3;
               ud.armL.rotation.z = 0.4;
+            } else {
+              ud.armL.rotation.x = 0;
+              ud.armL.rotation.z = 0;
             }
           }
         }
@@ -1328,7 +1335,7 @@ class ZombieMultiplayerClient {
     const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
     const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(-0.4, 1.15, 0); armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(0.4, 1.15, 0); armR.castShadow = true; group.add(armR);
-    // Gun in right hand
+    // Gun in right hand — held forward and slightly up
     const gunGroup = new THREE.Group();
     const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, 0.6), new THREE.MeshLambertMaterial({color:0x2a2a2a}));
     gunGroup.add(gunBody);
@@ -1343,9 +1350,9 @@ class ZombieMultiplayerClient {
     const handL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
     handL.position.set(0, -0.03, -0.3); gunGroup.add(handL);
     gunGroup.userData = { handL };
-    // Position gun in right hand area, pointing forward
-    gunGroup.position.set(0.4, 1.2, -0.3);
-    gunGroup.rotation.x = -Math.PI / 2; // lay gun forward
+    // Position gun in right hand, pointing forward (barrel along -z) and slightly upward
+    gunGroup.position.set(0.45, 1.25, 0.1);
+    gunGroup.rotation.x = -0.15; // slight upward aim
     group.add(gunGroup);
     const legGeo = new THREE.BoxGeometry(0.22, 0.75, 0.22);
     const legL = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color:0x2a2a4a})); legL.position.set(-0.15, 0.375, 0); legL.castShadow = true; group.add(legL);
