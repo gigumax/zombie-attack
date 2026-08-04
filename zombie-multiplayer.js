@@ -1497,9 +1497,15 @@ class ZombieMultiplayerClient {
     const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
     if (len < 0.1) return;
     const cfg = ZombieMultiplayerClient.GUN_TRACER[gunName] || ZombieMultiplayerClient.GUN_TRACER.pistol;
-    const geo = new THREE.CylinderGeometry(cfg.radius, cfg.radius, len, 6);
+    // Round length to reduce unique geometries
+    const roundedLen = Math.round(len * 10) / 10;
+    if (!this._tracerGeoCache) this._tracerGeoCache = {};
+    const cacheKey = `${cfg.radius}_${roundedLen}`;
+    if (!this._tracerGeoCache[cacheKey]) {
+      this._tracerGeoCache[cacheKey] = new THREE.CylinderGeometry(cfg.radius, cfg.radius, roundedLen, 6);
+    }
     const mat = new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.9 });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(this._tracerGeoCache[cacheKey], mat);
     mesh.position.set((x1+x2)/2, (y1+y2)/2, (z1+z2)/2);
     mesh.lookAt(x2, y2, z2);
     mesh.rotateX(Math.PI / 2);
@@ -1778,9 +1784,9 @@ class ZombieMultiplayerClient {
   }
 
   spawnImpactHole(x, y, z, zid) {
-    // Limit total holes to prevent lag
-    const holeCount = this.bullets.filter(b => b.isHole).length;
-    if (holeCount >= 30) {
+    // Limit total holes using a counter instead of filter scan
+    if (!this._holeCount) this._holeCount = 0;
+    if (this._holeCount >= 30) {
       // Remove oldest hole
       for (let i = 0; i < this.bullets.length; i++) {
         if (this.bullets[i].isHole) {
@@ -1788,22 +1794,24 @@ class ZombieMultiplayerClient {
           if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
           b.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
           this.bullets.splice(i, 1);
+          this._holeCount--;
           break;
         }
       }
     }
-    // Impact decal — red in normal, blue in kid mode
-    const group = new THREE.Group();
+    // Reuse shared geometries to reduce GC pressure
+    if (!this._holeGeo) this._holeGeo = new THREE.SphereGeometry(0.08, 6, 6);
+    if (!this._ringGeo) this._ringGeo = new THREE.CircleGeometry(0.2, 8);
     const holeColor = this.kidFriendly ? 0x3366cc : 0xcc0000;
+    const ringColor = this.kidFriendly ? 0x3366cc : 0xaa0000;
+    const group = new THREE.Group();
     const holeMat = new THREE.MeshBasicMaterial({ color: holeColor, transparent: true, opacity: 1 });
     holeMat.userData.baseOpacity = 1;
-    const hole = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), holeMat);
+    const hole = new THREE.Mesh(this._holeGeo, holeMat);
     group.add(hole);
-    // Red splatter ring
-    const ringColor = this.kidFriendly ? 0x3366cc : 0xaa0000;
     const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
     ringMat.userData.baseOpacity = 0.7;
-    const ring = new THREE.Mesh(new THREE.CircleGeometry(0.2, 8), ringMat);
+    const ring = new THREE.Mesh(this._ringGeo, ringMat);
     // If near ground, lay flat; otherwise face outward
     if (y < 0.3) {
       ring.rotation.x = -Math.PI / 2;
@@ -1826,6 +1834,7 @@ class ZombieMultiplayerClient {
       this.scene.add(group);
     }
     this.bullets.push({ mesh: group, life: 2.0, maxLife: 2.0, isHole: true });
+    this._holeCount = (this._holeCount || 0) + 1;
   }
 
   updateBullets(dt) {
@@ -1836,10 +1845,15 @@ class ZombieMultiplayerClient {
         // Remove from whatever parent it's attached to (scene or zombie mesh)
         if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
         if (b.isHole) {
-          // Dispose group children
-          b.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
-        } else {
+          // Dispose group children (materials only — geometries are shared)
+          b.mesh.children.forEach(c => { c.material.dispose(); });
+          if (this._holeCount) this._holeCount--;
+        } else if (b.isParticle || b.isLimb || b.isExplosion || b.isShockwave || b.isCrackGlow) {
+          // These create their own geometries — dispose them
           b.mesh.geometry.dispose();
+          b.mesh.material.dispose();
+        } else {
+          // Tracers use shared cached geometries — only dispose material
           b.mesh.material.dispose();
         }
         this.bullets.splice(i, 1);
