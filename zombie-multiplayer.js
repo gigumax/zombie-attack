@@ -1110,15 +1110,16 @@ class ZombieMultiplayerClient {
         this.scene.add(mesh);
         this.otherPlayerMeshes[p.id] = mesh;
       }
-      // Interpolate position — mesh origin is at feet (y=0), server sends camera height (y=1.7)
+      // Interpolate position — server sends camera height (y=1.7 on ground, higher when jumping)
       const prev = this.prevPositions.players[p.id];
       if (prev) {
         const t = Math.min(this.interpAlpha, 1);
         mesh.position.x = prev.x + (p.x - prev.x) * t;
         mesh.position.z = prev.z + (p.z - prev.z) * t;
-        mesh.position.y = 0; // always at ground level
+        const feetY = (prev.y + (p.y - prev.y) * t) - 1.7;
+        mesh.position.y = Math.max(0, feetY);
       } else {
-        mesh.position.set(p.x, 0, p.z);
+        mesh.position.set(p.x, Math.max(0, p.y - 1.7), p.z);
       }
       mesh.rotation.y = p.yaw + Math.PI;
       mesh.visible = !p.dead;

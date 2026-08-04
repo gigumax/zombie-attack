@@ -1370,11 +1370,15 @@ io.on('connection', (socket) => {
   socket.on('togglePause', () => {
     const p = players[socket.id];
     if (!p || p.dead) return;
-    p.paused = !p.paused;
-    if (p.paused) {
-      p.keys = {}; // clear movement keys
-      p.reloading = false;
-      p.autoFire = false;
+    const newPaused = !p.paused;
+    // Pause/unpause ALL players
+    for (const pl of Object.values(players)) {
+      pl.paused = newPaused;
+      if (newPaused) {
+        pl.keys = {};
+        pl.reloading = false;
+        pl.autoFire = false;
+      }
     }
   });
 
