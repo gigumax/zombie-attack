@@ -237,6 +237,11 @@ function killZombie(zombie, killerId) {
   zombie.dying = true;
   zombie.deathTimer = 10;
   zombie.dead = true;
+  // Creepy zombies can revive if a player goes near their corpse
+  if (zombie.type === 'creepy' && !zombie.isBoss) {
+    zombie.canRevive = true;
+    zombie.reviveCount = zombie.reviveCount || 0;
+  }
 
   let score = 10 * wave, goldDrop = 5 + Math.floor(Math.random()*10) + wave;
   if (zombie.isBoss) { score = 200 * wave; goldDrop = 100 + wave * 20; }
@@ -859,11 +864,37 @@ function updatePlayer(p, dt) {
 
 // ─── Zombie AI ───
 function updateZombies(dt) {
-  // Remove expired dying zombies
+  // Remove expired dying zombies / revive creepy zombies when player is near
   for (let i = zombies.length - 1; i >= 0; i--) {
-    if (zombies[i].dying) {
-      zombies[i].deathTimer -= dt;
-      if (zombies[i].deathTimer <= 0) zombies.splice(i, 1);
+    const z = zombies[i];
+    if (z.dying) {
+      z.deathTimer -= dt;
+      // Creepy zombie revive — if a player walks near the corpse, it gets back up creepier
+      if (z.canRevive && z.deathTimer > 0) {
+        for (const p of Object.values(players)) {
+          if (p.dead) continue;
+          const d = Math.hypot(p.x - z.x, p.z - z.z);
+          if (d < 3.0) {
+            // Revive!
+            z.dying = false;
+            z.dead = false;
+            z.canRevive = false;
+            z.reviveCount = (z.reviveCount || 0) + 1;
+            z.health = z.maxHealth * (1 + z.reviveCount * 0.8);
+            z.maxHealth = z.health;
+            z.damage *= 1.5;
+            z.speed *= 1.2;
+            z.lostLimbs = {};
+            z.limbDamage = {};
+            z.attackTimer = 1.0; // brief delay before attacking
+            z.specialAttackTimer = 2 + Math.random();
+            broadcastKillFeed(anyKidFriendly() ? `A spooky zombie got back up... creepier! (Round ${z.reviveCount})` : `CREEPY ZOMBIE REVIVED — EVEN CREEPIER! (Phase ${z.reviveCount})`);
+            break;
+          }
+        }
+      } else if (z.deathTimer <= 0) {
+        zombies.splice(i, 1);
+      }
     }
   }
 
@@ -1226,6 +1257,7 @@ function gameLoop() {
         crk: z.crackEffect ? 1 : 0, cdx: z.crackDx || 0, cdz: z.crackDz || 0, clen: z.crackLength || 0,
         atk: z.attacking ? 1 : 0,
         cmb: z.inCombat ? 1 : 0,
+        crv: z.reviveCount || 0,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;

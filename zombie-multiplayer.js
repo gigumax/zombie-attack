@@ -661,22 +661,24 @@ class ZombieMultiplayerClient {
     return this.createBuffZombieMesh();
   }
 
-  createCreepyZombieMesh() {
+  createCreepyZombieMesh(reviveCount = 0) {
     if (this.kidFriendly) return this.createZombieMesh(); // kid-friendly: no creepy zombies, use normal
     const group = new THREE.Group();
-    const scale = 1.15;
-    // Creepy zombie — pitch black skin, glowing white eyes, long limbs
-    const skinMat = new THREE.MeshLambertMaterial({color:0x0a0a0a, emissive:0x000033, emissiveIntensity:0.3});
-    const darkMat = new THREE.MeshLambertMaterial({color:0x050505});
+    const scale = 1.15 + reviveCount * 0.15; // bigger each revival
+    // Creepy zombie — gets darker and more menacing with each revival
+    const darkness = Math.max(0, 0x0a0a0a - reviveCount * 0x020202);
+    const skinMat = new THREE.MeshLambertMaterial({color: darkness, emissive: reviveCount > 0 ? 0x110000 : 0x000033, emissiveIntensity: 0.3 + reviveCount * 0.1});
+    const darkMat = new THREE.MeshLambertMaterial({color: Math.max(0, 0x050505 - reviveCount * 0x010101)});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.5*scale,0.6*scale,0.5*scale), skinMat);
     head.position.y = 1.9*scale; head.castShadow = true; head.rotation.x = 0.15; group.add(head);
-    // Glowing white eyes
-    const eyeMat = new THREE.MeshBasicMaterial({color:0xffffff});
+    // Glowing eyes — shift from white to red with each revival
+    const eyeColor = reviveCount === 0 ? 0xffffff : reviveCount === 1 ? 0xff8888 : reviveCount === 2 ? 0xff4444 : 0xff0000;
+    const eyeMat = new THREE.MeshBasicMaterial({color: eyeColor});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.14*scale,0.14*scale,0.06*scale), eyeMat);
     eyeL.position.set(-0.12*scale,1.95*scale,0.27*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.12*scale; group.add(eyeR);
-    // Glowing eye glow halos
-    const glowMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0.3});
+    // Glowing eye glow halos — match eye color
+    const glowMat = new THREE.MeshBasicMaterial({color: eyeColor, transparent:true, opacity:0.3 + reviveCount * 0.1});
     const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.1*scale, 6, 6), glowMat);
     glowL.position.set(-0.12*scale,1.95*scale,0.28*scale); group.add(glowL);
     const glowR = glowL.clone(); glowR.position.x = 0.12*scale; group.add(glowR);
@@ -725,11 +727,12 @@ class ZombieMultiplayerClient {
       drip.position.set((Math.random()-0.5)*0.4*scale, 0.9*scale + Math.random()*0.4*scale, 0.18*scale);
       group.add(drip);
     }
-    // Spikes on back
-    const spikeMat = new THREE.MeshBasicMaterial({color:0x1a1a1a});
-    for (let i = 0; i < 4; i++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05*scale, 0.25*scale, 4), spikeMat);
-      spike.position.set(0, 1.5*scale - i*0.2*scale, -0.2*scale);
+    // Spikes on back — more spikes with each revival
+    const spikeMat = new THREE.MeshBasicMaterial({color: reviveCount > 0 ? 0x330000 : 0x1a1a1a});
+    const spikeCount = 4 + reviveCount * 2;
+    for (let i = 0; i < spikeCount; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.05*scale, 0.25*scale + reviveCount * 0.03, 4), spikeMat);
+      spike.position.set(0, 1.5*scale - i*0.18*scale, -0.2*scale);
       spike.rotation.x = -0.3;
       group.add(spike);
     }
@@ -737,12 +740,12 @@ class ZombieMultiplayerClient {
     return group;
   }
 
-  createZombieMeshByType(type, isBoss, revivePhase = 0) {
+  createZombieMeshByType(type, isBoss, revivePhase = 0, creepyRevive = 0) {
     if (isBoss) return this.createZombieMesh(true, revivePhase);
     if (type === 'buff') return this.createBuffZombieMesh();
     if (type === 'skeleton') return this.createSkeletonMesh();
     if (type === 'guard') return this.createGuardMesh();
-    if (type === 'creepy') return this.createCreepyZombieMesh();
+    if (type === 'creepy') return this.createCreepyZombieMesh(creepyRevive);
     return this.createZombieMesh();
   }
 
@@ -764,8 +767,14 @@ class ZombieMultiplayerClient {
         this.scene.remove(mesh);
         mesh = null;
       }
+      // Recreate creepy zombie mesh if creepy revive count changed
+      if (mesh && TYPE_MAP[z.t] === 'creepy' && mesh.userData.creepyRevive !== (z.crv || 0)) {
+        this.scene.remove(mesh);
+        mesh = null;
+      }
       if (!mesh) {
-        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0);
+        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0);
+        if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         this.scene.add(mesh);
         this.zombieMeshes[z.id] = mesh;
       }
