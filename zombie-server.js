@@ -849,11 +849,12 @@ function updatePlayer(p, dt) {
         p.y = newY;
         p.vy = 0;
         p.onGround = true;
-      } else if (feetHeight < obsHeight) {
-        // Player is beside the obstacle — push out horizontally
+      } else if (feetHeight < obsHeight && p.vy <= 0) {
+        // Player is beside the obstacle (on ground or falling) — push out horizontally
         if (Math.abs(dx) > Math.abs(dz)) p.x = obs.x + Math.sign(dx) * minDistX;
         else p.z = obs.z + Math.sign(dz) * minDistZ;
       }
+      // If vy > 0 (rising/jumping), no horizontal push — let player clear the edge
     }
   }
 
