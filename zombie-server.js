@@ -124,6 +124,7 @@ function createPlayer(id) {
     items: { grenade:0, rocket:0, medkit:0, airstrike:0 },
     itemCooldown: 0,
     pendingEffects: [],
+    emoji: '😀',
   };
 }
 
@@ -1181,6 +1182,7 @@ function gameLoop() {
       dead: p.dead ? 1 : 0, em: p.escapeMode ? 1 : 0, es: p.escapeStep,
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
+      emo: p.emoji || '😀',
       it: p.items, icd: +p.itemCooldown.toFixed(2),
       eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
         if (e.type === 'grenade') return { t:'g', x:+e.x.toFixed(2), z:+e.z.toFixed(2), tm:+e.timer.toFixed(2) };
@@ -1253,6 +1255,10 @@ io.on('connection', (socket) => {
   socket.on('setKidFriendly', (val) => {
     const p = players[socket.id];
     if (p) p.kidFriendly = !!val;
+  });
+  socket.on('setEmoji', (val) => {
+    const p = players[socket.id];
+    if (p && typeof val === 'string' && val.length <= 4) p.emoji = val;
   });
 
   socket.on('input', (data) => {
