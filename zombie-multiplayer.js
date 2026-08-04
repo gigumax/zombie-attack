@@ -1832,8 +1832,28 @@ class ZombieMultiplayerClient {
 
     // Inventory bar
     const invBar = document.getElementById('inventory-bar');
+    const wpnBar = document.getElementById('weapon-bar');
     if (this.playing) {
       invBar.style.display = 'flex';
+      wpnBar.style.display = 'flex';
+      // Weapon hotbar
+      const ownedGuns = this.playerMeta.ownedGuns || { knife: true, pistol: true };
+      const gunIcons = { pistol: '🔫', knife: '🔪', katana: '🗡️', smg: '🔫', shotgun: '🔫', rifle: '🔫' };
+      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6' };
+      const gunOrder = ['pistol','knife','katana','smg','shotgun','rifle'];
+      let wpnHtml = '';
+      for (const key of gunOrder) {
+        if (!ownedGuns[key]) continue;
+        const equipped = p.gun === key;
+        const name = GUNS[key] ? GUNS[key].name : key;
+        wpnHtml += `<div class="wpn-slot${equipped ? ' equipped' : ' owned'}">`;
+        wpnHtml += `<span class="wpn-key">${gunKeys[key]}</span>`;
+        wpnHtml += `<span class="wpn-icon">${gunIcons[key]}</span>`;
+        wpnHtml += `<span class="wpn-name">${name}</span>`;
+        wpnHtml += '</div>';
+      }
+      wpnBar.innerHTML = wpnHtml;
+      // Items
       const items = p.it || { grenade:0, rocket:0, medkit:0, airstrike:0 };
       const itemIcons = { grenade: '💣', rocket: '🚀', medkit: '🩹', airstrike: '✈️' };
       const itemKeys = { grenade: 'T', rocket: 'Y', medkit: 'U', airstrike: 'I' };
@@ -1853,6 +1873,7 @@ class ZombieMultiplayerClient {
       invBar.innerHTML = html;
     } else {
       invBar.style.display = 'none';
+      wpnBar.style.display = 'none';
     }
   }
 
