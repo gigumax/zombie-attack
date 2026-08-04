@@ -484,6 +484,13 @@ function handleShoot(playerId) {
     if (closestHit) {
       const z = closestHit.zombie;
       const part = closestHit.part;
+      // Headshot — instant kill on regular zombies (not boss)
+      if (part === 'head' && !z.isBoss) {
+        z.health -= z.maxHealth;
+        p.shootTracers[p.shootTracers.length - 1].explode = 1; // visual pop
+        if (z.health <= 0) killZombie(z, playerId);
+        continue;
+      }
       // Accumulate limb damage — 100 damage to rip off a limb
       if (part !== 'body') {
         if (!z.limbDamage) z.limbDamage = {};
@@ -573,6 +580,11 @@ function rayHitZombie(p, dir, z, maxDist) {
       const legPart = relX < 0 ? 'legL' : 'legR';
       if (!(z.lostLimbs && z.lostLimbs[legPart])) part = legPart;
     }
+  }
+  // Check head — top ~20% of zombie height
+  const headYMin = height * 0.8;
+  if (hitY >= headYMin) {
+    part = 'head';
   }
   return {
     dist: t,
