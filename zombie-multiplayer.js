@@ -1829,6 +1829,31 @@ class ZombieMultiplayerClient {
       setTimeout(() => overlay.classList.remove('hit'), 150);
     }
     this._lastHealth = p.h;
+
+    // Inventory bar
+    const invBar = document.getElementById('inventory-bar');
+    if (this.playing) {
+      invBar.style.display = 'flex';
+      const items = p.it || { grenade:0, rocket:0, medkit:0, airstrike:0 };
+      const itemIcons = { grenade: '💣', rocket: '🚀', medkit: '🩹', airstrike: '✈️' };
+      const itemKeys = { grenade: 'T', rocket: 'Y', medkit: 'U', airstrike: 'I' };
+      const itemNames = { grenade: 'Grenade', rocket: 'Rocket', medkit: 'Medkit', airstrike: 'Airstrike' };
+      const onCooldown = (p.icd || 0) > 0;
+      let html = '';
+      for (const key of ['grenade','rocket','medkit','airstrike']) {
+        const count = items[key] || 0;
+        const has = count > 0;
+        html += `<div class="inv-slot${has ? ' has-item' : ''}${onCooldown && has ? ' on-cooldown' : ''}">`;
+        html += `<span class="inv-key">${itemKeys[key]}</span>`;
+        html += `<span class="inv-icon">${has ? itemIcons[key] : '·'}</span>`;
+        html += `<span class="inv-name">${itemNames[key]}</span>`;
+        if (has) html += `<span class="inv-count">${count}</span>`;
+        html += '</div>';
+      }
+      invBar.innerHTML = html;
+    } else {
+      invBar.style.display = 'none';
+    }
   }
 
   renderKillFeed(feed) {

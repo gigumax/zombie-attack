@@ -61,6 +61,33 @@
     #damage-overlay.hit { background: rgba(231,76,60,0.4); }
     body.kid-friendly #damage-overlay.hit { background: rgba(41,128,185,0.4); }
 
+    #inventory-bar {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      display: none; gap: 8px; z-index: 10;
+    }
+    .inv-slot {
+      width: 56px; height: 56px; border-radius: 8px;
+      background: rgba(0,0,0,0.65); border: 2px solid rgba(255,255,255,0.15);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      position: relative; transition: border-color 0.15s, background 0.15s;
+    }
+    .inv-slot.has-item { border-color: rgba(255,255,255,0.4); background: rgba(0,0,0,0.75); }
+    .inv-slot.on-cooldown { opacity: 0.5; }
+    .inv-icon { font-size: 22px; line-height: 1; }
+    .inv-count {
+      position: absolute; bottom: 2px; right: 4px;
+      font-size: 13px; font-weight: 800; color: #fff;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    }
+    .inv-key {
+      position: absolute; top: 2px; left: 4px;
+      font-size: 9px; font-weight: 700; color: rgba(255,255,255,0.5);
+    }
+    .inv-name {
+      font-size: 8px; color: rgba(255,255,255,0.6); margin-top: 1px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
     .overlay {
       position: fixed; inset: 0; display: flex; flex-direction: column;
       align-items: center; justify-content: center; z-index: 20;
@@ -193,6 +220,8 @@
     <div id="health-label">HEALTH</div>
     <div id="health-bar-bg"><div id="health-bar"></div></div>
   </div>
+
+  <div id="inventory-bar"></div>
 
   <div id="kill-feed"></div>
   <div id="wave-announce"></div>
