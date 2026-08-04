@@ -445,12 +445,21 @@ function handleShoot(playerId) {
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
+    // PvP melee — check for player hits
+    let closestPlayerHit = null;
+    for (const other of Object.values(players)) {
+      if (other.id === playerId || other.dead || other.paused) continue;
+      const hit = rayHitPlayer(p, dir, other, meleeRange);
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
+    }
     // Knife slash tracer — short line in front of player
     const slashEnd = { x: p.x + dir.x * meleeRange, y: p.y + dir.y * meleeRange, z: p.z + dir.z * meleeRange };
-    p.shootTracers.push({ x1: p.x, y1: p.y - 0.2, z1: p.z, x2: slashEnd.x, y2: slashEnd.y - 0.2, z2: slashEnd.z, life: 0.1, gun: 'knife', hit: closestHit ? 1 : 0 });
+    p.shootTracers.push({ x1: p.x, y1: p.y - 0.2, z1: p.z, x2: slashEnd.x, y2: slashEnd.y - 0.2, z2: slashEnd.z, life: 0.1, gun: 'knife', hit: (closestHit || closestPlayerHit) ? 1 : 0 });
     if (closestHit) {
       closestHit.zombie.health -= damage;
       if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
+    } else if (closestPlayerHit) {
+      damagePlayer(closestPlayerHit.player, playerId, damage);
     }
     return;
   }
@@ -468,27 +477,37 @@ function handleShoot(playerId) {
   for (let pellet = 0; pellet < pellets; pellet++) {
     const dir = getLookDir(p, spread);
     let closestHit = null, closestDist = CONFIG.bulletRange;
+    let closestPlayerHit = null;
     for (const z of zombies) {
-      if (z.dying || z.reviving) continue; // can't hit dead or reviving zombies
+      if (z.dying || z.reviving) continue;
       const hit = rayHitZombie(p, dir, z, closestDist);
-      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; }
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; closestPlayerHit = null; }
+    }
+    // PvP — check for player hits
+    for (const other of Object.values(players)) {
+      if (other.id === playerId || other.dead || other.paused) continue;
+      const hit = rayHitPlayer(p, dir, other, closestDist);
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
     }
     // Tracer endpoint
-    const hitZombie = closestHit !== null;
+    const hitSomething = closestHit !== null || closestPlayerHit !== null;
     const endX = p.x + dir.x * Math.min(closestDist, CONFIG.bulletRange);
     const endY = p.y + dir.y * Math.min(closestDist, CONFIG.bulletRange);
     const endZ = p.z + dir.z * Math.min(closestDist, CONFIG.bulletRange);
-    // Check environment hit (ground at y=0 or world boundary)
     let envHit = false;
     if (endY <= 0) envHit = true;
     const halfWorld = CONFIG.worldSize - 1;
     if (Math.abs(endX) > halfWorld || Math.abs(endZ) > halfWorld) envHit = true;
-    // Start tracer from slightly below camera (gun muzzle position)
     const muzzleY = p.y - 0.3;
     const muzzleX = p.x + Math.cos(p.yaw) * 0.3;
     const muzzleZ = p.z - Math.sin(p.yaw) * 0.3;
-    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitZombie || envHit) ? 1 : 0, zid: hitZombie ? closestHit.zombie.id : -1, part: hitZombie ? closestHit.part : '', explode: 0 });
+    p.shootTracers.push({ x1: muzzleX, y1: muzzleY, z1: muzzleZ, x2: endX, y2: endY, z2: endZ, life: 0.12, gun: p.currentGun, hit: (hitSomething || envHit) ? 1 : 0, zid: closestHit ? closestHit.zombie.id : -1, part: closestHit ? closestHit.part : '', explode: 0 });
 
+    // Apply damage to player if hit
+    if (closestPlayerHit) {
+      damagePlayer(closestPlayerHit.player, playerId, damage);
+      continue;
+    }
     if (closestHit) {
       const z = closestHit.zombie;
       const part = closestHit.part;
@@ -522,6 +541,44 @@ function handleShoot(playerId) {
         z.health -= damage;
       }
       if (z.health <= 0) killZombie(z, playerId);
+    }
+  }
+}
+
+function rayHitPlayer(p, dir, target, maxDist) {
+  const radius = 0.5;
+  const height = 2.0;
+  const ox = p.x, oy = p.y, oz = p.z;
+  const dx = dir.x, dy = dir.y, dz = dir.z;
+  const a = dx * dx + dz * dz;
+  if (a < 0.0001) return null;
+  const b = 2 * (dx * (ox - target.x) + dz * (oz - target.z));
+  const c = (ox - target.x) * (ox - target.x) + (oz - target.z) * (oz - target.z) - radius * radius;
+  const disc = b * b - 4 * a * c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const t1 = (-b - sq) / (2 * a);
+  const t2 = (-b + sq) / (2 * a);
+  let t = t1 >= 0 ? t1 : (t2 >= 0 ? t2 : -1);
+  if (t < 0 || t > maxDist) return null;
+  const hitY = oy + t * dy;
+  const targetFeetY = target.y - CONFIG.playerHeight;
+  if (hitY < targetFeetY || hitY > targetFeetY + height) return null;
+  return { dist: t, point: { x: ox + t * dx, y: hitY, z: oz + t * dz } };
+}
+
+function damagePlayer(target, attackerId, damage) {
+  if (!target || target.dead || target.paused) return;
+  target.health -= damage;
+  if (target.health <= 0) {
+    target.health = 0;
+    target.dead = true;
+    const attacker = players[attackerId];
+    const attackerName = attacker ? attacker.name : 'Unknown';
+    broadcastKillFeed(anyKidFriendly() ? `${attackerName} tagged ${target.name}!` : `${attackerName} killed ${target.name} [PvP]`);
+    if (attacker) {
+      attacker.kills = (attacker.kills || 0) + 1;
+      attacker.score = (attacker.score || 0) + 50;
     }
   }
 }
