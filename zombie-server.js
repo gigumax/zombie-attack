@@ -45,6 +45,13 @@ const UPGRADES = {
   health:  { name:'Max Health +25', price:120, maxLevel:5 },
 };
 
+const ITEMS = {
+  grenade:  { name:'Grenade',    price:50,  maxStack:5 },
+  rocket:   { name:'Rocket',     price:100, maxStack:3 },
+  medkit:   { name:'Medkit',     price:75,  maxStack:3 },
+  airstrike:{ name:'Airstrike',  price:200, maxStack:1 },
+};
+
 const OBSTACLES = [
   {x:-15,z:-10,w:1,d:1},{x:12,z:-8,w:1,d:1},{x:-5,z:15,w:1,d:1},
   {x:8,z:12,w:1,d:1},{x:-20,z:5,w:1,d:1},{x:18,z:18,w:1,d:1},
@@ -75,6 +82,7 @@ let doorOpen = false;
 let keyDropped = false;
 let keyPos = null;
 let killFeed = [];
+let weaponPickups = []; // {id, gun, x, z} — weapons to find after escaping cell
 
 function getGunStat(player, stat) {
   const gun = GUNS[player.currentGun];
@@ -113,6 +121,9 @@ function createPlayer(id) {
     preEscapeGun: null, preEscapeOwned: null,
     muzzleFlash: 0, gunRecoil: 0,
     shootTracers: [],
+    items: { grenade:0, rocket:0, medkit:0, airstrike:0 },
+    itemCooldown: 0,
+    pendingEffects: [],
   };
 }
 
@@ -354,7 +365,22 @@ function unlockCell(playerId) {
   escapeStep = 'fight';
   for (const pl of Object.values(players)) pl.escapeStep = 'fight';
   for (let i = 0; i < 5; i++) spawnEscapeZombie();
-  io.emit('escapeUpdate', 'ALERT! The cell is open. 5 zombies are coming in!');
+  // Spawn weapons in map corners for players to find
+  weaponPickups = [];
+  const corners = [
+    { x:  25, z:  25 }, { x: -25, z:  25 },
+    { x:  25, z: -25 }, { x: -25, z: -25 },
+  ];
+  let cornerIdx = 0;
+  for (const pl of Object.values(players)) {
+    const savedGuns = Object.keys(pl.preEscapeOwned || {}).filter(g => g !== 'knife');
+    for (const gunName of savedGuns) {
+      const c = corners[cornerIdx % corners.length];
+      weaponPickups.push({ id: nextGoldId++, gun: gunName, x: c.x + (Math.random()-0.5)*6, z: c.z + (Math.random()-0.5)*6, playerId: pl.id });
+      cornerIdx++;
+    }
+  }
+  io.emit('escapeUpdate', 'ALERT! The cell is open. 5 zombies are coming in! Find your weapons in the corners of the map!');
 }
 
 function checkEscapeWin() {
@@ -368,11 +394,25 @@ function endEscape() {
   escapeStep = 'won';
   for (const p of Object.values(players)) {
     p.escapeMode = false;
-    p.ownedGuns = p.preEscapeOwned || p.ownedGuns;
-    p.currentGun = p.preEscapeGun || p.currentGun;
+    // Restore any weapons they didn't pick up during escape
+    const saved = p.preEscapeOwned || {};
+    for (const gunName of Object.keys(saved)) {
+      if (!p.ownedGuns[gunName]) {
+        p.ownedGuns[gunName] = true;
+      }
+    }
+    // Switch to best owned gun
+    const gunOrder = ['rifle','shotgun','smg','katana','pistol','knife'];
+    for (const g of gunOrder) {
+      if (p.ownedGuns[g]) { p.currentGun = g; break; }
+    }
+    const gun = GUNS[p.currentGun];
+    p.ammo = gun.melee ? Infinity : getGunStat(p, 'magSize');
+    p.reserveAmmo = gun.melee ? Infinity : getGunStat(p, 'magSize') * 3;
     p.gold += 500;
     p.score += 1000;
   }
+  weaponPickups = [];
   io.emit('escapeWin', {});
 }
 
@@ -591,6 +631,125 @@ function buyUpgrade(playerId, key) {
   if (key === 'magSize') p.ammo = getGunStat(p, 'magSize');
 }
 
+function buyItem(playerId, itemKey) {
+  const p = players[playerId];
+  if (!p || p.dead || p.escapeMode) return;
+  const item = ITEMS[itemKey];
+  if (!item) return;
+  if (p.items[itemKey] >= item.maxStack) return;
+  if (p.gold < item.price) return;
+  p.gold -= item.price;
+  p.items[itemKey]++;
+  sendPlayerMeta(playerId);
+}
+
+function useItem(playerId, itemKey) {
+  const p = players[playerId];
+  if (!p || p.dead || p.escapeMode) return;
+  if (p.itemCooldown > 0) return;
+  if (!p.items[itemKey] || p.items[itemKey] <= 0) return;
+  const item = ITEMS[itemKey];
+  if (!item) return;
+
+  if (itemKey === 'grenade') {
+    // Throw grenade forward — explodes after 1.5s at position 8 units ahead
+    const tx = p.x + Math.sin(p.yaw) * 8;
+    const tz = p.z + Math.cos(p.yaw) * 8;
+    p.pendingEffects.push({ type: 'grenade', x: tx, z: tz, timer: 1.5 });
+    p.items[itemKey]--;
+    p.itemCooldown = 0.8;
+  } else if (itemKey === 'rocket') {
+    // Fire rocket forward — travels 30 units then explodes
+    const dx = Math.sin(p.yaw), dz = Math.cos(p.yaw);
+    p.pendingEffects.push({ type: 'rocket', x: p.x, z: p.z, dx, dz, dist: 0, maxDist: 30, speed: 25 });
+    p.items[itemKey]--;
+    p.itemCooldown = 1.0;
+  } else if (itemKey === 'medkit') {
+    // Instant full heal
+    p.health = getGunStat(p, 'maxHealth');
+    p.items[itemKey]--;
+    p.itemCooldown = 0.5;
+    broadcastKillFeed(`${p.name} used a Medkit!`);
+  } else if (itemKey === 'airstrike') {
+    // Damage ALL zombies on the map
+    let killed = 0;
+    for (const z of zombies) {
+      if (z.dying || z.reviving) continue;
+      if (z.isBoss) {
+        z.health -= 5000;
+        if (z.health <= 0 && !z.reviving) {
+          z.health = 0;
+          handleZombieDeath(z, p);
+          killed++;
+        }
+      } else {
+        z.health -= 500;
+        if (z.health <= 0) {
+          handleZombieDeath(z, p);
+          killed++;
+        }
+      }
+    }
+    p.pendingEffects.push({ type: 'airstrike', timer: 0.5 });
+    p.items[itemKey]--;
+    p.itemCooldown = 2.0;
+    broadcastKillFeed(`${p.name} called an AIRSTRIKE! ${killed} hits!`);
+  }
+  sendPlayerMeta(playerId);
+}
+
+function processPendingEffects(p, dt) {
+  for (let i = p.pendingEffects.length - 1; i >= 0; i--) {
+    const eff = p.pendingEffects[i];
+    if (eff.type === 'grenade') {
+      eff.timer -= dt;
+      if (eff.timer <= 0) {
+        // Explode — AoE damage to zombies
+        const radius = 8;
+        for (const z of zombies) {
+          if (z.dying || z.reviving) continue;
+          const d = Math.hypot(z.x - eff.x, z.z - eff.z);
+          if (d < radius) {
+            const dmg = z.isBoss ? 2000 : 300;
+            z.health -= dmg;
+            if (z.health <= 0) handleZombieDeath(z, p);
+          }
+        }
+        p.pendingEffects.splice(i, 1);
+      }
+    } else if (eff.type === 'rocket') {
+      eff.dist += eff.speed * dt;
+      eff.x += eff.dx * eff.speed * dt;
+      eff.z += eff.dz * eff.speed * dt;
+      // Check collision with zombies
+      let hit = false;
+      for (const z of zombies) {
+        if (z.dying || z.reviving) continue;
+        if (Math.hypot(z.x - eff.x, z.z - eff.z) < 2) { hit = true; break; }
+      }
+      if (hit || eff.dist >= eff.maxDist) {
+        // Explode
+        const radius = 10;
+        for (const z of zombies) {
+          if (z.dying || z.reviving) continue;
+          const d = Math.hypot(z.x - eff.x, z.z - eff.z);
+          if (d < radius) {
+            const dmg = z.isBoss ? 3000 : 500;
+            z.health -= dmg;
+            if (z.health <= 0) handleZombieDeath(z, p);
+          }
+        }
+        p.pendingEffects.splice(i, 1);
+      }
+    } else if (eff.type === 'airstrike') {
+      eff.timer -= dt;
+      if (eff.timer <= 0) {
+        p.pendingEffects.splice(i, 1);
+      }
+    }
+  }
+}
+
 // ─── Player movement ───
 function updatePlayer(p, dt) {
   if (p.dead) return;
@@ -629,10 +788,30 @@ function updatePlayer(p, dt) {
   p.x = Math.max(-half, Math.min(half, newX));
   p.z = Math.max(-half, Math.min(half, newZ));
 
-  // Escape mode cell bounds
-  if (p.escapeMode) {
+  // Escape mode cell bounds — only when door is closed
+  if (p.escapeMode && !doorOpen) {
     p.x = Math.max(-5, Math.min(5, p.x));
     p.z = Math.max(-5, Math.min(5, p.z));
+  }
+
+  // Weapon pickup during escape
+  if (p.escapeMode && doorOpen && weaponPickups.length > 0) {
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+      const wp = weaponPickups[i];
+      if (wp.playerId && wp.playerId !== p.id) continue; // only original owner can pick up
+      const d = Math.hypot(p.x - wp.x, p.z - wp.z);
+      if (d < 2.0) {
+        p.ownedGuns[wp.gun] = true;
+        p.currentGun = wp.gun;
+        const gun = GUNS[wp.gun];
+        p.ammo = gun.melee ? Infinity : getGunStat(p, 'magSize');
+        p.reserveAmmo = gun.melee ? Infinity : getGunStat(p, 'magSize') * 3;
+        p.reloading = false;
+        weaponPickups.splice(i, 1);
+        sendPlayerMeta(p.id);
+        io.to(p.id).emit('escapeUpdate', `You found your ${gun.name}!`);
+      }
+    }
   }
 
   // Obstacle collision
@@ -949,7 +1128,11 @@ function gameLoop() {
 
   if (gameStarted && Object.keys(players).length > 0) {
     // Update players
-    for (const p of Object.values(players)) updatePlayer(p, dt);
+    for (const p of Object.values(players)) {
+      updatePlayer(p, dt);
+      if (p.itemCooldown > 0) p.itemCooldown -= dt;
+      if (p.pendingEffects.length > 0) processPendingEffects(p, dt);
+    }
 
     if (!escapeMode) {
       // Wave management
@@ -998,6 +1181,13 @@ function gameLoop() {
       dead: p.dead ? 1 : 0, em: p.escapeMode ? 1 : 0, es: p.escapeStep,
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
+      it: p.items, icd: +p.itemCooldown.toFixed(2),
+      eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
+        if (e.type === 'grenade') return { t:'g', x:+e.x.toFixed(2), z:+e.z.toFixed(2), tm:+e.timer.toFixed(2) };
+        if (e.type === 'rocket')  return { t:'r', x:+e.x.toFixed(2), z:+e.z.toFixed(2) };
+        if (e.type === 'airstrike') return { t:'a', tm:+e.timer.toFixed(2) };
+        return null;
+      }).filter(Boolean) : undefined,
     })),
     zombies: zombies.map(z => {
       const ll = z.lostLimbs || {};
@@ -1019,6 +1209,7 @@ function gameLoop() {
       return { ...base, hp: Math.ceil(z.health), mhp: z.maxHealth, dy: 0, dt: 0 };
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
+    weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos,
     zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
   };
@@ -1104,6 +1295,14 @@ io.on('connection', (socket) => {
   socket.on('switchGun', (gun) => {
     if (typeof gun !== 'string' || !GUNS[gun]) return;
     switchGun(socket.id, gun); sendPlayerMeta(socket.id);
+  });
+  socket.on('buyItem', (key) => {
+    if (typeof key !== 'string' || !ITEMS[key]) return;
+    buyItem(socket.id, key);
+  });
+  socket.on('useItem', (key) => {
+    if (typeof key !== 'string' || !ITEMS[key]) return;
+    useItem(socket.id, key);
   });
   socket.on('toggleShop', () => {
     const p = players[socket.id];

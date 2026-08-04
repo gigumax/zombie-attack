@@ -22,6 +22,13 @@ const UPGRADES = {
   health:  { name:'Max Health +25', price:120, maxLevel:5 },
 };
 
+const ITEMS = {
+  grenade:  { name:'Grenade',    price:50,  maxStack:5 },
+  rocket:   { name:'Rocket',     price:100, maxStack:3 },
+  medkit:   { name:'Medkit',     price:75,  maxStack:3 },
+  airstrike:{ name:'Airstrike',  price:200, maxStack:1 },
+};
+
 class ZombieMultiplayerClient {
   constructor() {
     this.canvas = document.getElementById('game-canvas');
@@ -47,6 +54,7 @@ class ZombieMultiplayerClient {
     this.connected = false;
     this.playing = false;
     this.kidFriendly = false;
+    this._seenEff = new Set();
 
     // Input
     this.keys = {};
@@ -56,6 +64,7 @@ class ZombieMultiplayerClient {
     // Rendered objects (tracked for updates)
     this.zombieMeshes = {};   // id -> mesh
     this.goldMeshes = {};     // id -> mesh
+    this.weaponMeshes = {};   // id -> mesh (escape weapon pickups)
     this.otherPlayerMeshes = {}; // id -> mesh
     this.bullets = [];
     this.particles = [];
@@ -172,7 +181,7 @@ class ZombieMultiplayerClient {
 
     this.socket.on('escapeStart', (data) => {
       const kidText = this.kidFriendly
-        ? 'Oh no! The big boss bumped you into a cozy room! Your toy blaster is gone, but you still have your trusty foam knife. A silly guard is holding the shiny key — bonk them to get it!'
+        ? 'Oh no! The big boss bumped you into a cozy room! Your toy blaster is gone, but you still have your trusty foam knife. A silly guard is holding the shiny key — bonk them to get it! After you escape, find your toys in the corners of the yard!'
         : data.text;
       document.getElementById('escape-overlay').textContent = kidText;
       document.getElementById('escape-overlay').classList.remove('hidden');
@@ -400,6 +409,16 @@ class ZombieMultiplayerClient {
       if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
       if (e.code === 'KeyC' && this.playing) this.socket.emit('buyUpgrade', 'magSize');
       if (e.code === 'KeyV' && this.playing) this.socket.emit('buyUpgrade', 'health');
+      // Buy item hotkeys
+      if (e.code === 'KeyN' && this.playing) this.socket.emit('buyItem', 'grenade');
+      if (e.code === 'KeyM' && this.playing) this.socket.emit('buyItem', 'rocket');
+      if (e.code === 'Comma' && this.playing) this.socket.emit('buyItem', 'medkit');
+      if (e.code === 'Period' && this.playing) this.socket.emit('buyItem', 'airstrike');
+      // Use item hotkeys
+      if (e.code === 'KeyT' && this.playing) this.socket.emit('useItem', 'grenade');
+      if (e.code === 'KeyY' && this.playing) this.socket.emit('useItem', 'rocket');
+      if (e.code === 'KeyU' && this.playing) this.socket.emit('useItem', 'medkit');
+      if (e.code === 'KeyI' && this.playing) this.socket.emit('useItem', 'airstrike');
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.playing) this.socket.emit('escapeInteract');
       if (k === ' ') e.preventDefault();
       this.sendInput();
@@ -874,6 +893,42 @@ class ZombieMultiplayerClient {
       }
     }
 
+    // Update weapon pickups — state.weaponPickups is [id, gunName, x, z] arrays
+    const seenWeaponIds = new Set();
+    const wpArr = state.weaponPickups || [];
+    const gunColors = { pistol: 0x3498db, smg: 0x2ecc71, shotgun: 0xe67e22, rifle: 0xe74c3c, katana: 0x9b59b6 };
+    for (const w of wpArr) {
+      const wid = w[0], wgun = w[1], wx = w[2], wz = w[3];
+      seenWeaponIds.add(wid);
+      let mesh = this.weaponMeshes[wid];
+      if (!mesh) {
+        const group = new THREE.Group();
+        const color = gunColors[wgun] || 0xffdd00;
+        // Gun box
+        const gunMat = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.3 });
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.3, 0.8), gunMat);
+        box.castShadow = true;
+        group.add(box);
+        // Glow pillar
+        const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.3 });
+        const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 3, 12), glowMat);
+        glow.position.y = 1.5;
+        group.add(glow);
+        this.scene.add(group);
+        this.weaponMeshes[wid] = group;
+      }
+      mesh.position.set(wx, 0.5 + Math.sin(now / 300 + wid) * 0.15, wz);
+      mesh.rotation.y += 0.03;
+    }
+    for (const id of Object.keys(this.weaponMeshes)) {
+      if (!seenWeaponIds.has(parseInt(id))) {
+        const m = this.weaponMeshes[id];
+        this.scene.remove(m);
+        m.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+        delete this.weaponMeshes[id];
+      }
+    }
+
     // Update other players
     const seenPlayerIds = new Set();
     for (const p of state.players) {
@@ -964,6 +1019,30 @@ class ZombieMultiplayerClient {
       } else if (this.keyMesh && state.keyPos) {
         this.keyMesh.position.set(state.keyPos.x, 0.5, state.keyPos.z);
         this.keyMesh.rotation.y += dt * 2;
+      }
+    }
+
+    // Process item effects from all players
+    if (state.players) {
+      for (const p of state.players) {
+        if (!p.eff) continue;
+        for (const e of p.eff) {
+          if (e.t === 'g' && !this._seenEff.has(`g_${p.id}_${e.x}_${e.z}`)) {
+            this._seenEff.add(`g_${p.id}_${e.x}_${e.z}`);
+            this.spawnGrenadeEffect(e.x, e.z);
+          } else if (e.t === 'r' && !this._seenEff.has(`r_${p.id}_${e.x}_${e.z}`)) {
+            this._seenEff.add(`r_${p.id}_${e.x}_${e.z}`);
+            this.spawnRocketEffect(e.x, e.z);
+          } else if (e.t === 'a' && !this._seenEff.has(`a_${p.id}`)) {
+            this._seenEff.add(`a_${p.id}`);
+            this.spawnAirstrikeEffect();
+          }
+        }
+      }
+      // Clean old seen effects (keep set small)
+      if (this._seenEff.size > 50) {
+        const arr = Array.from(this._seenEff);
+        this._seenEff = new Set(arr.slice(-20));
       }
     }
 
@@ -1188,6 +1267,108 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh: proj, life: 0.4, maxLife: 0.4, isProjectile: true });
   }
 
+  spawnGrenadeEffect(x, z) {
+    const kid = this.kidFriendly;
+    // Big expanding sphere
+    const boomColor = kid ? 0x44ddff : 0xff6600;
+    const boomMat = new THREE.MeshBasicMaterial({ color: boomColor, transparent: true, opacity: 0.8 });
+    const boom = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), boomMat);
+    boom.position.set(x, 1, z);
+    this.scene.add(boom);
+    this.bullets.push({ mesh: boom, life: 0.5, maxLife: 0.5, isExplosion: true, expandRate: 30 });
+    // Ring on ground
+    const ringColor = kid ? 0x44ddff : 0xff4400;
+    const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1, 1.5, 24), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.05, z);
+    this.scene.add(ring);
+    this.bullets.push({ mesh: ring, life: 0.6, maxLife: 0.6, isShockwave: true });
+    // Particles
+    for (let i = 0; i < 20; i++) {
+      const pColor = kid ? [0x44ff44, 0x44aaff, 0xffff44][i % 3] : [0xff4400, 0xff6600, 0xcc0000][i % 3];
+      const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
+      const pSize = 0.1 + Math.random() * 0.15;
+      const particle = new THREE.Mesh(new THREE.BoxGeometry(pSize, pSize, pSize), pMat);
+      particle.position.set(x, 1 + Math.random(), z);
+      this.scene.add(particle);
+      this.bullets.push({
+        mesh: particle, life: 0.6 + Math.random() * 0.4, maxLife: 1.0, isParticle: true,
+        vx: (Math.random() - 0.5) * 12,
+        vy: 5 + Math.random() * 8,
+        vz: (Math.random() - 0.5) * 12,
+      });
+    }
+  }
+
+  spawnRocketEffect(x, z) {
+    const kid = this.kidFriendly;
+    // Bigger explosion than grenade
+    const boomColor = kid ? 0x44aaff : 0xff0000;
+    const boomMat = new THREE.MeshBasicMaterial({ color: boomColor, transparent: true, opacity: 0.9 });
+    const boom = new THREE.Mesh(new THREE.SphereGeometry(3, 20, 20), boomMat);
+    boom.position.set(x, 1, z);
+    this.scene.add(boom);
+    this.bullets.push({ mesh: boom, life: 0.6, maxLife: 0.6, isExplosion: true, expandRate: 40 });
+    // Double ring
+    const ringColor = kid ? 0x44aaff : 0xff2200;
+    for (let r = 0; r < 2; r++) {
+      const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(1 + r * 0.5, 1.5 + r * 0.5, 24), ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(x, 0.05, z);
+      this.scene.add(ring);
+      this.bullets.push({ mesh: ring, life: 0.7 + r * 0.2, maxLife: 0.9, isShockwave: true });
+    }
+    // Lots of particles
+    for (let i = 0; i < 30; i++) {
+      const pColor = kid ? [0x44ff44, 0x44aaff, 0xffff44, 0xff8844][i % 4] : [0xff0000, 0xff4400, 0xff6600, 0xcc0000][i % 4];
+      const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
+      const pSize = 0.12 + Math.random() * 0.2;
+      const particle = new THREE.Mesh(new THREE.BoxGeometry(pSize, pSize, pSize), pMat);
+      particle.position.set(x, 1 + Math.random() * 2, z);
+      this.scene.add(particle);
+      this.bullets.push({
+        mesh: particle, life: 0.8 + Math.random() * 0.5, maxLife: 1.3, isParticle: true,
+        vx: (Math.random() - 0.5) * 16,
+        vy: 6 + Math.random() * 10,
+        vz: (Math.random() - 0.5) * 16,
+      });
+    }
+  }
+
+  spawnAirstrikeEffect() {
+    const kid = this.kidFriendly;
+    // Multiple explosions across the map
+    for (let i = 0; i < 8; i++) {
+      const x = (Math.random() - 0.5) * 80;
+      const z = (Math.random() - 0.5) * 80;
+      setTimeout(() => {
+        const boomColor = kid ? 0x44ddff : 0xff6600;
+        const boomMat = new THREE.MeshBasicMaterial({ color: boomColor, transparent: true, opacity: 0.8 });
+        const boom = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 16), boomMat);
+        boom.position.set(x, 1, z);
+        this.scene.add(boom);
+        this.bullets.push({ mesh: boom, life: 0.5, maxLife: 0.5, isExplosion: true, expandRate: 35 });
+        // Particles
+        for (let j = 0; j < 12; j++) {
+          const pColor = kid ? [0x44ff44, 0x44aaff, 0xffff44][j % 3] : [0xff4400, 0xff6600, 0xcc0000][j % 3];
+          const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
+          const pSize = 0.1 + Math.random() * 0.12;
+          const particle = new THREE.Mesh(new THREE.BoxGeometry(pSize, pSize, pSize), pMat);
+          particle.position.set(x, 1 + Math.random(), z);
+          this.scene.add(particle);
+          this.bullets.push({
+            mesh: particle, life: 0.5 + Math.random() * 0.3, maxLife: 0.8, isParticle: true,
+            vx: (Math.random() - 0.5) * 10,
+            vy: 4 + Math.random() * 6,
+            vz: (Math.random() - 0.5) * 10,
+          });
+        }
+      }, i * 200);
+    }
+  }
+
   buildPrisonCell() {
     this.clearPrisonCell();
     this.prisonObjects = [];
@@ -1348,6 +1529,12 @@ class ZombieMultiplayerClient {
         // Glowing projectile fades
         b.mesh.material.opacity = b.life / b.maxLife;
         b.mesh.scale.setScalar(1 + (1 - b.life / b.maxLife) * 2);
+      } else if (b.isExplosion) {
+        // Expanding explosion sphere
+        const p = 1 - b.life / b.maxLife;
+        const rate = b.expandRate || 30;
+        b.mesh.scale.setScalar(1 + p * rate * 0.1);
+        b.mesh.material.opacity = (1 - p) * 0.8;
       } else if (b.isCrack) {
         // Crack stays then fades in last 1 second
         const fadeRatio = Math.min(b.life / 1.0, 1);
@@ -1465,7 +1652,24 @@ class ZombieMultiplayerClient {
         <span>${maxed?'MAX':price+'g'}</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> to toggle shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FireRate <kbd>C</kbd>Mag <kbd>V</kbd>HP</div>`;
+    // Items (consumables)
+    const itemBuyHotkeys = { grenade: 'N', rocket: 'M', medkit: ',', airstrike: '.' };
+    const itemUseHotkeys = { grenade: 'T', rocket: 'Y', medkit: 'U', airstrike: 'I' };
+    const itemDescs = { grenade: 'AoE 300dmg', rocket: 'AoE 500dmg', medkit: 'Full heal', airstrike: '500dmg all' };
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Items (consumables)</div>';
+    const playerItems = p.it || { grenade:0, rocket:0, medkit:0, airstrike:0 };
+    for (const [key, item] of Object.entries(ITEMS)) {
+      const count = playerItems[key] || 0;
+      const canBuy = count < item.maxStack && p.g >= item.price;
+      const bhk = itemBuyHotkeys[key] || '';
+      const uhk = itemUseHotkeys[key] || '';
+      const desc = itemDescs[key] || '';
+      html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyItem" data-key="${key}"`:''}>
+        <span>${item.name} ${bhk?`<span style="color:#666;font-size:10px;">[buy:${bhk}]</span>`:''} ${uhk?`<span style="color:#888;font-size:10px;">[use:${uhk}]</span>`:''}<br><span style="font-size:10px;color:#666;">${desc} · x${count}/${item.maxStack}</span></span>
+        <span>${item.price}g</span>
+      </div>`;
+    }
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir</div>`;
     el.innerHTML = html;
   }
 
