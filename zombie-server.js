@@ -21,7 +21,7 @@ app.use(express.static(path.join(__dirname)));
 
 // ─── Config (mirrors zombie.js) ───
 const CONFIG = {
-  worldSize: 60, playerSpeed: 5.5, playerSprintSpeed: 9, playerJump: 8,
+  worldSize: 60, playerSpeed: 5.5, playerSprintSpeed: 9, playerJump: 10,
   gravity: 25, playerHeight: 1.7, playerRadius: 0.4, maxHealth: 100,
   bulletRange: 100, zombieHealth: 102, zombieSpeed: 1.8, zombieDamage: 15,
   zombieAttackRange: 1.8, zombieAttackCooldown: 1.0,
