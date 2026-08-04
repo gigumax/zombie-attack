@@ -843,13 +843,13 @@ function updatePlayer(p, dt) {
     const minDistZ = obs.d / 2 + CONFIG.playerRadius;
     const feetHeight = newY - CONFIG.playerHeight;
     if (Math.abs(dx) < minDistX && Math.abs(dz) < minDistZ) {
-      if (feetHeight >= obsHeight && p.vy <= 0) {
-        // Player is above the obstacle — land on top
+      if (feetHeight >= obsHeight - 0.3 && p.vy <= 0) {
+        // Player is at or above the obstacle top — land/snap on top (tolerance for gravity)
         newY = CONFIG.playerHeight + obsHeight;
         p.y = newY;
         p.vy = 0;
         p.onGround = true;
-      } else if (feetHeight < obsHeight && p.vy <= 0) {
+      } else if (feetHeight < obsHeight - 0.3 && p.vy <= 0) {
         // Player is beside the obstacle (on ground or falling) — push out horizontally
         if (Math.abs(dx) > Math.abs(dz)) p.x = obs.x + Math.sign(dx) * minDistX;
         else p.z = obs.z + Math.sign(dz) * minDistZ;
