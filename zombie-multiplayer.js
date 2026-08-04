@@ -834,29 +834,24 @@ class ZombieMultiplayerClient {
           }
         });
       }
-      // Creepy zombie attack animation — mouth chomp + head shake
-      if (z.atk && ud.isCreepy) {
-        ud.attackAnim = 0.5; // 0.5s attack animation
-      }
-      if (ud.attackAnim && ud.attackAnim > 0) {
-        ud.attackAnim -= dt;
+      // Creepy zombie attack animation — continuous mouth chomp + head shake while in combat
+      if (z.cmb && ud.isCreepy && !z.dy) {
         const atkT = performance.now() / 1000;
         // Mouth chomp — open and close rapidly
         if (ud.jawGroup) {
-          ud.jawGroup.rotation.x = Math.abs(Math.sin(atkT * 25)) * 0.5; // rapid open/close
+          ud.jawGroup.rotation.x = Math.abs(Math.sin(atkT * 18)) * 0.45; // rapid open/close
         }
         // Head shake — rapid side-to-side
         if (ud.head) {
-          if (!ud.head.userData.baseRotZ) ud.head.userData.baseRotZ = 0;
-          ud.head.rotation.z = Math.sin(atkT * 30) * 0.15; // rapid shake
-          ud.head.rotation.y = Math.sin(atkT * 28) * 0.1;
+          ud.head.rotation.z = Math.sin(atkT * 22) * 0.12; // rapid shake
+          ud.head.rotation.y = Math.sin(atkT * 20) * 0.08;
         }
       } else if (ud.isCreepy) {
-        // Reset mouth and head when not attacking
+        // Reset mouth and head when not in combat
         if (ud.jawGroup) {
           ud.jawGroup.rotation.x *= 0.8; // ease back to closed
         }
-        if (ud.head && ud.head.rotation.z !== 0 && !z.rvv) {
+        if (ud.head && !z.rvv) {
           ud.head.rotation.z *= 0.8;
           ud.head.rotation.y *= 0.8;
         }
@@ -864,7 +859,7 @@ class ZombieMultiplayerClient {
       // Camera shake when a creepy zombie attacks you
       if (z.atk && this.myPlayer) {
         const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
-        if (d < 4) this.cameraShake = 0.4;
+        if (d < 5) this.cameraShake = 0.4;
       }
       if (z.dy) {
         // Dying zombie — fall immediately

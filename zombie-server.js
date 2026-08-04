@@ -901,11 +901,22 @@ function updateZombies(dt) {
 
     const dx = target.x - z.x, dz = target.z - z.z;
     const dist = Math.hypot(dx, dz);
-    if (dist > 0.01) {
+    // Creepy zombies stop at 2.5 units so player can see their face
+    const stopDist = z.type === 'creepy' ? 2.5 : 0;
+    if (dist > stopDist + 0.01) {
       z.x += (dx / dist) * z.speed * dt;
       z.z += (dz / dist) * z.speed * dt;
       z.walkPhase += dt * z.speed * 2;
       z.rot = Math.atan2(dx, dz);
+    } else {
+      // Still face the player even when stopped
+      z.rot = Math.atan2(dx, dz);
+    }
+    // Creepy zombie in combat range — continuous flag for animation
+    if (z.type === 'creepy' && dist < (z.attackRange || CONFIG.zombieAttackRange) + 1) {
+      z.inCombat = 1;
+    } else {
+      z.inCombat = 0;
     }
 
     // Attack
@@ -1214,6 +1225,7 @@ function gameLoop() {
         chg: z.charging ? 1 : 0, slm: z.slamEffect ? 1 : 0, rng: z.rangedEffect ? 1 : 0,
         crk: z.crackEffect ? 1 : 0, cdx: z.crackDx || 0, cdz: z.crackDz || 0, clen: z.crackLength || 0,
         atk: z.attacking ? 1 : 0,
+        cmb: z.inCombat ? 1 : 0,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;
