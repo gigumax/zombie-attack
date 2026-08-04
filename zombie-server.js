@@ -803,7 +803,7 @@ function updatePlayer(p, dt) {
 
   const newX = p.x + p.vx * dt;
   const newZ = p.z + p.vz * dt;
-  const newY = p.y + p.vy * dt;
+  let newY = p.y + p.vy * dt;
 
   const half = CONFIG.worldSize - 1;
   p.x = Math.max(-half, Math.min(half, newX));
@@ -835,13 +835,25 @@ function updatePlayer(p, dt) {
     }
   }
 
-  // Obstacle collision
+  // Obstacle collision — push out horizontally and allow standing on top
   for (const obs of OBSTACLES) {
+    const obsHeight = obs.w > 1.2 ? 1.5 : 1.0; // crates are taller, tree bases are shorter
     const dx = p.x - obs.x, dz = p.z - obs.z;
-    const minDist = obs.w / 2 + CONFIG.playerRadius;
-    if (Math.abs(dx) < minDist && Math.abs(dz) < minDist) {
-      if (Math.abs(dx) > Math.abs(dz)) p.x = obs.x + Math.sign(dx) * minDist;
-      else p.z = obs.z + Math.sign(dz) * minDist;
+    const minDistX = obs.w / 2 + CONFIG.playerRadius;
+    const minDistZ = obs.d / 2 + CONFIG.playerRadius;
+    const feetHeight = newY - CONFIG.playerHeight;
+    if (Math.abs(dx) < minDistX && Math.abs(dz) < minDistZ) {
+      if (feetHeight >= obsHeight && p.vy <= 0) {
+        // Player is above the obstacle — land on top
+        newY = CONFIG.playerHeight + obsHeight;
+        p.y = newY;
+        p.vy = 0;
+        p.onGround = true;
+      } else if (feetHeight < obsHeight) {
+        // Player is beside the obstacle — push out horizontally
+        if (Math.abs(dx) > Math.abs(dz)) p.x = obs.x + Math.sign(dx) * minDistX;
+        else p.z = obs.z + Math.sign(dz) * minDistZ;
+      }
     }
   }
 

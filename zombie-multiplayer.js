@@ -295,16 +295,16 @@ class ZombieMultiplayerClient {
       this.scene.add(wall);
     }
 
-    // Trees
+    // Trees — at small obstacle positions
     const treePositions = [
       [-15,-10],[12,-8],[-5,15],[8,12],[-20,5],
       [18,18],[-12,-20],[5,-15],[22,-5],[-25,-3],
     ];
     for (const [x,z] of treePositions) this.createTree(x, z);
 
-    // Crates
-    const cratePositions = [[-3,-5],[6,3],[-8,8],[10,-12],[15,6]];
-    for (const [x,z] of cratePositions) this.createCrate(x, z);
+    // Crates — at large obstacle positions (can jump on top)
+    const cratePositions = [[-3,-5,1.5],[6,3,1.5],[-8,8,1.5],[10,-12,1.5],[15,6,1.5]];
+    for (const [x,z,s] of cratePositions) this.createCrate(x, z, s);
   }
 
   createTree(x, z) {
@@ -320,9 +320,9 @@ class ZombieMultiplayerClient {
     this.scene.add(group);
   }
 
-  createCrate(x, z) {
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(1.5,1.5,1.5), new THREE.MeshLambertMaterial({color:0x8B6914}));
-    crate.position.set(x, 0.75, z);
+  createCrate(x, z, size = 1.5) {
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshLambertMaterial({color:0x8B6914}));
+    crate.position.set(x, size / 2, z);
     crate.castShadow = true; crate.receiveShadow = true;
     this.scene.add(crate);
   }
