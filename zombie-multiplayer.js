@@ -399,6 +399,7 @@ class ZombieMultiplayerClient {
     const gun = GUNS[gunName];
     const isMelee = gun && gun.melee;
     const isKatana = gunName === 'katana';
+    const twoHanded = gunName === 'rifle' || gunName === 'smg' || gunName === 'shotgun';
     this.gunParts.body.visible = !isMelee;
     this.gunParts.barrel.visible = !isMelee;
     this.gunParts.mag.visible = !isMelee;
@@ -406,6 +407,16 @@ class ZombieMultiplayerClient {
     this.gunParts.handL.visible = !isMelee;
     this.gunParts.forearmR.visible = !isMelee;
     this.gunParts.forearmL.visible = !isMelee;
+    // Adjust left hand position for two-handed weapons (further forward on barrel)
+    if (!isMelee && !this.myPlayer.r) {
+      if (twoHanded) {
+        this.gunParts.handL.position.set(-0.04, -0.05, -0.55); // further forward
+        this.gunParts.forearmL.position.set(-0.04, -0.05, -0.3);
+      } else {
+        this.gunParts.handL.position.set(-0.04, -0.05, -0.45); // pistol — closer
+        this.gunParts.forearmL.position.set(-0.04, -0.05, -0.2);
+      }
+    }
     this.knifeMesh.visible = isMelee && !isKatana;
     this.katanaMesh.visible = isMelee && isKatana;
     this.muzzleFlash.visible = !isMelee;
@@ -1037,18 +1048,42 @@ class ZombieMultiplayerClient {
       const pIsMelee = pGun && pGun.melee;
       if (ud.gunGroup) {
         ud.gunGroup.visible = !pIsMelee && !p.dead;
+        const twoHanded = pGunName === 'rifle' || pGunName === 'smg' || pGunName === 'shotgun';
+        // Adjust left hand on gun for two-handed weapons
+        if (ud.gunGroup.userData.handL) {
+          if (twoHanded) {
+            ud.gunGroup.userData.handL.position.set(0, -0.03, -0.45); // further forward on barrel
+          } else {
+            ud.gunGroup.userData.handL.position.set(0, -0.03, -0.3); // closer for pistol
+          }
+        }
         // Reload animation for other players — dip gun and raise arms
         if (p.r === 1 && !pIsMelee) {
           const rT = performance.now() / 1000;
           const dip = Math.sin(Math.min(rT * 3, Math.PI)) * 0.15;
           ud.gunGroup.position.y = 1.2 - dip;
           ud.gunGroup.rotation.x = -Math.PI / 2 + dip * 2;
-          // Arms go up to reload position
+          // Right arm holds gun grip
           if (ud.armR) ud.armR.rotation.x = -1.2 + dip * 3;
-          if (ud.armL) ud.armL.rotation.x = -0.8 + dip * 3;
+          // Left arm moves to magazine during reload
+          if (ud.armL) {
+            if (twoHanded) {
+              ud.armL.rotation.x = -1.4 + dip * 4; // reach further for mag
+              ud.armL.rotation.z = 0.3 + dip * 0.3; // angle inward
+            } else {
+              ud.armL.rotation.x = -0.8 + dip * 3;
+            }
+          }
         } else {
           ud.gunGroup.position.y = 1.2;
           ud.gunGroup.rotation.x = -Math.PI / 2;
+          // Two-handed grip — left arm forward holding barrel
+          if (twoHanded) {
+            if (ud.armL) {
+              ud.armL.rotation.x = -1.3; // arm forward
+              ud.armL.rotation.z = 0.4; // angle toward gun
+            }
+          }
         }
       }
       const prevPos = this.prevPositions.players[p.id];
@@ -1062,8 +1097,14 @@ class ZombieMultiplayerClient {
       }
       if (ud.armL && ud.armR && p.r !== 1) {
         const s = Math.sin(ud.walkPhase);
-        ud.armL.rotation.x = -s * 0.2;
-        ud.armR.rotation.x = s * 0.2;
+        // Right arm always holds gun — slight sway only
+        ud.armR.rotation.x = -1.2 + s * 0.05;
+        // Left arm: two-handed weapons hold gun, pistol swings free
+        if (pGunName === 'rifle' || pGunName === 'smg' || pGunName === 'shotgun') {
+          ud.armL.rotation.x = -1.3 + s * 0.05;
+        } else {
+          ud.armL.rotation.x = -s * 0.2;
+        }
       }
       // Name tag
       if (mesh.userData.nameTag) {
@@ -1174,11 +1215,28 @@ class ZombieMultiplayerClient {
         this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.2;
         this.gun.rotation.x = rot;
         this.gun.rotation.z = rot * 0.5;
+        // Left hand moves to magazine during reload
+        const handReach = Math.sin(Math.min(reloadT * 3, Math.PI));
+        if (this.gunParts.handL) {
+          this.gunParts.handL.position.z = -0.45 + handReach * 0.55; // move from barrel to mag
+          this.gunParts.handL.position.y = -0.05 + handReach * 0.15;
+        }
+        if (this.gunParts.forearmL) {
+          this.gunParts.forearmL.position.z = -0.2 + handReach * 0.35;
+          this.gunParts.forearmL.position.y = -0.05 + handReach * 0.1;
+        }
       } else {
         this.gun.position.z = -0.5 + recoil;
         this.gun.position.y = -0.3 - recoil * 0.3;
         this.gun.rotation.x = 0;
         this.gun.rotation.z = 0;
+        // Reset left hand to barrel position
+        if (this.gunParts.handL) {
+          this.gunParts.handL.position.set(-0.04, -0.05, -0.45);
+        }
+        if (this.gunParts.forearmL) {
+          this.gunParts.forearmL.position.set(-0.04, -0.05, -0.2);
+        }
       }
 
       // Muzzle flash
@@ -1247,6 +1305,7 @@ class ZombieMultiplayerClient {
     handR.position.set(0, -0.08, 0.05); gunGroup.add(handR);
     const handL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
     handL.position.set(0, -0.03, -0.3); gunGroup.add(handL);
+    gunGroup.userData = { handL };
     // Position gun in right hand area, pointing forward
     gunGroup.position.set(0.4, 1.2, -0.3);
     gunGroup.rotation.x = -Math.PI / 2; // lay gun forward
