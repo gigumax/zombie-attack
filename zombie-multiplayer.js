@@ -165,6 +165,14 @@ class ZombieMultiplayerClient {
       }
       this.serverState = state;
       this.myPlayer = state.players.find(p => p.id === this.myId);
+      // Show/hide pause overlay
+      const pauseEl = document.getElementById('pause-overlay');
+      if (this.myPlayer && this.myPlayer.pau) {
+        pauseEl.classList.remove('hidden');
+        if (document.pointerLockElement) document.exitPointerLock();
+      } else {
+        pauseEl.classList.add('hidden');
+      }
       this.interpAlpha = 0;
       this.updateScene(state, this._lastDt || 0.016);
       this.updateHUD();
@@ -429,6 +437,10 @@ class ZombieMultiplayerClient {
       this.keys[k] = true;
       if (!this.connected) return;
       if (k === 'r' && this.playing) this.socket.emit('reload');
+      if ((k === 'p' || e.code === 'Escape') && this.playing) {
+        this.socket.emit('togglePause');
+        e.preventDefault();
+      }
       if (e.code === 'KeyB' && this.playing) { this.socket.emit('toggleShop'); e.preventDefault(); }
       if (e.code === 'KeyG' && this.playing) this.socket.emit('toggleAutoFire');
       if (e.code === 'Digit2' && this.playing) this.socket.emit('switchGun', 'knife');
@@ -472,7 +484,7 @@ class ZombieMultiplayerClient {
     });
 
     document.addEventListener('mousemove', e => {
-      if (!this.pointerLocked || !this.playing) return;
+      if (!this.pointerLocked || !this.playing || (this.myPlayer && this.myPlayer.pau)) return;
       this.yaw -= e.movementX * 0.002;
       this.pitch -= e.movementY * 0.002;
       this.pitch = Math.max(-Math.PI/2 + 0.01, Math.min(Math.PI/2 - 0.01, this.pitch));
@@ -480,7 +492,7 @@ class ZombieMultiplayerClient {
     });
 
     document.addEventListener('mousedown', e => {
-      if (!this.pointerLocked || !this.playing) return;
+      if (!this.pointerLocked || !this.playing || (this.myPlayer && this.myPlayer.pau)) return;
       if (e.button === 0) this.socket.emit('shoot');
     });
 
@@ -1047,14 +1059,26 @@ class ZombieMultiplayerClient {
       const pGun = GUNS[pGunName];
       const pIsMelee = pGun && pGun.melee;
       if (ud.gunGroup) {
+        // Paused player — hand up gesture, hide gun
+        if (p.pau) {
+          ud.gunGroup.visible = false;
+          if (ud.armR) {
+            ud.armR.rotation.x = -2.2; // arm straight up
+            ud.armR.rotation.z = 0;
+          }
+          if (ud.armL) {
+            ud.armL.rotation.x = -2.0; // other hand up too
+            ud.armL.rotation.z = -0.3;
+          }
+        } else {
         ud.gunGroup.visible = !pIsMelee && !p.dead;
         const twoHanded = pGunName === 'rifle' || pGunName === 'smg' || pGunName === 'shotgun';
         // Adjust left hand on gun for two-handed weapons
         if (ud.gunGroup.userData.handL) {
           if (twoHanded) {
-            ud.gunGroup.userData.handL.position.set(0, -0.03, -0.45); // further forward on barrel
+            ud.gunGroup.userData.handL.position.set(0, -0.03, -0.45);
           } else {
-            ud.gunGroup.userData.handL.position.set(0, -0.03, -0.3); // closer for pistol
+            ud.gunGroup.userData.handL.position.set(0, -0.03, -0.3);
           }
         }
         // Reload animation for other players — dip gun and raise arms
@@ -1063,28 +1087,27 @@ class ZombieMultiplayerClient {
           const dip = Math.sin(Math.min(rT * 3, Math.PI)) * 0.15;
           ud.gunGroup.position.y = 1.2 - dip;
           ud.gunGroup.rotation.x = -Math.PI / 2 + dip * 2;
-          // Right arm holds gun grip
           if (ud.armR) ud.armR.rotation.x = -1.2 + dip * 3;
-          // Left arm moves to magazine during reload
           if (ud.armL) {
             if (twoHanded) {
-              ud.armL.rotation.x = -1.4 + dip * 4; // reach further for mag
-              ud.armL.rotation.z = 0.3 + dip * 0.3; // angle inward
+              ud.armL.rotation.x = -1.4 + dip * 4;
+              ud.armL.rotation.z = 0.3 + dip * 0.3;
             } else {
               ud.armL.rotation.x = -0.8 + dip * 3;
+              ud.armL.rotation.z = 0;
             }
           }
         } else {
           ud.gunGroup.position.y = 1.2;
           ud.gunGroup.rotation.x = -Math.PI / 2;
-          // Two-handed grip — left arm forward holding barrel
           if (twoHanded) {
             if (ud.armL) {
-              ud.armL.rotation.x = -1.3; // arm forward
-              ud.armL.rotation.z = 0.4; // angle toward gun
+              ud.armL.rotation.x = -1.3;
+              ud.armL.rotation.z = 0.4;
             }
           }
         }
+        } // end not paused
       }
       const prevPos = this.prevPositions.players[p.id];
       const moving = prevPos && (Math.abs(p.x - prevPos.x) > 0.01 || Math.abs(p.z - prevPos.z) > 0.01);
@@ -1095,7 +1118,7 @@ class ZombieMultiplayerClient {
         ud.legL.rotation.x = s * 0.3;
         ud.legR.rotation.x = -s * 0.3;
       }
-      if (ud.armL && ud.armR && p.r !== 1) {
+      if (ud.armL && ud.armR && p.r !== 1 && !p.pau) {
         const s = Math.sin(ud.walkPhase);
         // Right arm always holds gun — slight sway only
         ud.armR.rotation.x = -1.2 + s * 0.05;
@@ -1205,6 +1228,9 @@ class ZombieMultiplayerClient {
 
       // Gun recoil
       const recoil = this.myPlayer.gr || 0;
+      const isPaused = this.myPlayer.pau === 1;
+      // Hide gun when paused
+      this.gun.visible = !isPaused;
       // Reload animation — dip gun down and rotate
       const isReloading = this.myPlayer.r === 1;
       if (isReloading) {

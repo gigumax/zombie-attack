@@ -125,6 +125,7 @@ function createPlayer(id) {
     itemCooldown: 0,
     pendingEffects: [],
     emoji: '😀',
+    paused: false,
   };
 }
 
@@ -425,7 +426,7 @@ function endEscape() {
 // ─── Shooting (server-side raycast) ───
 function handleShoot(playerId) {
   const p = players[playerId];
-  if (!p || p.dead || p.reloading || p.fireTimer > 0) return;
+  if (!p || p.dead || p.paused || p.reloading || p.fireTimer > 0) return;
 
   const gun = GUNS[p.currentGun];
   if (gun.melee) {
@@ -770,7 +771,7 @@ function processPendingEffects(p, dt) {
 
 // ─── Player movement ───
 function updatePlayer(p, dt) {
-  if (p.dead) return;
+  if (p.dead || p.paused) return;
   const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed);
   let mx = 0, mz = 0;
   if (p.keys['w']) mz -= 1;
@@ -1238,6 +1239,7 @@ function gameLoop() {
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
       emo: p.emoji || '😀',
+      pau: p.paused ? 1 : 0,
       it: p.items, icd: +p.itemCooldown.toFixed(2),
       eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
         if (e.type === 'grenade') return { t:'g', x:+e.x.toFixed(2), z:+e.z.toFixed(2), tm:+e.timer.toFixed(2) };
@@ -1319,10 +1321,20 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (p && typeof val === 'string' && val.length <= 4) p.emoji = val;
   });
+  socket.on('togglePause', () => {
+    const p = players[socket.id];
+    if (!p || p.dead) return;
+    p.paused = !p.paused;
+    if (p.paused) {
+      p.keys = {}; // clear movement keys
+      p.reloading = false;
+      p.autoFire = false;
+    }
+  });
 
   socket.on('input', (data) => {
     const p = players[socket.id];
-    if (!p || p.dead) return;
+    if (!p || p.dead || p.paused) return;
     // Validate keys — only accept known keys, ignore extras
     const validKeys = ['w','a','s','d',' ','shift'];
     const cleanKeys = {};
