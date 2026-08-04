@@ -692,13 +692,13 @@ function useItem(playerId, itemKey) {
         z.health -= 5000;
         if (z.health <= 0 && !z.reviving) {
           z.health = 0;
-          handleZombieDeath(z, p);
+          killZombie(z, p.id);
           killed++;
         }
       } else {
         z.health -= 500;
         if (z.health <= 0) {
-          handleZombieDeath(z, p);
+          killZombie(z, p.id);
           killed++;
         }
       }
@@ -725,7 +725,7 @@ function processPendingEffects(p, dt) {
           if (d < radius) {
             const dmg = z.isBoss ? 2000 : 300;
             z.health -= dmg;
-            if (z.health <= 0) handleZombieDeath(z, p);
+            if (z.health <= 0) killZombie(z, p.id);
           }
         }
         p.pendingEffects.splice(i, 1);
@@ -749,7 +749,7 @@ function processPendingEffects(p, dt) {
           if (d < radius) {
             const dmg = z.isBoss ? 3000 : 500;
             z.health -= dmg;
-            if (z.health <= 0) handleZombieDeath(z, p);
+            if (z.health <= 0) killZombie(z, p.id);
           }
         }
         p.pendingEffects.splice(i, 1);
