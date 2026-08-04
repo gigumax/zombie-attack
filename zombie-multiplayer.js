@@ -797,6 +797,39 @@ class ZombieMultiplayerClient {
     return this.createZombieMesh();
   }
 
+  // ─── Health bar helper ───
+  createHealthBar(yOffset = 2.2) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 8;
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false }));
+    sprite.scale.set(1.0, 0.12, 1);
+    sprite.position.set(0, yOffset, 0);
+    sprite.userData = { canvas, tex, healthBar: true };
+    return sprite;
+  }
+
+  updateHealthBar(sprite, hp, maxHp) {
+    if (!sprite || !sprite.userData.canvas) return;
+    const canvas = sprite.userData.canvas;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 64, 8);
+    // Background
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(0, 0, 64, 8);
+    // Health fill
+    const pct = Math.max(0, Math.min(1, hp / maxHp));
+    if (pct > 0.5) ctx.fillStyle = '#2ecc71';
+    else if (pct > 0.25) ctx.fillStyle = '#f1c40f';
+    else ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(1, 1, (64 - 2) * pct, 6);
+    // Border
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, 63, 7);
+    sprite.userData.tex.needsUpdate = true;
+  }
+
   // ─── Scene sync ───
   // Map short type char to full type name
   static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy' };
@@ -823,6 +856,11 @@ class ZombieMultiplayerClient {
       if (!mesh) {
         mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
+        // Add health bar above head
+        const hbY = z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : 2.3);
+        const hb = this.createHealthBar(hbY);
+        mesh.add(hb);
+        mesh.userData.healthBar = hb;
         this.scene.add(mesh);
         this.zombieMeshes[z.id] = mesh;
       }
@@ -928,6 +966,15 @@ class ZombieMultiplayerClient {
       if (z.atk && this.myPlayer) {
         const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
         if (d < 5) this.cameraShake = 0.4;
+      }
+      // Update health bar
+      if (ud.healthBar) {
+        if (z.dy) {
+          ud.healthBar.visible = false;
+        } else {
+          ud.healthBar.visible = true;
+          this.updateHealthBar(ud.healthBar, z.hp || 0, z.mhp || 1);
+        }
       }
       if (z.dy) {
         // Dying zombie — fall immediately
@@ -1152,6 +1199,10 @@ class ZombieMultiplayerClient {
         mesh.userData.nameTag.position.set(0, 2.5, 0);
         mesh.userData.nameTag.lookAt(this.camera.position);
       }
+      // Health bar
+      if (ud.healthBar) {
+        this.updateHealthBar(ud.healthBar, p.h || 100, p.mhp || 100);
+      }
     }
     for (const id of Object.keys(this.otherPlayerMeshes)) {
       if (!seenPlayerIds.has(id)) {
@@ -1373,7 +1424,10 @@ class ZombieMultiplayerClient {
     sprite.scale.set(1.5, 0.4, 1);
     sprite.position.set(0, 2.5, 0);
     group.add(sprite);
-    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, gunGroup, walkPhase: 0 };
+    // Health bar above name tag
+    const hb = this.createHealthBar(2.85);
+    group.add(hb);
+    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, gunGroup, walkPhase: 0, healthBar: hb };
 
     return group;
   }

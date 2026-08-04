@@ -1278,7 +1278,7 @@ function gameLoop() {
       id: p.id,
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
-      h: Math.ceil(p.health), s: p.score, k: p.kills, g: p.gold,
+      h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, em: p.escapeMode ? 1 : 0, es: p.escapeStep,
