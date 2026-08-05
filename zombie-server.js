@@ -1845,6 +1845,24 @@ io.on('connection', (socket) => {
     handleShoot(socket.id);
   });
   socket.on('reload', () => startReload(socket.id));
+  socket.on('teleport', (data) => {
+    const p = players[socket.id];
+    if (!p || p.dead || p.escapeMode) return;
+    if (!data || typeof data.x !== 'number' || typeof data.z !== 'number') return;
+    // Clamp to world bounds
+    const half = CONFIG.worldSize - 2;
+    p.x = Math.max(-half, Math.min(half, data.x));
+    p.z = Math.max(-half, Math.min(half, data.z));
+    p.y = CONFIG.playerHeight;
+    p.vx = 0; p.vy = 0; p.vz = 0;
+  });
+  socket.on('travelToWorld', (data) => {
+    const p = players[socket.id];
+    if (!p || p.dead) return;
+    if (data === 'skeleton') {
+      startSkeletonWorld();
+    }
+  });
   socket.on('buyGun', (gun) => {
     if (typeof gun !== 'string' || !GUNS[gun]) return;
     buyGun(socket.id, gun); sendPlayerMeta(socket.id);

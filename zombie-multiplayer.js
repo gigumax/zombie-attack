@@ -109,6 +109,7 @@ class ZombieMultiplayerClient {
     this.setupInput();
     this.setupConnectScreen();
     this.setupShopClicks();
+    this.setupWorldMap();
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
@@ -633,6 +634,10 @@ class ZombieMultiplayerClient {
         this.thirdPerson = !this.thirdPerson;
         e.preventDefault();
       }
+      if (e.code === 'Tab' && this.playing) {
+        this.toggleWorldMap();
+        e.preventDefault();
+      }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
       if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
@@ -677,6 +682,38 @@ class ZombieMultiplayerClient {
       if (!this.pointerLocked || !this.playing || (this.myPlayer && this.myPlayer.pau)) return;
       if (e.button === 0) this.socket.emit('shoot');
     });
+
+  }
+
+  setupWorldMap() {
+    // Fast travel buttons
+    document.querySelectorAll('.map-loc-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const world = btn.dataset.world;
+        if (world === 'skeleton') {
+          this.socket.emit('travelToWorld', 'skeleton');
+        } else {
+          const tx = parseFloat(btn.dataset.tx);
+          const tz = parseFloat(btn.dataset.tz);
+          this.socket.emit('teleport', { x: tx, z: tz });
+        }
+        this.toggleWorldMap();
+      });
+    });
+    // Click on map canvas to teleport to that location
+    const mapCanvas = document.getElementById('map-canvas');
+    if (mapCanvas) {
+      mapCanvas.addEventListener('click', (e) => {
+        const rect = mapCanvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        const ws = CONFIG.worldSize;
+        const wx = (cx / mapCanvas.width) * (2 * ws) - ws;
+        const wz = (cy / mapCanvas.height) * (2 * ws) - ws;
+        this.socket.emit('teleport', { x: wx, z: wz });
+        this.toggleWorldMap();
+      });
+    }
 
     document.getElementById('start-btn').addEventListener('click', () => {
       this.kidFriendly = document.getElementById('kid-friendly-toggle').checked;
@@ -2912,6 +2949,8 @@ class ZombieMultiplayerClient {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this._lastDt = dt;
     this._frameCount = (this._frameCount || 0) + 1;
+    // Redraw map if open
+    if (this.mapOpen) this.drawWorldMap();
     // FPS tracking
     if (!this._fpsFrames) this._fpsFrames = 0;
     if (!this._fpsTimer) this._fpsTimer = performance.now();
@@ -2967,6 +3006,147 @@ class ZombieMultiplayerClient {
     const _rt0 = performance.now();
     this.renderer.render(this.scene, this.camera);
     this._renderTime = performance.now() - _rt0;
+  }
+
+  toggleWorldMap() {
+    const overlay = document.getElementById('world-map-overlay');
+    if (overlay.classList.contains('hidden')) {
+      overlay.classList.remove('hidden');
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.mapOpen = true;
+      this.drawWorldMap();
+    } else {
+      overlay.classList.add('hidden');
+      this.mapOpen = false;
+    }
+  }
+
+  drawWorldMap() {
+    const canvas = document.getElementById('map-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const ws = CONFIG.worldSize;
+    // World-to-canvas mapping: world coords [-ws, ws] → canvas [0, W]
+    const toX = (wx) => ((wx + ws) / (2 * ws)) * W;
+    const toY = (wz) => ((wz + ws) / (2 * ws)) * H;
+
+    // Background
+    ctx.fillStyle = '#1a2a1a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 8; i++) {
+      const gx = (i / 8) * W;
+      const gy = (i / 8) * H;
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    }
+
+    // Water lake
+    ctx.fillStyle = 'rgba(26,74,122,0.6)';
+    ctx.beginPath();
+    const waterPts = this.serverState && this.serverState.water ? this.serverState.water.pts : null;
+    if (waterPts && waterPts.length > 0) {
+      const wx = this.serverState.water.x, wz = this.serverState.water.z;
+      for (let i = 0; i < waterPts.length; i++) {
+        const px = toX(wx + waterPts[i][0]);
+        const py = toY(wz + waterPts[i][1]);
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+    } else {
+      ctx.arc(toX(-35), toY(-35), 20, 0, Math.PI * 2);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#4a9ada';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Water Lake', toX(-35), toY(-35));
+
+    // Creepy zone
+    const cz = this.serverState && this.serverState.creepyZone;
+    if (cz) {
+      ctx.fillStyle = 'rgba(102,0,102,0.3)';
+      ctx.beginPath();
+      ctx.arc(toX(cz.x), toY(cz.z), (cz.r / (2 * ws)) * W, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(102,0,102,0.6)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = '#cc66cc';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Creepy Zone', toX(cz.x), toY(cz.z));
+    }
+
+    // Spawn center
+    ctx.fillStyle = '#2ecc71';
+    ctx.beginPath();
+    ctx.arc(toX(0), toY(0), 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2ecc71';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Spawn', toX(0), toY(0) + 15);
+
+    // Skeleton world marker
+    if (this.serverState && this.serverState.skeletonWorld) {
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('SKELETON WORLD ACTIVE', W / 2, 20);
+    }
+
+    // Player position
+    if (this.myPlayer) {
+      const px = toX(this.myPlayer.x);
+      const py = toY(this.myPlayer.z);
+      // Player dot
+      ctx.fillStyle = '#f1c40f';
+      ctx.beginPath();
+      ctx.arc(px, py, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Direction arrow
+      const yaw = this.myPlayer.yaw || 0;
+      ctx.strokeStyle = '#f1c40f';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.lineTo(px + Math.sin(yaw) * 12, py - Math.cos(yaw) * 12);
+      ctx.stroke();
+      ctx.fillStyle = '#f1c40f';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('You', px, py - 10);
+    }
+
+    // Other players
+    if (this.serverState && this.serverState.players) {
+      for (const p of this.serverState.players) {
+        if (this.myPlayer && p.id === this.myPlayer.id) continue;
+        ctx.fillStyle = '#3498db';
+        ctx.beginPath();
+        ctx.arc(toX(p.x), toY(p.z), 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Zombies (small red dots)
+    if (this.serverState && this.serverState.zombies) {
+      ctx.fillStyle = 'rgba(255,50,50,0.5)';
+      for (const z of this.serverState.zombies) {
+        if (z.dy) continue;
+        ctx.beginPath();
+        ctx.arc(toX(z.x), toY(z.z), z.boss ? 4 : 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 }
 

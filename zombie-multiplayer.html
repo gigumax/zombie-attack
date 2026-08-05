@@ -393,6 +393,20 @@
     <button id="escaped-restart-btn" class="btn">CONTINUE</button>
   </div>
 
+  <div id="world-map-overlay" class="overlay hidden" style="background:rgba(0,0,0,0.85);">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+      <h2 style="color:#f1c40f;">WORLD MAP</h2>
+      <canvas id="map-canvas" width="400" height="400" style="border:2px solid #555;border-radius:12px;background:#1a2a1a;cursor:crosshair;"></canvas>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:420px;">
+        <button class="btn map-loc-btn" data-tx="0" data-tz="0" style="font-size:13px;padding:8px 14px;">Spawn (Center)</button>
+        <button class="btn map-loc-btn" data-tx="-35" data-tz="-35" style="font-size:13px;padding:8px 14px;">Water Lake</button>
+        <button class="btn map-loc-btn" data-tx="35" data-tz="35" style="font-size:13px;padding:8px 14px;">Creepy Zone</button>
+        <button class="btn map-loc-btn" data-tx="0" data-tz="0" data-world="skeleton" style="font-size:13px;padding:8px 14px;">Skeleton World</button>
+      </div>
+      <p style="color:rgba(255,255,255,0.4);font-size:12px;">Click a location to fast travel · Press M to close</p>
+    </div>
+  </div>
+
   <div id="connect-screen">
     <div class="box">
       <h2>ZOMBIE SHOOTER CO-OP</h2>
@@ -404,6 +418,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=22"></script>
+  <script src="zombie-multiplayer.js?v=23"></script>
 </body>
 </html>
