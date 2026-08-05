@@ -1056,11 +1056,15 @@ function updateZombies(dt) {
   }
 
   // Find nearest alive player for each zombie
+  // Skip zombie AI entirely if all players are paused
+  const allPaused = Object.values(players).every(p => p.paused || p.dead);
+  if (allPaused) return;
+
   for (const z of zombies) {
     if (z.dying || z.reviving) continue; // skip dead/reviving zombies
     let target = null, minDist = Infinity;
     for (const p of Object.values(players)) {
-      if (p.dead) continue;
+      if (p.dead || p.paused) continue;
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
@@ -1212,7 +1216,7 @@ function updateZombies(dt) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 2;
           // AoE damage to all nearby players
           for (const p of Object.values(players)) {
-            if (p.dead) continue;
+            if (p.dead || p.paused) continue;
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < attackRange * 1.3) {
               p.health -= z.damage * 1.5;
