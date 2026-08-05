@@ -555,6 +555,7 @@ class ZombieMultiplayerClient {
         this.playerEmoji = '😀';
         this.socket.emit('setEmoji', this.playerEmoji);
       }
+      this.socket.emit('playerReady');
       document.getElementById('start-screen').classList.add('hidden');
       this.playing = true;
       document.getElementById('hud').style.display = 'flex';

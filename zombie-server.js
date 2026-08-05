@@ -1417,8 +1417,7 @@ io.on('connection', (socket) => {
   players[socket.id] = createPlayer(socket.id);
 
   if (Object.keys(players).length === 1) {
-    // First player starts the game
-    gameStarted = true;
+    // First player connects — but don't start until they press START
     wave = 1;
     waveActive = false;
     waveBreakTimer = 3;
@@ -1435,6 +1434,15 @@ io.on('connection', (socket) => {
   socket.on('setKidFriendly', (val) => {
     const p = players[socket.id];
     if (p) p.kidFriendly = !!val;
+  });
+  socket.on('playerReady', () => {
+    if (!gameStarted) {
+      gameStarted = true;
+      wave = 1;
+      waveActive = false;
+      waveBreakTimer = 3;
+      zombies = [];
+    }
   });
   socket.on('setEmoji', (val) => {
     const p = players[socket.id];
