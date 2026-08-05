@@ -68,6 +68,7 @@ class ZombieMultiplayerClient {
     // Rendered objects (tracked for updates)
     this.zombieMeshes = {};   // id -> mesh
     this.goldMeshes = {};     // id -> mesh
+    this.chestMeshes = {};    // id -> mesh
     this.weaponMeshes = {};   // id -> mesh (escape weapon pickups)
     this.otherPlayerMeshes = {}; // id -> mesh
     this.bullets = [];
@@ -1254,6 +1255,58 @@ class ZombieMultiplayerClient {
       if (!seenGoldIds.has(parseInt(id))) {
         this.scene.remove(this.goldMeshes[id]);
         delete this.goldMeshes[id];
+      }
+    }
+
+    // Update chests — state.chests is [id, x, z] arrays
+    const seenChestIds = new Set();
+    const chestArr = state.chests || [];
+    for (const c of chestArr) {
+      const cid = c[0], cx = c[1], cz = c[2];
+      seenChestIds.add(cid);
+      let mesh = this.chestMeshes[cid];
+      if (!mesh) {
+        mesh = new THREE.Group();
+        // Chest body
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x8B4513, emissive: 0x442200, emissiveIntensity: 0.3 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.7, 0.7), bodyMat);
+        body.position.y = 0.35;
+        body.castShadow = true;
+        mesh.add(body);
+        // Chest lid
+        const lidMat = new THREE.MeshLambertMaterial({ color: 0x8B4513, emissive: 0x442200, emissiveIntensity: 0.3 });
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.25, 0.7), lidMat);
+        lid.position.y = 0.8;
+        lid.castShadow = true;
+        mesh.add(lid);
+        // Gold trim
+        const trimMat = new THREE.MeshBasicMaterial({ color: 0xffdd00 });
+        const trim1 = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.05, 0.75), trimMat);
+        trim1.position.y = 0.7;
+        mesh.add(trim1);
+        // Glowing top
+        const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.6 });
+        const glow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), glowMat);
+        glow.position.y = 1.2;
+        mesh.add(glow);
+        mesh.userData.glow = glow;
+        this.scene.add(mesh);
+        this.chestMeshes[cid] = mesh;
+      }
+      mesh.position.set(cx, 0, cz);
+      mesh.position.y = Math.sin(now / 400 + cid) * 0.1;
+      mesh.rotation.y += 0.01;
+      if (mesh.userData.glow) {
+        mesh.userData.glow.scale.setScalar(1 + Math.sin(now / 200 + cid) * 0.15);
+        mesh.userData.glow.material.opacity = 0.4 + Math.sin(now / 200 + cid) * 0.2;
+      }
+    }
+    for (const id of Object.keys(this.chestMeshes)) {
+      if (!seenChestIds.has(parseInt(id))) {
+        const m = this.chestMeshes[id];
+        this.scene.remove(m);
+        m.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+        delete this.chestMeshes[id];
       }
     }
 

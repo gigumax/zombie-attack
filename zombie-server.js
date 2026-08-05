@@ -64,6 +64,7 @@ const OBSTACLES = [
 let players = {};
 let zombies = [];
 let goldPickups = [];
+let chests = [];
 let particles = [];
 let nextZombieId = 1;
 let nextGoldId = 1;
@@ -314,6 +315,22 @@ function endWave() {
     p.wave = wave;
   }
   io.emit('waveAnnounce', `WAVE ${clearedWave} CLEARED! +25 HP`);
+  // Spawn chests every 2 waves — one per player, at center of map
+  if (clearedWave % 2 === 0) {
+    const numPlayers = Object.keys(players).length;
+    const playerList = Object.values(players);
+    for (let i = 0; i < numPlayers; i++) {
+      const angle = (i / numPlayers) * Math.PI * 2;
+      const offset = numPlayers > 1 ? 2 : 0;
+      chests.push({
+        id: nextGoldId++,
+        x: Math.cos(angle) * offset,
+        z: Math.sin(angle) * offset,
+        reward: null, // assigned on pickup
+      });
+    }
+    io.emit('waveAnnounce', `CHESTS SPAWNED! Grab one in the center!`);
+  }
 }
 
 // ─── Escape sequence ───
@@ -1280,6 +1297,51 @@ function updateGoldPickups(dt) {
       }
     }
   }
+  // Chest pickups
+  for (let i = chests.length - 1; i >= 0; i--) {
+    const c = chests[i];
+    for (const p of Object.values(players)) {
+      if (p.dead) continue;
+      const dx = p.x - c.x, dz = p.z - c.z;
+      if (Math.hypot(dx, dz) < 2.0) {
+        // Random reward
+        const roll = Math.random();
+        let msg;
+        if (roll < 0.35) {
+          const goldReward = 50 + wave * 15;
+          p.gold += goldReward;
+          msg = `${p.name} opened a chest: +${goldReward} gold!`;
+        } else if (roll < 0.65) {
+          const hpReward = Math.min(50, getGunStat(p, 'maxHealth') - p.health);
+          p.health = Math.min(getGunStat(p, 'maxHealth'), p.health + 50);
+          msg = `${p.name} opened a chest: +50 HP!`;
+        } else if (roll < 0.85) {
+          p.reserveAmmo += getGunStat(p, 'magSize') * 5;
+          p.ammo = getGunStat(p, 'magSize');
+          msg = `${p.name} opened a chest: Full ammo + reserves!`;
+        } else {
+          // Jackpot — random gun
+          const buyableGuns = ['smg', 'shotgun', 'katana', 'rifle'];
+          const ownedGuns = Object.keys(p.ownedGuns || {});
+          const available = buyableGuns.filter(g => !ownedGuns.includes(g));
+          if (available.length > 0) {
+            const gun = available[Math.floor(Math.random() * available.length)];
+            p.ownedGuns[gun] = true;
+            p.currentGun = gun;
+            msg = `${p.name} opened a chest: Found a ${GUNS[gun].name}!`;
+            sendPlayerMeta(p.id);
+          } else {
+            const goldReward = 100 + wave * 20;
+            p.gold += goldReward;
+            msg = `${p.name} opened a chest: +${goldReward} gold!`;
+          }
+        }
+        broadcastKillFeed(msg);
+        chests.splice(i, 1);
+        break;
+      }
+    }
+  }
   goldSpawnTimer -= dt;
   if (goldSpawnTimer <= 0 && goldPickups.length < CONFIG.maxGoldPickups) {
     const half = CONFIG.worldSize - 5;
@@ -1391,6 +1453,7 @@ function gameLoop() {
       return { ...base, hp: Math.ceil(z.health), mhp: z.maxHealth, dy: 0, dt: 0 };
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
+    chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
     zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
@@ -1567,6 +1630,7 @@ io.on('connection', (socket) => {
       gameStarted = false;
       zombies = [];
       goldPickups = [];
+      chests = [];
     }
   });
 });
