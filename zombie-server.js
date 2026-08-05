@@ -130,6 +130,7 @@ function createPlayer(id) {
     itemCooldown: 0,
     pendingEffects: [],
     paused: false,
+    ready: false,
   };
 }
 
@@ -864,7 +865,7 @@ function processPendingEffects(p, dt) {
 
 // ─── Player movement ───
 function updatePlayer(p, dt) {
-  if (p.dead || p.paused) return;
+  if (p.dead || p.paused || !p.ready) return;
   const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed);
   let mx = 0, mz = 0;
   if (p.keys['w']) mz -= 1;
@@ -991,7 +992,7 @@ function updateZombies(dt) {
       }
       // Player kicks corpse when walking into it
       for (const p of Object.values(players)) {
-        if (p.dead || p.paused) continue;
+        if (p.dead || p.paused || !p.ready) continue;
         const d = Math.hypot(p.x - z.x, p.z - z.z);
         const kickRange = 1.2;
         if (d < kickRange && d > 0.01) {
@@ -1009,7 +1010,7 @@ function updateZombies(dt) {
       // Creepy zombie revive — if a player walks near the corpse, it gets back up creepier
       if (z.canRevive && z.deathTimer > 0) {
         for (const p of Object.values(players)) {
-          if (p.dead) continue;
+          if (p.dead || !p.ready) continue;
           const d = Math.hypot(p.x - z.x, p.z - z.z);
           if (d < 3.0) {
             // Revive!
@@ -1058,15 +1059,15 @@ function updateZombies(dt) {
   }
 
   // Find nearest alive player for each zombie
-  // Skip zombie AI entirely if all players are paused
-  const allPaused = Object.values(players).every(p => p.paused || p.dead);
+  // Skip zombie AI entirely if all players are paused or not ready
+  const allPaused = Object.values(players).every(p => p.paused || p.dead || !p.ready);
   if (allPaused) return;
 
   for (const z of zombies) {
     if (z.dying || z.reviving) continue; // skip dead/reviving zombies
     let target = null, minDist = Infinity;
     for (const p of Object.values(players)) {
-      if (p.dead || p.paused) continue;
+      if (p.dead || p.paused || !p.ready) continue;
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
@@ -1137,7 +1138,7 @@ function updateZombies(dt) {
           // Crack appears — damage any player standing on the line
           z.crackEffect = 1; // visual flag for client
           for (const p of Object.values(players)) {
-            if (p.dead) continue;
+            if (p.dead || p.paused || !p.ready) continue;
             // Project player position onto crack line
             const px = p.x - z.x, pz = p.z - z.z;
             const t = px * z.crackDx + pz * z.crackDz; // projection along crack direction
@@ -1164,7 +1165,7 @@ function updateZombies(dt) {
         z.z += z.chargeDz * chargeSpeed * dt;
         // Check collision with any player
         for (const p of Object.values(players)) {
-          if (p.dead) continue;
+          if (p.dead || p.paused || !p.ready) continue;
           const pd = Math.hypot(p.x - z.x, p.z - z.z);
           if (pd < attackRange) {
             p.health -= z.damage;
@@ -1218,7 +1219,7 @@ function updateZombies(dt) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 2;
           // AoE damage to all nearby players
           for (const p of Object.values(players)) {
-            if (p.dead || p.paused) continue;
+            if (p.dead || p.paused || !p.ready) continue;
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < attackRange * 1.3) {
               p.health -= z.damage * 1.5;
@@ -1506,6 +1507,8 @@ io.on('connection', (socket) => {
     if (p) p.kidFriendly = !!val;
   });
   socket.on('playerReady', () => {
+    const p = players[socket.id];
+    if (p) p.ready = true;
     if (!gameStarted) {
       gameStarted = true;
       wave = 1;
