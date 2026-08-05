@@ -699,7 +699,7 @@ class ZombieMultiplayerClient {
       const skinColors = kidBoss ? [0x66bb66, 0x44aa88, 0x3399aa, 0x2266bb] : [0x4a6a3a, 0x2a4a1a, 0x1a2a0a, 0x0a0a05];
       const shirtColors = kidBoss ? [0xffaa00, 0xff8800, 0xff66aa, 0xaa66ff] : [0x1a4a4a, 0x0a2a2a, 0x050a0a, 0x000000];
       const pantsColors = kidBoss ? [0x4488ff, 0x3366cc, 0x6644cc, 0x8844aa] : [0x2a1a4a, 0x1a0a2a, 0x0a050a, 0x000000];
-      const eyeColors = kidBoss ? [0x4444ff, 0x44aaff, 0x44ffaa, 0xffff44] : [0xffffff, 0xffffff, 0xffffff, 0xffffff];
+      const eyeColors = kidBoss ? [0x4444ff, 0x44aaff, 0x44ffaa, 0xffff44] : [0x660000, 0xff0000, 0xff3300, 0xffff00];
       const hornColors = kidBoss ? [0xddaa44, 0xccaa66, 0xbbaa88, 0xaabbcc] : [0x3a2a1a, 0x2a1a0a, 0x1a0a05, 0x000000];
       const skinMat = new THREE.MeshLambertMaterial({color: skinColors[phase], emissive: phase >= 2 ? eyeColors[phase] : 0x000000, emissiveIntensity: phase >= 2 ? 0.05 : 0});
       const shirtMat = new THREE.MeshLambertMaterial({color: shirtColors[phase]});
@@ -711,15 +711,10 @@ class ZombieMultiplayerClient {
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.8,0.8), skinMat);
       head.position.set(0,2.9,0.75); head.rotation.x = 0.15; head.castShadow = true; group.add(head);
       // Glowing eyes — bigger and more menacing with phase
-      const eyeSize = 0.22 + phase * 0.06;
+      const eyeSize = 0.18 + phase * 0.04;
       const eyeL = new THREE.Mesh(new THREE.BoxGeometry(eyeSize, eyeSize, 0.08), eyeMat);
       eyeL.position.set(-0.18,3.0,1.14); group.add(eyeL);
       const eyeR = eyeL.clone(); eyeR.position.x = 0.18; group.add(eyeR);
-      // Glowing white eye halos
-      const eyeGlowMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.3 + phase * 0.1});
-      const glowL = new THREE.Mesh(new THREE.SphereGeometry(eyeSize * 0.9, 6, 6), eyeGlowMat);
-      glowL.position.set(-0.18,3.0,1.16); group.add(glowL);
-      const glowR = glowL.clone(); glowR.position.x = 0.18; group.add(glowR);
       // Fangs for phase 1+
       if (phase >= 1) {
         const fangMat = new THREE.MeshBasicMaterial({color: 0xffffff});
@@ -774,7 +769,7 @@ class ZombieMultiplayerClient {
       }
       // Glowing core in chest for phase 3 — blue in kid mode, red otherwise
       if (phase >= 3) {
-        const coreMat = new THREE.MeshBasicMaterial({color: kidBoss ? 0x44aaff : 0xffffff, transparent: true, opacity: 0.9});
+        const coreMat = new THREE.MeshBasicMaterial({color: kidBoss ? 0x44aaff : 0xff0000, transparent: true, opacity: 0.9});
         const core = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), coreMat);
         core.position.set(0, 2.0, 0.5); group.add(core);
         group.userData.core = core;
@@ -794,22 +789,15 @@ class ZombieMultiplayerClient {
       group.userData = { armL, armR, legL, legR, head, torso, revivePhase: phase };
       return group;
     }
-    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x66bb66 : 0x2a3a1a});
-    const shirtMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x44aaff : 0x1a2a4a});
-    const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x6644cc : 0x0a0a2a});
+    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x66bb66 : 0x4a7a4a});
+    const shirtMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x44aaff : 0x3a6aad});
+    const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x6644cc : 0x2a2a5a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), skinMat);
     head.position.y = 1.8; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x000000 : 0xffffff});
+    const eyeMat = new THREE.MeshBasicMaterial({color:0x000000});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.05), eyeMat);
     eyeL.position.set(-0.12,1.85,0.26); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.12; group.add(eyeR);
-    // Glowing white eye halos for scary effect
-    if (!this.kidFriendly) {
-      const glowMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.25});
-      const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 6), glowMat);
-      glowL.position.set(-0.12,1.85,0.27); group.add(glowL);
-      const glowR = glowL.clone(); glowR.position.x = 0.12; group.add(glowR);
-    }
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.75,0.3), shirtMat);
     torso.position.y = 1.15; torso.castShadow = true; group.add(torso);
     const armGeo = new THREE.BoxGeometry(0.25,0.5,0.25);
@@ -830,17 +818,10 @@ class ZombieMultiplayerClient {
     const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x4488ff : 0x2a0a0a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale,0.55*scale,0.55*scale), skinMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x4444ff : 0xffffff});
+    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x4444ff : 0xff0000});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.13*scale,0.13*scale,0.06*scale), eyeMat);
     eyeL.position.set(-0.13*scale,1.85*scale,0.29*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.13*scale; group.add(eyeR);
-    // Glowing white eye halos
-    if (!this.kidFriendly) {
-      const glowMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.3});
-      const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.16*scale, 6, 6), glowMat);
-      glowL.position.set(-0.13*scale,1.85*scale,0.30*scale); group.add(glowL);
-      const glowR = glowL.clone(); glowR.position.x = 0.13*scale; group.add(glowR);
-    }
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65*scale,0.85*scale,0.4*scale), shirtMat);
     torso.position.y = 1.15*scale; torso.castShadow = true; group.add(torso);
     const armGeo = new THREE.BoxGeometry(0.35*scale,0.65*scale,0.35*scale);
@@ -860,17 +841,10 @@ class ZombieMultiplayerClient {
     const darkMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88aaff : 0x2a2a2a});
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.45*scale,0.45*scale), boneMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x44aaff : 0xffffff});
+    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x44aaff : 0xff0000});
     const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale), eyeMat);
     eyeL.position.set(-0.1*scale,1.82*scale,0.24*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.1*scale; group.add(eyeR);
-    // Glowing white eye sockets
-    if (!this.kidFriendly) {
-      const glowMat = new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.25});
-      const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.13*scale, 6, 6), glowMat);
-      glowL.position.set(-0.1*scale,1.82*scale,0.25*scale); group.add(glowL);
-      const glowR = glowL.clone(); glowR.position.x = 0.1*scale; group.add(glowR);
-    }
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.35*scale,0.75*scale,0.25*scale), darkMat);
     torso.position.y = 1.15*scale; torso.castShadow = true; group.add(torso);
     const armGeo = new THREE.BoxGeometry(0.12*scale,0.75*scale,0.12*scale);
