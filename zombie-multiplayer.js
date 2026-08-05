@@ -415,6 +415,7 @@ class ZombieMultiplayerClient {
     this.gunParts.handL = handL;
     this.gunParts.forearmR = forearmR;
     this.gunParts.forearmL = forearmL;
+    this.gunParts.forearmMat = forearmMat;
 
     // Knife
     this.knifeMesh = new THREE.Group();
@@ -576,6 +577,10 @@ class ZombieMultiplayerClient {
       const skinColor = document.getElementById('skin-color').value;
       this.playerColors = { shirt: shirtColor, pants: pantsColor, skin: skinColor };
       this.socket.emit('setColors', this.playerColors);
+      // Update first-person forearm color to match shirt
+      if (this.gunParts.forearmMat) {
+        this.gunParts.forearmMat.color.set(shirtColor);
+      }
       this.socket.emit('playerReady');
       document.getElementById('start-screen').classList.add('hidden');
       this.playing = true;
