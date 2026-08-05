@@ -1725,6 +1725,7 @@ class ZombieMultiplayerClient {
     const faceMat = new THREE.MeshBasicMaterial({ map: faceTexture, transparent: true });
     const face = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.38), faceMat);
     face.position.set(0, 1.85, 0.201);
+    face.userData.isFace = true;
     group.add(face);
     group.userData.faceDataURL = faceDataURL || null;
     const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
@@ -1772,7 +1773,7 @@ class ZombieMultiplayerClient {
     // Health bar above name tag
     const hb = this.createHealthBar(2.85);
     group.add(hb);
-    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, gunGroup, walkPhase: 0, healthBar: hb };
+    group.userData = { nameTag: sprite, armL, armR, legL, legR, head, gunGroup, walkPhase: 0, healthBar: hb, faceDataURL: faceDataURL || null };
 
     return group;
   }
@@ -1780,9 +1781,9 @@ class ZombieMultiplayerClient {
   updatePlayerMeshFace(mesh, faceDataURL) {
     if (!faceDataURL || !mesh) return;
     mesh.userData.faceDataURL = faceDataURL;
-    // Find the face plane (the one with a CanvasTexture map)
+    // Find the face plane (tagged with userData.isFace)
     for (const child of mesh.children) {
-      if (child.material && child.material.map && child.material.map.image) {
+      if (child.userData && child.userData.isFace && child.material && child.material.map) {
         const canvas = child.material.map.image;
         const ctx = canvas.getContext('2d');
         const img = new Image();
