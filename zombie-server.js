@@ -1599,6 +1599,7 @@ function updateGoldPickups(dt) {
 // ─── Game loop ───
 let lastTime = Date.now();
 function gameLoop() {
+  try {
   const now = Date.now();
   const dt = Math.min((now - lastTime) / 1000, 0.05);
   lastTime = now;
@@ -1719,6 +1720,9 @@ function gameLoop() {
     skeletonWorld,
   };
   io.emit('state', state);
+  } catch(e) {
+    console.error('gameLoop error:', e.message);
+  }
 }
 
 setInterval(gameLoop, 40); // 25 TPS — good balance of smoothness and bandwidth
@@ -1938,4 +1942,12 @@ io.on('connection', (socket) => {
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Zombie Shooter multiplayer server running on port ${PORT}`);
+});
+
+// Prevent crashes from unhandled errors
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err.message);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
 });

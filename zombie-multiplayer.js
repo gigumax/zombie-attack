@@ -109,7 +109,7 @@ class ZombieMultiplayerClient {
     this.setupInput();
     this.setupConnectScreen();
     this.setupShopClicks();
-    this.setupWorldMap();
+    try { this.setupWorldMap(); } catch(e) { console.error('setupWorldMap error:', e); }
 
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
