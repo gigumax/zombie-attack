@@ -122,10 +122,11 @@ function createPlayer(id) {
     preEscapeGun: null, preEscapeOwned: null,
     muzzleFlash: 0, gunRecoil: 0,
     shootTracers: [],
+    emoji: '😀',
+    faceDataURL: null,
     items: { grenade:0, rocket:0, medkit:0, airstrike:0 },
     itemCooldown: 0,
     pendingEffects: [],
-    emoji: '😀',
     paused: false,
   };
 }
@@ -1346,6 +1347,7 @@ function gameLoop() {
   const state = {
     players: Object.values(players).map(p => ({
       id: p.id,
+      name: p.name,
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold,
@@ -1355,6 +1357,7 @@ function gameLoop() {
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
       emo: p.emoji || '😀',
+      face: p.faceDataURL || null,
       pau: p.paused ? 1 : 0,
       it: p.items, icd: +p.itemCooldown.toFixed(2),
       eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
@@ -1435,7 +1438,21 @@ io.on('connection', (socket) => {
   });
   socket.on('setEmoji', (val) => {
     const p = players[socket.id];
-    if (p && typeof val === 'string' && val.length <= 4) p.emoji = val;
+    if (p && typeof val === 'string' && val.length <= 4) { p.emoji = val; p.faceDataURL = null; }
+  });
+  socket.on('setName', (val) => {
+    const p = players[socket.id];
+    if (p && typeof val === 'string' && val.length > 0 && val.length <= 16) {
+      p.name = val;
+      io.emit('playerList', Object.values(players).map(p => ({ id: p.id, name: p.name })));
+    }
+  });
+  socket.on('setFace', (val) => {
+    const p = players[socket.id];
+    if (p && typeof val === 'string' && val.startsWith('data:image/png') && val.length < 50000) {
+      p.faceDataURL = val;
+      p.emoji = null;
+    }
   });
   socket.on('togglePause', () => {
     const p = players[socket.id];

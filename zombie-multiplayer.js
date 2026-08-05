@@ -55,6 +55,7 @@ class ZombieMultiplayerClient {
     this.playing = false;
     this.kidFriendly = false;
     this.playerEmoji = '😀';
+    this.playerFaceDataURL = null;
     this.cameraShake = 0;
     this._seenEff = new Set();
 
@@ -168,14 +169,15 @@ class ZombieMultiplayerClient {
       // PvP indicator
       const pvpEl = document.getElementById('pvp-indicator');
       if (pvpEl) pvpEl.style.display = state.friendlyFire ? 'block' : 'none';
-      // Show/hide pause overlay
+      // Show/hide pause overlay — keep mouse locked during pause
       const pauseEl = document.getElementById('pause-overlay');
-      if (this.myPlayer && this.myPlayer.pau) {
+      const isPaused = !!(this.myPlayer && this.myPlayer.pau);
+      if (isPaused) {
         pauseEl.classList.remove('hidden');
-        if (document.pointerLockElement) document.exitPointerLock();
       } else {
         pauseEl.classList.add('hidden');
       }
+      this._wasPaused = isPaused;
       this.interpAlpha = 0;
       const _t0 = performance.now();
       this.updateScene(state, this._lastDt || 0.016);
@@ -497,9 +499,13 @@ class ZombieMultiplayerClient {
       if (e.code === 'Period' && this.playing) this.socket.emit('buyItem', 'airstrike');
       // Use item hotkeys
       if (e.code === 'KeyT' && this.playing) this.socket.emit('useItem', 'grenade');
-      if (e.code === 'KeyY' && this.playing) this.socket.emit('useItem', 'rocket');
+      if (e.code === 'KeyO' && this.playing) this.socket.emit('useItem', 'rocket');
       if (e.code === 'KeyU' && this.playing) this.socket.emit('useItem', 'medkit');
       if (e.code === 'KeyI' && this.playing) this.socket.emit('useItem', 'airstrike');
+      if (e.code === 'KeyY' && this.playing) {
+        if (!document.pointerLockElement) this.canvas.requestPointerLock();
+        e.preventDefault();
+      }
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.playing) this.socket.emit('escapeInteract');
       if (k === ' ') e.preventDefault();
       this.sendInput();
@@ -531,8 +537,24 @@ class ZombieMultiplayerClient {
       this.kidFriendly = document.getElementById('kid-friendly-toggle').checked;
       this.socket.emit('setKidFriendly', this.kidFriendly);
       document.body.classList.toggle('kid-friendly', this.kidFriendly);
-      this.playerEmoji = document.getElementById('emoji-select').value || '😀';
-      this.socket.emit('setEmoji', this.playerEmoji);
+      // Send player name
+      const nameInput = document.getElementById('player-name-input');
+      const playerName = (nameInput && nameInput.value.trim()) || `Player ${Math.floor(Math.random()*1000)}`;
+      this.socket.emit('setName', playerName.substring(0, 16));
+      // Send face — either drawn canvas or emoji
+      const emojiVal = document.getElementById('emoji-select').value;
+      const faceCanvas = document.getElementById('face-canvas');
+      if (faceCanvas && this._faceDrawn) {
+        // Check if canvas has been drawn on (not just the default skin color)
+        this.playerFaceDataURL = faceCanvas.toDataURL('image/png');
+        this.socket.emit('setFace', this.playerFaceDataURL);
+      } else if (emojiVal) {
+        this.playerEmoji = emojiVal;
+        this.socket.emit('setEmoji', this.playerEmoji);
+      } else {
+        this.playerEmoji = '😀';
+        this.socket.emit('setEmoji', this.playerEmoji);
+      }
       document.getElementById('start-screen').classList.add('hidden');
       this.playing = true;
       document.getElementById('hud').style.display = 'flex';
@@ -552,6 +574,78 @@ class ZombieMultiplayerClient {
       document.getElementById('escaped-screen').classList.add('hidden');
       this.canvas.requestPointerLock();
     });
+
+    // Face drawing canvas
+    this._faceDrawn = false;
+    this._faceColor = '#000000';
+    const faceCanvas = document.getElementById('face-canvas');
+    if (faceCanvas) {
+      const fctx = faceCanvas.getContext('2d');
+      // Fill with skin color background
+      fctx.fillStyle = '#f5c89a';
+      fctx.fillRect(0, 0, 128, 128);
+      let drawing = false, lastX = 0, lastY = 0;
+      const getPos = (e) => {
+        const rect = faceCanvas.getBoundingClientRect();
+        const cx = e.touches ? e.touches[0].clientX : e.clientX;
+        const cy = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          x: (cx - rect.left) * (128 / rect.width),
+          y: (cy - rect.top) * (128 / rect.height),
+        };
+      };
+      const startDraw = (e) => {
+        e.preventDefault();
+        drawing = true;
+        this._faceDrawn = true;
+        const p = getPos(e);
+        lastX = p.x; lastY = p.y;
+        fctx.fillStyle = this._faceColor;
+        fctx.beginPath();
+        fctx.arc(p.x, p.y, parseFloat(document.getElementById('brush-size').value) / 2, 0, Math.PI * 2);
+        fctx.fill();
+      };
+      const moveDraw = (e) => {
+        if (!drawing) return;
+        e.preventDefault();
+        const p = getPos(e);
+        fctx.strokeStyle = this._faceColor;
+        fctx.lineWidth = parseFloat(document.getElementById('brush-size').value);
+        fctx.lineCap = 'round';
+        fctx.lineJoin = 'round';
+        fctx.beginPath();
+        fctx.moveTo(lastX, lastY);
+        fctx.lineTo(p.x, p.y);
+        fctx.stroke();
+        lastX = p.x; lastY = p.y;
+      };
+      const endDraw = () => { drawing = false; };
+      faceCanvas.addEventListener('mousedown', startDraw);
+      faceCanvas.addEventListener('mousemove', moveDraw);
+      faceCanvas.addEventListener('mouseup', endDraw);
+      faceCanvas.addEventListener('mouseleave', endDraw);
+      faceCanvas.addEventListener('touchstart', startDraw);
+      faceCanvas.addEventListener('touchmove', moveDraw);
+      faceCanvas.addEventListener('touchend', endDraw);
+      // Color buttons
+      document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          this._faceColor = btn.dataset.color;
+        });
+      });
+      // Clear button
+      document.getElementById('clear-face-btn').addEventListener('click', () => {
+        fctx.fillStyle = '#f5c89a';
+        fctx.fillRect(0, 0, 128, 128);
+        this._faceDrawn = false;
+      });
+      // Emoji select clears the drawn face preference
+      document.getElementById('emoji-select').addEventListener('change', () => {
+        if (document.getElementById('emoji-select').value) {
+          this._faceDrawn = false;
+        }
+      });
+    }
   }
 
   sendInput() {
@@ -1201,7 +1295,7 @@ class ZombieMultiplayerClient {
       seenPlayerIds.add(p.id);
       let mesh = this.otherPlayerMeshes[p.id];
       if (!mesh) {
-        mesh = this.createPlayerMesh(p.emo || '😀');
+        mesh = this.createPlayerMesh(p.emo || '😀', p.face || null, p.name || 'Player');
         this.scene.add(mesh);
         this.otherPlayerMeshes[p.id] = mesh;
       }
@@ -1488,30 +1582,41 @@ class ZombieMultiplayerClient {
     }
   }
 
-  createPlayerMesh(emoji) {
+  createPlayerMesh(emoji, faceDataURL, name) {
     const group = new THREE.Group();
     const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3498db });
     const headMat = new THREE.MeshLambertMaterial({ color: 0xf5c89a });
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.0, 0.4), bodyMat);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.35), bodyMat);
     body.position.y = 1.15; body.castShadow = true; group.add(body);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), headMat);
     head.position.y = 1.85; head.castShadow = true; group.add(head);
-    // Face — emoji texture on front of head
-    const faceEmoji = emoji || this.playerEmoji || '😀';
+    // Face — drawn face texture or emoji on front of head
     const faceCanvas = document.createElement('canvas');
     faceCanvas.width = 128; faceCanvas.height = 128;
     const fctx = faceCanvas.getContext('2d');
-    fctx.clearRect(0, 0, 128, 128);
-    fctx.font = '100px sans-serif';
-    fctx.textAlign = 'center';
-    fctx.textBaseline = 'middle';
-    fctx.fillText(faceEmoji, 64, 64);
+    if (faceDataURL) {
+      const img = new Image();
+      img.onload = () => {
+        fctx.clearRect(0, 0, 128, 128);
+        fctx.drawImage(img, 0, 0, 128, 128);
+        faceTexture.needsUpdate = true;
+      };
+      img.src = faceDataURL;
+    } else {
+      const faceEmoji = emoji || this.playerEmoji || '😀';
+      fctx.clearRect(0, 0, 128, 128);
+      fctx.font = '100px sans-serif';
+      fctx.textAlign = 'center';
+      fctx.textBaseline = 'middle';
+      fctx.fillText(faceEmoji, 64, 64);
+      group.userData.emoji = faceEmoji;
+    }
     const faceTexture = new THREE.CanvasTexture(faceCanvas);
     const faceMat = new THREE.MeshBasicMaterial({ map: faceTexture, transparent: true });
     const face = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.38), faceMat);
     face.position.set(0, 1.85, 0.201);
     group.add(face);
-    group.userData.emoji = faceEmoji;
+    group.userData.faceDataURL = faceDataURL || null;
     const armGeo = new THREE.BoxGeometry(0.2, 0.7, 0.2);
     const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(-0.4, 1.15, 0); armL.castShadow = true; group.add(armL);
     const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(0.4, 1.15, 0); armR.castShadow = true; group.add(armR);
@@ -1539,6 +1644,7 @@ class ZombieMultiplayerClient {
     const legR = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color:0x2a2a4a})); legR.position.set(0.15, 0.375, 0); legR.castShadow = true; group.add(legR);
 
     // Name tag (simple sprite)
+    const tagName = name || 'Player';
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 64;
     const ctx = canvas.getContext('2d');
@@ -1547,7 +1653,7 @@ class ZombieMultiplayerClient {
     ctx.fillStyle = '#3498db';
     ctx.font = 'bold 28px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('P2', 128, 42);
+    ctx.fillText(tagName.substring(0, 12), 128, 42);
     const tex = new THREE.CanvasTexture(canvas);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
     sprite.scale.set(1.5, 0.4, 1);
@@ -1887,11 +1993,16 @@ class ZombieMultiplayerClient {
       }
     }
     if (!partMesh) return;
-    // Direction from zombie center to hit point — push part outward
+    // Direction from zombie center to hit point — push part outward (convert to local space)
     const zx = mesh.position.x, zz = mesh.position.z;
     const dx = hx - zx, dz = hz - zz;
     const len = Math.hypot(dx, dz) || 1;
-    const nx = dx / len, nz = dz / len;
+    const wnx = dx / len, wnz = dz / len;
+    // Convert world direction to local space (inverse Y rotation)
+    const cosY = Math.cos(mesh.rotation.y);
+    const sinY = Math.sin(mesh.rotation.y);
+    const nx = wnx * cosY - wnz * sinY;
+    const nz = wnx * sinY + wnz * cosY;
     // Store knockback state on the part mesh
     if (!partMesh.userData.kb) partMesh.userData.kb = { ox: 0, oy: 0, oz: 0, vx: 0, vy: 0, vz: 0, t: 0 };
     const kb = partMesh.userData.kb;
@@ -1950,13 +2061,13 @@ class ZombieMultiplayerClient {
     // If zid is valid, attach to zombie mesh so hole follows the zombie
     if (zid !== undefined && zid >= 0 && this.zombieMeshes[zid]) {
       const zMesh = this.zombieMeshes[zid];
-      // Compute local position manually (faster than worldToLocal which forces matrix update)
+      // Compute local position manually (inverse Y rotation: localX = dx*cos - dz*sin, localZ = dx*sin + dz*cos)
       const dx = x - zMesh.position.x;
       const dz = z - zMesh.position.z;
       const cosY = Math.cos(zMesh.rotation.y);
       const sinY = Math.sin(zMesh.rotation.y);
       const sc = zMesh.scale.x || 1;
-      group.position.set((dx * cosY + dz * sinY) / sc, y / (zMesh.scale.y || 1), (-dx * sinY + dz * cosY) / sc);
+      group.position.set((dx * cosY - dz * sinY) / sc, y / (zMesh.scale.y || 1), (dx * sinY + dz * cosY) / sc);
       zMesh.add(group);
     } else {
       group.position.set(x, Math.max(y, 0.01), z);

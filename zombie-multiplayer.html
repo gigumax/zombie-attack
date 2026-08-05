@@ -288,29 +288,59 @@
       <span>Kid Friendly Mode <span style="color:#2ecc71;font-size:12px;">(no blood, no scary zombies, fun colors)</span></span>
     </label>
     <div style="display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:16px;font-size:15px;color:rgba(255,255,255,0.7);">
-      <span>Your Face:</span>
-      <select id="emoji-select" style="font-size:24px;width:60px;height:40px;text-align:center;cursor:pointer;background:#222;color:#fff;border:2px solid #444;border-radius:6px;">
-        <option value="😀">😀</option>
-        <option value="😎">😎</option>
-        <option value="😠">😠</option>
-        <option value="😡">😡</option>
-        <option value="💀">💀</option>
-        <option value="🤖">🤖</option>
-        <option value="👽">👽</option>
-        <option value="🤡">🤡</option>
-        <option value="👹">👹</option>
-        <option value="🐶">🐶</option>
-        <option value="🐱">🐱</option>
-        <option value="🐸">🐸</option>
-        <option value="🦊">🦊</option>
-        <option value="🐲">🐲</option>
-        <option value="🦖">🦖</option>
-        <option value="👻">👻</option>
-        <option value="🎃">🎃</option>
-        <option value="❤️">❤️</option>
-        <option value="🔥">🔥</option>
-        <option value="⭐">⭐</option>
-      </select>
+      <span>Your Name:</span>
+      <input id="player-name-input" type="text" placeholder="Enter your name" maxlength="16" style="padding:6px 12px;border-radius:6px;border:2px solid #444;background:#222;color:#fff;font-size:15px;width:180px;">
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;margin-bottom:16px;">
+      <div style="font-size:15px;color:rgba(255,255,255,0.7);">Draw Your Face (optional):</div>
+      <div style="display:flex;gap:10px;align-items:flex-start;">
+        <canvas id="face-canvas" width="128" height="128" style="border:2px solid #555;border-radius:8px;background:#f5c89a;cursor:crosshair;touch-action:none;"></canvas>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;max-width:120px;">
+            <button class="color-btn" data-color="#000000" style="width:24px;height:24px;background:#000;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#ffffff" style="width:24px;height:24px;background:#fff;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#ff0000" style="width:24px;height:24px;background:#f00;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#ff8800" style="width:24px;height:24px;background:#f80;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#ffee00" style="width:24px;height:24px;background:#fe0;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#00cc00" style="width:24px;height:24px;background:#0c0;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#0088ff" style="width:24px;height:24px;background:#08f;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#8800ff" style="width:24px;height:24px;background:#80f;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#ff00ff" style="width:24px;height:24px;background:#f0f;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+            <button class="color-btn" data-color="#884400" style="width:24px;height:24px;background:#840;border:2px solid #555;border-radius:4px;cursor:pointer;"></button>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <span style="font-size:11px;color:rgba(255,255,255,0.5);">Size:</span>
+            <input id="brush-size" type="range" min="1" max="20" value="4" style="width:80px;accent-color:#2ecc71;">
+          </div>
+          <button id="clear-face-btn" style="padding:4px 10px;border-radius:6px;border:1px solid #555;background:#333;color:#fff;font-size:12px;cursor:pointer;">Clear</button>
+          <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
+            <span style="font-size:11px;color:rgba(255,255,255,0.5);">Or pick emoji:</span>
+            <select id="emoji-select" style="font-size:20px;width:50px;height:34px;text-align:center;cursor:pointer;background:#222;color:#fff;border:2px solid #444;border-radius:6px;">
+              <option value="">—</option>
+              <option value="😀">😀</option>
+              <option value="😎">😎</option>
+              <option value="😠">😠</option>
+              <option value="😡">😡</option>
+              <option value="💀">💀</option>
+              <option value="🤖">🤖</option>
+              <option value="👽">👽</option>
+              <option value="🤡">🤡</option>
+              <option value="👹">👹</option>
+              <option value="🐶">🐶</option>
+              <option value="🐱">🐱</option>
+              <option value="🐸">🐸</option>
+              <option value="🦊">🦊</option>
+              <option value="🐲">🐲</option>
+              <option value="🦖">🦖</option>
+              <option value="👻">👻</option>
+              <option value="🎃">🎃</option>
+              <option value="❤️">❤️</option>
+              <option value="🔥">🔥</option>
+              <option value="⭐">⭐</option>
+            </select>
+          </div>
+        </div>
+      </div>
     </div>
     <button id="start-btn" class="btn">START SHOOTING</button>
   </div>
@@ -340,6 +370,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=2"></script>
+  <script src="zombie-multiplayer.js?v=3"></script>
 </body>
 </html>
