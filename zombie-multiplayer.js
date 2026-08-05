@@ -325,6 +325,27 @@ class ZombieMultiplayerClient {
     grid.position.y = 0.01;
     this.scene.add(grid);
 
+    // Water lake — big circular body in the corner
+    const waterX = -35, waterZ = -35, waterRadius = 18;
+    const waterGeo = new THREE.CircleGeometry(waterRadius, 48);
+    const waterMat = new THREE.MeshLambertMaterial({
+      color: 0x1a4a7a, transparent: true, opacity: 0.75,
+      emissive: 0x0a2a4a, emissiveIntensity: 0.3
+    });
+    const water = new THREE.Mesh(waterGeo, waterMat);
+    water.rotation.x = -Math.PI / 2;
+    water.position.set(waterX, 0.02, waterZ);
+    this.scene.add(water);
+    // Sandy shore ring around water
+    const shoreGeo = new THREE.RingGeometry(waterRadius, waterRadius + 2, 48);
+    const shoreMat = new THREE.MeshLambertMaterial({ color: 0xc4a878 });
+    const shore = new THREE.Mesh(shoreGeo, shoreMat);
+    shore.rotation.x = -Math.PI / 2;
+    shore.position.set(waterX, 0.015, waterZ);
+    this.scene.add(shore);
+    this.waterMesh = water;
+    this.waterConfig = { x: waterX, z: waterZ, radius: waterRadius };
+
     const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a });
     const wallH = 6;
     const half = CONFIG.worldSize;
@@ -1046,6 +1067,12 @@ class ZombieMultiplayerClient {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
     const now = performance.now();
 
+    // Animate water surface — gentle bobbing
+    if (this.waterMesh) {
+      this.waterMesh.position.y = 0.02 + Math.sin(now * 0.001) * 0.03;
+      this.waterMesh.material.opacity = 0.7 + Math.sin(now * 0.0015) * 0.08;
+    }
+
     // Update zombies
     const seenZombieIds = new Set();
     for (const z of state.zombies) {
@@ -1174,6 +1201,10 @@ class ZombieMultiplayerClient {
       if (z.atk && this.myPlayer) {
         const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
         if (d < 5) this.cameraShake = 0.4;
+      }
+      // Water damage splash effect for creepy zombies
+      if (z.wdmg) {
+        this.spawnWaterSplash(z.x, z.z);
       }
       // Update health bar — only show when recently attacked
       if (ud.healthBar) {
@@ -1919,6 +1950,22 @@ class ZombieMultiplayerClient {
     flash.position.set(wx, offsetY, wz);
     this.scene.add(flash);
     this.bullets.push({ mesh: flash, life: 0.2, maxLife: 0.2, isFlash: true });
+  }
+
+  spawnWaterSplash(x, z) {
+    // Water splash particles — blue droplets flying up
+    for (let i = 0; i < 6; i++) {
+      const drop = new THREE.Mesh(
+        new THREE.SphereGeometry(0.08, 4, 4),
+        new THREE.MeshBasicMaterial({ color: 0x4a9ada, transparent: true, opacity: 0.8 })
+      );
+      drop.position.set(x + (Math.random() - 0.5) * 0.8, 0.3, z + (Math.random() - 0.5) * 0.8);
+      const vx = (Math.random() - 0.5) * 4;
+      const vy = 3 + Math.random() * 3;
+      const vz = (Math.random() - 0.5) * 4;
+      this.scene.add(drop);
+      this.bullets.push({ mesh: drop, life: 0.6, maxLife: 0.6, isParticle: true, vx, vy, vz, gravity: true });
+    }
   }
 
   spawnSlamEffect(x, z) {

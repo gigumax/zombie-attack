@@ -28,6 +28,8 @@ const CONFIG = {
   waveBaseCount: 5, waveSpeedIncrease: 0.2, waveCountIncrease: 3,
   waveBreakTime: 5, goldPickupRadius: 1.5, maxGoldPickups: 8, goldSpawnInterval: 8,
 };
+// Water lake — big circular body on the map
+const WATER = { x: -35, z: -35, radius: 18 };
 
 const GUNS = {
   knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
@@ -866,7 +868,11 @@ function processPendingEffects(p, dt) {
 // ─── Player movement ───
 function updatePlayer(p, dt) {
   if (p.dead || p.paused || !p.ready) return;
-  const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed);
+  // Check if player is in water
+  const waterDist = Math.hypot(p.x - WATER.x, p.z - WATER.z);
+  const inWater = waterDist < WATER.radius;
+  const speedMult = inWater ? 0.45 : 1.0;
+  const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed) * speedMult;
   let mx = 0, mz = 0;
   if (p.keys['w']) mz -= 1;
   if (p.keys['s']) mz += 1;
@@ -1075,6 +1081,42 @@ function updateZombies(dt) {
 
     const dx = target.x - z.x, dz = target.z - z.z;
     const dist = Math.hypot(dx, dz);
+
+    // Creepy zombies hate water — take damage and try to flee
+    if (z.type === 'creepy') {
+      const zwDist = Math.hypot(z.x - WATER.x, z.z - WATER.z);
+      if (zwDist < WATER.radius) {
+        // Take damage in water
+        z.health -= 50 * dt;
+        z.waterDamage = 1; // visual flag
+        if (z.health <= 0 && !z.dying) { killZombie(z, null); continue; }
+        // Flee away from water center
+        const fleeX = (z.x - WATER.x) / (zwDist || 1);
+        const fleeZ = (z.z - WATER.z) / (zwDist || 1);
+        z.x += fleeX * z.speed * 2 * dt;
+        z.z += fleeZ * z.speed * 2 * dt;
+        z.walkPhase += dt * z.speed * 4;
+        z.rot = Math.atan2(fleeX, fleeZ);
+        // Skip normal AI while fleeing water
+        z.attackTimer = Math.max(z.attackTimer, 0.5);
+        continue;
+      }
+      // Also steer around water if heading toward it
+      const nextX = z.x + (dx / dist) * z.speed * dt * 2;
+      const nextZ = z.z + (dz / dist) * z.speed * dt * 2;
+      const nextWaterDist = Math.hypot(nextX - WATER.x, nextZ - WATER.z);
+      if (nextWaterDist < WATER.radius + 2) {
+        // Steer perpendicular to avoid water
+        const perpX = -dz / dist, perpZ = dx / dist;
+        const steerDir = (Math.hypot(z.x + perpX - WATER.x, z.z + perpZ - WATER.z) > zwDist) ? 1 : -1;
+        z.x += perpX * steerDir * z.speed * dt;
+        z.z += perpZ * steerDir * z.speed * dt;
+        z.walkPhase += dt * z.speed * 2;
+        z.rot = Math.atan2(perpX * steerDir, perpZ * steerDir);
+        continue;
+      }
+    }
+
     // Creepy zombies stop at 2.5 units so player can see their face
     const stopDist = z.type === 'creepy' ? 2.5 : 0;
     if (dist > stopDist + 0.01) {
@@ -1449,12 +1491,14 @@ function gameLoop() {
         atk: z.attacking ? 1 : 0,
         cmb: z.inCombat ? 1 : 0,
         crv: z.reviveCount || 0,
+        wdmg: z.waterDamage ? 1 : 0,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;
       if (z.rangedEffect) z.rangedEffect = 0;
       if (z.crackEffect) z.crackEffect = 0;
       if (z.attacking) z.attacking = 0;
+      if (z.waterDamage) z.waterDamage = 0;
       if (z.dying) {
         return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
       }
@@ -1465,6 +1509,7 @@ function gameLoop() {
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
     zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
+    water: { x: WATER.x, z: WATER.z, r: WATER.radius },
   };
   io.emit('state', state);
 }
