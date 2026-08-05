@@ -1507,16 +1507,17 @@ class ZombieMultiplayerClient {
     // Update camera to my player
     if (this.myPlayer) {
       this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = this.yaw;
-      this.camera.rotation.x = this.pitch;
 
       if (this.thirdPerson) {
-        // Third-person: camera behind and above player
-        const dist = 5;
-        const camX = this.myPlayer.x - Math.sin(this.yaw) * Math.cos(this.pitch) * dist;
-        const camY = this.myPlayer.y + 2 - Math.sin(this.pitch) * dist;
-        const camZ = this.myPlayer.z - Math.cos(this.yaw) * Math.cos(this.pitch) * dist;
+        // Third-person: camera orbits around player — yaw/pitch control the orbit
+        const dist = 6;
+        const height = 3;
+        const camX = this.myPlayer.x + Math.sin(this.yaw) * Math.cos(this.pitch) * dist;
+        const camY = this.myPlayer.y + height - Math.sin(this.pitch) * dist;
+        const camZ = this.myPlayer.z + Math.cos(this.yaw) * Math.cos(this.pitch) * dist;
         this.camera.position.set(camX, camY, camZ);
+        // Camera looks at player
+        this.camera.lookAt(this.myPlayer.x, this.myPlayer.y + 0.5, this.myPlayer.z);
         // Show local player mesh
         if (!this.localPlayerMesh) {
           this.localPlayerMesh = this.createPlayerMesh(this.playerEmoji, this.playerFaceDataURL, this.myName || 'You');
@@ -1525,6 +1526,7 @@ class ZombieMultiplayerClient {
         if (this.localPlayerMesh) {
           this.localPlayerMesh.visible = true;
           this.localPlayerMesh.position.set(this.myPlayer.x, 0, this.myPlayer.z);
+          // Face the direction the camera is looking (away from camera)
           this.localPlayerMesh.rotation.y = this.yaw + Math.PI;
         }
         // Hide gun in third person
@@ -1532,9 +1534,10 @@ class ZombieMultiplayerClient {
       } else {
         // First-person: camera at player eye
         this.camera.position.set(this.myPlayer.x, this.myPlayer.y, this.myPlayer.z);
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = this.pitch;
         // Hide local player mesh
         if (this.localPlayerMesh) this.localPlayerMesh.visible = false;
-        // Gun visibility handled below
       }
 
       // Camera shake from creepy zombie attacks
