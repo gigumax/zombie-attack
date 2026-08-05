@@ -703,12 +703,13 @@ class ZombieMultiplayerClient {
       // Send character colors
       const shirtColor = document.getElementById('shirt-color').value;
       const pantsColor = document.getElementById('pants-color').value;
-      const skinColor = '#f5c89a';
-      this.playerColors = { shirt: shirtColor, pants: pantsColor, skin: skinColor };
+      const headColor = document.getElementById('head-color').value;
+      this.playerColors = { shirt: shirtColor, pants: pantsColor, skin: headColor };
       this.socket.emit('setColors', this.playerColors);
       // Save to localStorage for persistence across refresh
       localStorage.setItem('zombie_shirt_color', shirtColor);
       localStorage.setItem('zombie_pants_color', pantsColor);
+      localStorage.setItem('zombie_head_color', headColor);
       localStorage.setItem('zombie_player_name', playerName);
       // Update first-person forearm color to match shirt
       if (this.gunParts.forearmMat) {
@@ -760,8 +761,10 @@ class ZombieMultiplayerClient {
       // Restore saved colors
       const savedShirt = localStorage.getItem('zombie_shirt_color');
       const savedPants = localStorage.getItem('zombie_pants_color');
+      const savedHead = localStorage.getItem('zombie_head_color');
       if (savedShirt) document.getElementById('shirt-color').value = savedShirt;
       if (savedPants) document.getElementById('pants-color').value = savedPants;
+      if (savedHead) document.getElementById('head-color').value = savedHead;
       // Restore saved name
       const savedName = localStorage.getItem('zombie_player_name');
       if (savedName) document.getElementById('player-name-input').value = savedName;
