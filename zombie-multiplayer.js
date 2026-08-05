@@ -1053,6 +1053,44 @@ class ZombieMultiplayerClient {
         // Whole body bob up/down
         mesh.position.y = Math.abs(swing) * 0.05;
       }
+      // Apply hit knockback offsets to body parts
+      const parts = ['head', 'armL', 'armR', 'legL', 'legR', 'torso'];
+      for (const pn of parts) {
+        const pm = ud[pn];
+        if (!pm || !pm.userData.kb) continue;
+        const kb = pm.userData.kb;
+        if (kb.t <= 0) {
+          // Restore base position
+          if (pm.userData.basePos !== undefined) {
+            pm.position.x = pm.userData.basePos.x;
+            pm.position.y = pm.userData.basePos.y;
+            pm.position.z = pm.userData.basePos.z;
+          }
+          pm.userData.kb = null;
+          continue;
+        }
+        // Apply offset (decelerating)
+        pm.position.x = pm.userData.basePos.x + kb.ox;
+        pm.position.y = pm.userData.basePos.y + kb.oy;
+        pm.position.z = pm.userData.basePos.z + kb.oz;
+        // Integrate velocity with deceleration
+        kb.ox += kb.vx * dt;
+        kb.oy += kb.vy * dt;
+        kb.oz += kb.vz * dt;
+        // Gravity and friction
+        kb.vy -= 0.4 * dt;
+        kb.vx *= 0.85;
+        kb.vz *= 0.85;
+        kb.t -= dt;
+      }
+      // Whole-mesh body recoil (for zombies without a torso part)
+      if (mesh.userData.bodyKb && mesh.userData.bodyKb.t > 0) {
+        const bk = mesh.userData.bodyKb;
+        const intensity = bk.t / 0.2; // fades from 1 to 0
+        mesh.position.x += bk.ox * intensity;
+        mesh.position.z += bk.oz * intensity;
+        bk.t -= dt;
+      }
     }
     // Remove dead zombies
     for (const id of Object.keys(this.zombieMeshes)) {
@@ -1268,7 +1306,13 @@ class ZombieMultiplayerClient {
       if (p.tr && p.tr.length > 0) {
         for (const t of p.tr) {
           this.spawnTracer(t.x1, t.y1, t.z1, t.x2, t.y2, t.z2, t.gun);
-          if (t.hit) this.spawnImpactHole(t.x2, t.y2, t.z2, t.zid);
+          if (t.hit) {
+            this.spawnImpactHole(t.x2, t.y2, t.z2, t.zid);
+            // Apply knockback to the shot body part
+            if (t.zid >= 0 && t.part && this.zombieMeshes[t.zid]) {
+              this.applyHitKnockback(this.zombieMeshes[t.zid], t.part, t.x2, t.y2, t.z2);
+            }
+          }
         }
       }
     }
@@ -1538,15 +1582,18 @@ class ZombieMultiplayerClient {
       vz: (Math.random() - 0.5) * 6,
       rotVel: (Math.random() - 0.5) * 8,
     });
-    // Explosion particles — red blood/gore burst, or sparkles in kid mode
+    // Explosion particles — shared geometry, individual materials for independent fading
     const kidMode = this.kidFriendly;
-    const particleColors = kidMode ? [0x44ff44, 0x44ffaa, 0x4444ff, 0xffff44, 0x44ffff, 0xffaa44] : [0xcc0000];
-    for (let i = 0; i < 12; i++) {
-      const pColor = kidMode ? particleColors[i % particleColors.length] : 0xcc0000;
+    if (!this._particleGeo) {
+      this._particleGeo = kidMode ? new THREE.OctahedronGeometry(0.08, 0) : new THREE.SphereGeometry(0.08, 4, 4);
+      this._particleColors = kidMode ? [0x44ff44, 0x44ffaa, 0x4444ff, 0xffff44, 0x44ffff, 0xffaa44] : [0xcc0000];
+    }
+    for (let i = 0; i < 6; i++) {
+      const pColor = kidMode ? this._particleColors[i % this._particleColors.length] : 0xcc0000;
       const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
-      const pSize = kidMode ? 0.06 + Math.random() * 0.06 : 0.05 + Math.random() * 0.08;
-      const pGeo = kidMode ? new THREE.OctahedronGeometry(pSize, 0) : new THREE.SphereGeometry(pSize, 4, 4);
-      const particle = new THREE.Mesh(pGeo, pMat);
+      const particle = new THREE.Mesh(this._particleGeo, pMat);
+      const s = 0.5 + Math.random() * 0.5;
+      particle.scale.setScalar(s);
       particle.position.set(wx, offsetY, wz);
       this.scene.add(particle);
       this.bullets.push({
@@ -1556,11 +1603,10 @@ class ZombieMultiplayerClient {
         vz: (Math.random() - 0.5) * 8,
       });
     }
-    // Flash sphere — quick expanding glow (yellow stars in kid mode, red gore otherwise)
-    const flashColor = kidMode ? 0x44ff88 : 0xff3300;
-    const flashMat = new THREE.MeshBasicMaterial({ color: flashColor, transparent: true, opacity: 0.8 });
-    const flashGeo = kidMode ? new THREE.OctahedronGeometry(0.35, 0) : new THREE.SphereGeometry(0.3, 8, 8);
-    const flash = new THREE.Mesh(flashGeo, flashMat);
+    // Flash sphere — pooled
+    if (!this._flashGeo) this._flashGeo = kidMode ? new THREE.OctahedronGeometry(0.35, 0) : new THREE.SphereGeometry(0.3, 8, 8);
+    if (!this._flashMat) this._flashMat = new THREE.MeshBasicMaterial({ color: kidMode ? 0x44ff88 : 0xff3300, transparent: true, opacity: 0.8 });
+    const flash = new THREE.Mesh(this._flashGeo, this._flashMat);
     flash.position.set(wx, offsetY, wz);
     this.scene.add(flash);
     this.bullets.push({ mesh: flash, life: 0.2, maxLife: 0.2, isFlash: true });
@@ -1780,37 +1826,77 @@ class ZombieMultiplayerClient {
       this.keyMesh.material.dispose();
       this.keyMesh = null;
     }
-    this.doorMesh = null;
+  }
+
+  applyHitKnockback(mesh, part, hx, hy, hz) {
+    const ud = mesh.userData;
+    if (!ud) return;
+    // For 'body' hits, use torso if available, otherwise recoil the whole mesh
+    let partMesh = ud[part];
+    if (part === 'body') {
+      partMesh = ud.torso || null;
+      if (!partMesh) {
+        // Whole-mesh recoil for zombies without a torso part
+        if (!mesh.userData.bodyKb) mesh.userData.bodyKb = { t: 0, ox: 0, oz: 0 };
+        const zx = mesh.position.x, zz = mesh.position.z;
+        const dx = hx - zx, dz = hz - zz;
+        const len = Math.hypot(dx, dz) || 1;
+        mesh.userData.bodyKb.ox = (dx / len) * 0.12;
+        mesh.userData.bodyKb.oz = (dz / len) * 0.12;
+        mesh.userData.bodyKb.t = 0.2;
+        return;
+      }
+    }
+    if (!partMesh) return;
+    // Direction from zombie center to hit point — push part outward
+    const zx = mesh.position.x, zz = mesh.position.z;
+    const dx = hx - zx, dz = hz - zz;
+    const len = Math.hypot(dx, dz) || 1;
+    const nx = dx / len, nz = dz / len;
+    // Store knockback state on the part mesh
+    if (!partMesh.userData.kb) partMesh.userData.kb = { ox: 0, oy: 0, oz: 0, vx: 0, vy: 0, vz: 0, t: 0 };
+    const kb = partMesh.userData.kb;
+    // Reset to fresh knockback
+    kb.vx = nx * 0.15;
+    kb.vy = 0.08;
+    kb.vz = nz * 0.15;
+    kb.t = 0.25; // 250ms of knockback animation
+    // Store base position if not already
+    if (partMesh.userData.basePos === undefined) {
+      partMesh.userData.basePos = { x: partMesh.position.x, y: partMesh.position.y, z: partMesh.position.z };
+    }
   }
 
   spawnImpactHole(x, y, z, zid) {
-    // Limit total holes using a counter instead of filter scan
+    // Rate-limit: max 1 impact hole per frame to prevent burst allocation
+    if (this._lastHoleFrame === this._frameCount) return;
+    this._lastHoleFrame = this._frameCount;
+    // Limit total holes using a counter
     if (!this._holeCount) this._holeCount = 0;
-    if (this._holeCount >= 30) {
-      // Remove oldest hole
+    if (this._holeCount >= 20) {
       for (let i = 0; i < this.bullets.length; i++) {
         if (this.bullets[i].isHole) {
           const b = this.bullets[i];
           if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
-          b.mesh.children.forEach(c => { c.geometry.dispose(); c.material.dispose(); });
           this.bullets.splice(i, 1);
           this._holeCount--;
           break;
         }
       }
     }
-    // Reuse shared geometries to reduce GC pressure
+    // Reuse shared geometries AND materials to reduce GC pressure
     if (!this._holeGeo) this._holeGeo = new THREE.SphereGeometry(0.08, 6, 6);
     if (!this._ringGeo) this._ringGeo = new THREE.CircleGeometry(0.2, 8);
-    const holeColor = this.kidFriendly ? 0x3366cc : 0xcc0000;
-    const ringColor = this.kidFriendly ? 0x3366cc : 0xaa0000;
+    if (!this._holeMats) {
+      const hc = this.kidFriendly ? 0x3366cc : 0xcc0000;
+      const rc = this.kidFriendly ? 0x3366cc : 0xaa0000;
+      this._holeColors = { hole: hc, ring: rc };
+    }
     const group = new THREE.Group();
-    const holeMat = new THREE.MeshBasicMaterial({ color: holeColor, transparent: true, opacity: 1 });
-    holeMat.userData.baseOpacity = 1;
+    const holeMat = new THREE.MeshBasicMaterial({ color: this._holeColors.hole, transparent: true, opacity: 1 });
     const hole = new THREE.Mesh(this._holeGeo, holeMat);
     group.add(hole);
-    const ringMat = new THREE.MeshBasicMaterial({ color: ringColor, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
-    ringMat.userData.baseOpacity = 0.7;
+    const ringMat = new THREE.MeshBasicMaterial({ color: this._holeColors.ring, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
     const ring = new THREE.Mesh(this._ringGeo, ringMat);
     // If near ground, lay flat; otherwise face outward
     if (y < 0.3) {
@@ -1845,10 +1931,15 @@ class ZombieMultiplayerClient {
         // Remove from whatever parent it's attached to (scene or zombie mesh)
         if (b.mesh.parent) b.mesh.parent.remove(b.mesh);
         if (b.isHole) {
-          // Dispose group children (materials only — geometries are shared)
+          // Dispose individual materials (geometries are shared)
           b.mesh.children.forEach(c => { c.material.dispose(); });
           if (this._holeCount) this._holeCount--;
-        } else if (b.isParticle || b.isLimb || b.isExplosion || b.isShockwave || b.isCrackGlow) {
+        } else if (b.isParticle) {
+          // Particles use shared geometry — dispose individual material only
+          b.mesh.material.dispose();
+        } else if (b.isFlash) {
+          // Flash uses shared geometry/material — don't dispose
+        } else if (b.isLimb || b.isExplosion || b.isShockwave || b.isCrackGlow) {
           // These create their own geometries — dispose them
           b.mesh.geometry.dispose();
           b.mesh.material.dispose();
@@ -1913,7 +2004,8 @@ class ZombieMultiplayerClient {
       } else if (b.isHole) {
         // Fade out holes gradually in last 1 second
         const fadeRatio = Math.min(b.life / 1.0, 1);
-        b.mesh.children.forEach(c => { c.material.opacity = (c.material.userData.baseOpacity || 1) * fadeRatio; });
+        if (b.mesh.children[0]) b.mesh.children[0].material.opacity = fadeRatio;
+        if (b.mesh.children[1]) b.mesh.children[1].material.opacity = 0.7 * fadeRatio;
       } else {
         b.mesh.material.opacity = (b.life / b.maxLife) * 0.9;
       }
@@ -2105,6 +2197,7 @@ class ZombieMultiplayerClient {
     requestAnimationFrame(() => this.animate());
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this._lastDt = dt;
+    this._frameCount = (this._frameCount || 0) + 1;
     // Advance interpolation alpha (server ticks every 40ms)
     this.interpAlpha += dt / 0.04;
     // Flush throttled input
