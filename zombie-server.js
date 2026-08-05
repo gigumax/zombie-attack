@@ -125,6 +125,7 @@ function createPlayer(id) {
     shootTracers: [],
     emoji: '😀',
     faceDataURL: null,
+    colors: { shirt: '#3498db', pants: '#2a2a4a', skin: '#f5c89a' },
     items: { grenade:0, rocket:0, medkit:0, airstrike:0 },
     itemCooldown: 0,
     pendingEffects: [],
@@ -1420,6 +1421,7 @@ function gameLoop() {
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
       emo: p.emoji || '😀',
       face: p.faceDataURL || null,
+      col: p.colors || null,
       pau: p.paused ? 1 : 0,
       it: p.items, icd: +p.itemCooldown.toFixed(2),
       eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
@@ -1523,6 +1525,12 @@ io.on('connection', (socket) => {
     if (p && typeof val === 'string' && val.startsWith('data:image/png') && val.length < 50000) {
       p.faceDataURL = val;
       p.emoji = null;
+    }
+  });
+  socket.on('setColors', (val) => {
+    const p = players[socket.id];
+    if (p && val && typeof val.shirt === 'string' && typeof val.pants === 'string' && typeof val.skin === 'string') {
+      p.colors = { shirt: val.shirt, pants: val.pants, skin: val.skin };
     }
   });
   socket.on('togglePause', () => {

@@ -560,6 +560,12 @@ class ZombieMultiplayerClient {
         this.playerEmoji = '😀';
         this.socket.emit('setEmoji', this.playerEmoji);
       }
+      // Send character colors
+      const shirtColor = document.getElementById('shirt-color').value;
+      const pantsColor = document.getElementById('pants-color').value;
+      const skinColor = document.getElementById('skin-color').value;
+      this.playerColors = { shirt: shirtColor, pants: pantsColor, skin: skinColor };
+      this.socket.emit('setColors', this.playerColors);
       this.socket.emit('playerReady');
       document.getElementById('start-screen').classList.add('hidden');
       this.playing = true;
@@ -1353,7 +1359,7 @@ class ZombieMultiplayerClient {
       seenPlayerIds.add(p.id);
       let mesh = this.otherPlayerMeshes[p.id];
       if (!mesh) {
-        mesh = this.createPlayerMesh(p.emo || '😀', p.face || null, p.name || 'Player');
+        mesh = this.createPlayerMesh(p.emo || '😀', p.face || null, p.name || 'Player', p.col);
         this.scene.add(mesh);
         this.otherPlayerMeshes[p.id] = mesh;
       }
@@ -1573,7 +1579,7 @@ class ZombieMultiplayerClient {
         this.camera.lookAt(this.myPlayer.x, this.myPlayer.y + 0.5, this.myPlayer.z);
         // Show local player mesh
         if (!this.localPlayerMesh) {
-          this.localPlayerMesh = this.createPlayerMesh(this.playerEmoji, this.playerFaceDataURL, this.myName || 'You');
+          this.localPlayerMesh = this.createPlayerMesh(this.playerEmoji, this.playerFaceDataURL, this.myName || 'You', this.playerColors);
           this.scene.add(this.localPlayerMesh);
         }
         if (this.localPlayerMesh) {
@@ -1669,10 +1675,11 @@ class ZombieMultiplayerClient {
     }
   }
 
-  createPlayerMesh(emoji, faceDataURL, name) {
+  createPlayerMesh(emoji, faceDataURL, name, colors) {
+    const col = colors || { shirt: '#3498db', pants: '#2a2a4a', skin: '#f5c89a' };
     const group = new THREE.Group();
-    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3498db });
-    const headMat = new THREE.MeshLambertMaterial({ color: 0xf5c89a });
+    const bodyMat = new THREE.MeshLambertMaterial({ color: col.shirt });
+    const headMat = new THREE.MeshLambertMaterial({ color: col.skin });
     const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.35), bodyMat);
     body.position.y = 1.15; body.castShadow = true; group.add(body);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), headMat);
@@ -1716,7 +1723,7 @@ class ZombieMultiplayerClient {
     const gunMag = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.25, 0.12), new THREE.MeshLambertMaterial({color:0x333333}));
     gunMag.position.set(0, -0.18, 0.1); gunGroup.add(gunMag);
     // Hands on gun
-    const handMat = new THREE.MeshLambertMaterial({color:0xf5c89a});
+    const handMat = new THREE.MeshLambertMaterial({color: col.skin});
     const handR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
     handR.position.set(0, -0.08, 0.05); gunGroup.add(handR);
     const handL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
@@ -1727,8 +1734,8 @@ class ZombieMultiplayerClient {
     gunGroup.rotation.x = -0.15; // slight upward aim
     group.add(gunGroup);
     const legGeo = new THREE.BoxGeometry(0.22, 0.75, 0.22);
-    const legL = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color:0x2a2a4a})); legL.position.set(-0.15, 0.375, 0); legL.castShadow = true; group.add(legL);
-    const legR = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color:0x2a2a4a})); legR.position.set(0.15, 0.375, 0); legR.castShadow = true; group.add(legR);
+    const legL = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color: col.pants})); legL.position.set(-0.15, 0.375, 0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color: col.pants})); legR.position.set(0.15, 0.375, 0); legR.castShadow = true; group.add(legR);
 
     // Name tag (simple sprite)
     const tagName = name || 'Player';

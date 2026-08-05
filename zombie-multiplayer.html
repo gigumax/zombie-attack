@@ -355,6 +355,23 @@
         </div>
       </div>
     </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:20px;">
+      <div style="font-size:15px;color:rgba(255,255,255,0.7);">Customize Your Character:</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <span style="font-size:12px;color:rgba(255,255,255,0.5);">Shirt</span>
+          <input id="shirt-color" type="color" value="#3498db" style="width:40px;height:40px;border:2px solid #555;border-radius:8px;cursor:pointer;background:none;">
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <span style="font-size:12px;color:rgba(255,255,255,0.5);">Pants</span>
+          <input id="pants-color" type="color" value="#2a2a4a" style="width:40px;height:40px;border:2px solid #555;border-radius:8px;cursor:pointer;background:none;">
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+          <span style="font-size:12px;color:rgba(255,255,255,0.5);">Skin</span>
+          <input id="skin-color" type="color" value="#f5c89a" style="width:40px;height:40px;border:2px solid #555;border-radius:8px;cursor:pointer;background:none;">
+        </div>
+      </div>
+    </div>
     <button id="start-btn" class="btn">START SHOOTING</button>
     <div id="swipe-hint" style="margin-top:30px;color:rgba(255,255,255,0.3);font-size:13px;text-align:center;animation:pulse 2s infinite;">
       Swipe down for more info ↓
@@ -387,6 +404,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=8"></script>
+  <script src="zombie-multiplayer.js?v=9"></script>
 </body>
 </html>
