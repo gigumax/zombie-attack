@@ -62,6 +62,34 @@ function isInWater(x, z) {
   return inside;
 }
 
+// Creepy zombie zone — dark area on the map full of creepy zombies
+const CREEPY_ZONE = { x: 35, z: 35, radius: 22, maxZombies: 15, spawnInterval: 3 };
+let creepyZoneTimer = 0;
+
+function isInCreepyZone(x, z) {
+  return Math.hypot(x - CREEPY_ZONE.x, z - CREEPY_ZONE.z) < CREEPY_ZONE.radius;
+}
+
+function spawnCreepyZoneZombie() {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = Math.random() * (CREEPY_ZONE.radius - 2);
+  const x = CREEPY_ZONE.x + Math.cos(angle) * dist;
+  const z = CREEPY_ZONE.z + Math.sin(angle) * dist;
+  const speed = CONFIG.zombieSpeed;
+  const health = CONFIG.zombieHealth * 1.5;
+  zombies.push({
+    id: nextZombieId++, x, z, type: 'creepy',
+    health, maxHealth: health,
+    speed: speed * 3.0,
+    damage: CONFIG.zombieDamage * 1.8, attackRange: CONFIG.zombieAttackRange * 1.5,
+    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: false, hasKey: false,
+    lostLimbs: {}, limbDamage: {},
+    specialAttackTimer: 2 + Math.random() * 2,
+    fromCreepyZone: true, // don't count toward wave completion
+  });
+}
+
 const GUNS = {
   knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
   katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
@@ -333,8 +361,8 @@ function killZombie(zombie, killerId, dirX, dirZ) {
     return;
   }
 
-  // Check wave complete or escape win (only count active zombies)
-  const aliveZombies = zombies.filter(z => !z.dying && !z.reviving);
+  // Check wave complete or escape win (only count active zombies, exclude creepy zone spawns)
+  const aliveZombies = zombies.filter(z => !z.dying && !z.reviving && !z.fromCreepyZone);
   if (escapeMode) {
     checkEscapeWin();
   } else if (aliveZombies.length === 0 && zombiesToSpawn === 0) {
@@ -1560,6 +1588,18 @@ function gameLoop() {
 
     updateZombies(dt);
 
+    // Creepy zone spawning — independent of waves
+    if (!escapeMode && !skeletonWorld) {
+      creepyZoneTimer -= dt;
+      if (creepyZoneTimer <= 0) {
+        creepyZoneTimer = CREEPY_ZONE.spawnInterval;
+        const creepyCount = zombies.filter(z => z.fromCreepyZone && !z.dying).length;
+        if (creepyCount < CREEPY_ZONE.maxZombies) {
+          spawnCreepyZoneZombie();
+        }
+      }
+    }
+
     // Check if all players dead (non-escape)
     if (!escapeMode) {
       const allDead = Object.values(players).every(p => p.dead);
@@ -1622,8 +1662,9 @@ function gameLoop() {
     chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
-    zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
+    zRemain: zombies.filter(z => !z.dying && !z.reviving && !z.fromCreepyZone).length + zombiesToSpawn,
     water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
+    creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
     skeletonWorld,
   };
   io.emit('state', state);

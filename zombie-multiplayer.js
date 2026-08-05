@@ -390,6 +390,70 @@ class ZombieMultiplayerClient {
     this.scene.add(shore);
     this.waterMesh = water;
 
+    // Creepy zombie zone — dark wasteland area with dead trees and gravestones
+    const czX = 35, czZ = 35, czR = 22;
+    // Dark corrupted ground
+    const czGeo = new THREE.CircleGeometry(czR, 32);
+    const czMat = new THREE.MeshLambertMaterial({ color: 0x1a0a1a, emissive: 0x0a000a, emissiveIntensity: 0.2 });
+    const czGround = new THREE.Mesh(czGeo, czMat);
+    czGround.rotation.x = -Math.PI / 2;
+    czGround.position.set(czX, 0.012, czZ);
+    this.scene.add(czGround);
+    // Dark ring border
+    const czRingGeo = new THREE.RingGeometry(czR - 0.5, czR, 32);
+    const czRingMat = new THREE.MeshBasicMaterial({ color: 0x660066, transparent: true, opacity: 0.5 });
+    const czRing = new THREE.Mesh(czRingGeo, czRingMat);
+    czRing.rotation.x = -Math.PI / 2;
+    czRing.position.set(czX, 0.013, czZ);
+    this.scene.add(czRing);
+    // Dead trees — dark bare trunks
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x1a1a0a, emissive: 0x0a0a00, emissiveIntensity: 0.15 });
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = 3 + Math.random() * (czR - 5);
+      const tx = czX + Math.cos(angle) * dist;
+      const tz = czZ + Math.sin(angle) * dist;
+      const treeH = 3 + Math.random() * 3;
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.3, treeH, 5), trunkMat);
+      trunk.position.set(tx, treeH / 2, tz);
+      trunk.rotation.z = (Math.random() - 0.5) * 0.3;
+      trunk.castShadow = true;
+      this.scene.add(trunk);
+      // A few bare branches
+      for (let b = 0; b < 3; b++) {
+        const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 1 + Math.random(), 3), trunkMat);
+        branch.position.set(tx, treeH - 0.5 + b * 0.4, tz);
+        branch.rotation.z = (Math.random() - 0.5) * 1.5;
+        branch.rotation.x = (Math.random() - 0.5) * 1.5;
+        this.scene.add(branch);
+      }
+    }
+    // Gravestones
+    const stoneMat = new THREE.MeshLambertMaterial({ color: 0x3a3a3a, emissive: 0x0a0a0a, emissiveIntensity: 0.1 });
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 2 + Math.random() * (czR - 4);
+      const sx = czX + Math.cos(angle) * dist;
+      const sz = czZ + Math.sin(angle) * dist;
+      const stoneH = 0.8 + Math.random() * 0.6;
+      const stone = new THREE.Mesh(new THREE.BoxGeometry(0.5, stoneH, 0.15), stoneMat);
+      stone.position.set(sx, stoneH / 2, sz);
+      stone.rotation.y = Math.random() * Math.PI * 2;
+      stone.castShadow = true;
+      this.scene.add(stone);
+    }
+    // Glowing purple fog particles
+    const fogMat = new THREE.MeshBasicMaterial({ color: 0x660066, transparent: true, opacity: 0.15 });
+    for (let i = 0; i < 20; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * czR;
+      const fx = czX + Math.cos(angle) * dist;
+      const fz = czZ + Math.sin(angle) * dist;
+      const fog = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random() * 2, 6, 6), fogMat);
+      fog.position.set(fx, 0.5 + Math.random() * 2, fz);
+      this.scene.add(fog);
+    }
+
     const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a });
     const wallH = 6;
     const half = CONFIG.worldSize;
