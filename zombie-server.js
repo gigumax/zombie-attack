@@ -480,13 +480,13 @@ function handleShoot(playerId) {
   for (let pellet = 0; pellet < pellets; pellet++) {
     const dir = getLookDir(p, spread);
     let closestHit = null, closestDist = CONFIG.bulletRange;
+    let closestPlayerHit = null;
     for (const z of zombies) {
       if (z.dying || z.reviving) continue;
       const hit = rayHitZombie(p, dir, z, closestDist);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; closestPlayerHit = null; }
     }
     // PvP — check for player hits (only if friendly fire is on)
-    let closestPlayerHit = null;
     if (friendlyFire) {
       for (const other of Object.values(players)) {
         if (other.id === playerId || other.dead || other.paused) continue;

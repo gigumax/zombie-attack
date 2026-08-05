@@ -177,8 +177,13 @@ class ZombieMultiplayerClient {
         pauseEl.classList.add('hidden');
       }
       this.interpAlpha = 0;
+      const _t0 = performance.now();
       this.updateScene(state, this._lastDt || 0.016);
+      const _t1 = performance.now();
       this.updateHUD();
+      const _t2 = performance.now();
+      this._sceneTime = _t1 - _t0;
+      this._hudTime = _t2 - _t1;
     });
 
     this.socket.on('killFeed', (feed) => {
@@ -1008,7 +1013,11 @@ class ZombieMultiplayerClient {
           const sinceHit = nowSec - (ud.healthBar.userData.lastHitTime || 0);
           if (sinceHit < 3) {
             ud.healthBar.visible = true;
-            this.updateHealthBar(ud.healthBar, z.hp || 0, z.mhp || 1);
+            // Only redraw canvas when health actually changes
+            if (ud.lastDrawnHp !== z.hp) {
+              this.updateHealthBar(ud.healthBar, z.hp || 0, z.mhp || 1);
+              ud.lastDrawnHp = z.hp;
+            }
           } else {
             ud.healthBar.visible = false;
           }
@@ -1287,7 +1296,10 @@ class ZombieMultiplayerClient {
         const sinceHit = nowSec - (ud.healthBar.userData.lastHitTime || 0);
         if (sinceHit < 3) {
           ud.healthBar.visible = true;
-          this.updateHealthBar(ud.healthBar, p.h || 100, p.mhp || 100);
+          if (ud.lastDrawnHp !== p.h) {
+            this.updateHealthBar(ud.healthBar, p.h || 100, p.mhp || 100);
+            ud.lastDrawnHp = p.h;
+          }
         } else {
           ud.healthBar.visible = false;
         }
@@ -1548,7 +1560,12 @@ class ZombieMultiplayerClient {
     if (!this._tracerGeoCache[cacheKey]) {
       this._tracerGeoCache[cacheKey] = new THREE.CylinderGeometry(cfg.radius, cfg.radius, roundedLen, 6);
     }
-    const mat = new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.9 });
+    // Pool materials by gun type — clone for independent opacity (clone is cheap, no shader compile)
+    if (!this._tracerMatCache) this._tracerMatCache = {};
+    if (!this._tracerMatCache[gunName]) {
+      this._tracerMatCache[gunName] = new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.9 });
+    }
+    const mat = this._tracerMatCache[gunName].clone();
     const mesh = new THREE.Mesh(this._tracerGeoCache[cacheKey], mat);
     mesh.position.set((x1+x2)/2, (y1+y2)/2, (z1+z2)/2);
     mesh.lookAt(x2, y2, z2);
@@ -1903,17 +1920,21 @@ class ZombieMultiplayerClient {
       ring.rotation.x = -Math.PI / 2;
       ring.position.y = 0.01;
     } else {
-      ring.lookAt(this.camera.position);
+      // Face camera without lookAt (avoids matrix update)
+      ring.rotation.y = this.yaw;
     }
     group.add(ring);
 
     // If zid is valid, attach to zombie mesh so hole follows the zombie
     if (zid !== undefined && zid >= 0 && this.zombieMeshes[zid]) {
       const zMesh = this.zombieMeshes[zid];
-      // Convert world position to local position relative to zombie mesh
-      const localPos = new THREE.Vector3(x, y, z);
-      zMesh.worldToLocal(localPos);
-      group.position.copy(localPos);
+      // Compute local position manually (faster than worldToLocal which forces matrix update)
+      const dx = x - zMesh.position.x;
+      const dz = z - zMesh.position.z;
+      const cosY = Math.cos(zMesh.rotation.y);
+      const sinY = Math.sin(zMesh.rotation.y);
+      const sc = zMesh.scale.x || 1;
+      group.position.set((dx * cosY + dz * sinY) / sc, y / (zMesh.scale.y || 1), (-dx * sinY + dz * cosY) / sc);
       zMesh.add(group);
     } else {
       group.position.set(x, Math.max(y, 0.01), z);
@@ -1944,7 +1965,7 @@ class ZombieMultiplayerClient {
           b.mesh.geometry.dispose();
           b.mesh.material.dispose();
         } else {
-          // Tracers use shared cached geometries — only dispose material
+          // Tracers use shared geometry but cloned material — dispose material only
           b.mesh.material.dispose();
         }
         this.bullets.splice(i, 1);
@@ -2198,11 +2219,39 @@ class ZombieMultiplayerClient {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this._lastDt = dt;
     this._frameCount = (this._frameCount || 0) + 1;
+    // FPS tracking
+    if (!this._fpsFrames) this._fpsFrames = 0;
+    if (!this._fpsTimer) this._fpsTimer = performance.now();
+    this._fpsFrames++;
+    const now = performance.now();
+    if (now - this._fpsTimer >= 500) {
+      this._fps = Math.round(this._fpsFrames * 1000 / (now - this._fpsTimer));
+      this._fpsFrames = 0;
+      this._fpsTimer = now;
+    }
+    // Show perf overlay
+    if (this._frameCount % 10 === 0) {
+      let perfEl = document.getElementById('perf-overlay');
+      if (!perfEl) {
+        perfEl = document.createElement('div');
+        perfEl.id = 'perf-overlay';
+        perfEl.style.cssText = 'position:fixed;bottom:4px;left:4px;font:11px monospace;color:#0f0;background:rgba(0,0,0,0.7);padding:2px 6px;z-index:9999;pointer-events:none;';
+        document.body.appendChild(perfEl);
+      }
+      const bt = this.bullets.length;
+      const st = (this._sceneTime || 0).toFixed(1);
+      const ht = (this._hudTime || 0).toFixed(1);
+      const rt = (this._renderTime || 0).toFixed(1);
+      const ubt = (this._bulletsTime || 0).toFixed(1);
+      perfEl.textContent = `FPS:${this._fps} B:${bt} scene:${st}ms bullets:${ubt}ms render:${rt}ms`;
+    }
     // Advance interpolation alpha (server ticks every 40ms)
     this.interpAlpha += dt / 0.04;
     // Flush throttled input
     this.flushInput();
+    const _bt0 = performance.now();
     this.updateBullets(dt);
+    this._bulletsTime = performance.now() - _bt0;
     // Gun bob animation — subtle sway based on time (skip during reload)
     if (this.playing && this.myPlayer && !this.myPlayer.dead && this.myPlayer.r !== 1) {
       const t = performance.now() / 1000;
@@ -2222,7 +2271,9 @@ class ZombieMultiplayerClient {
       this.gun.rotation.x = 0;
       this.gun.rotation.z = 0;
     }
+    const _rt0 = performance.now();
     this.renderer.render(this.scene, this.camera);
+    this._renderTime = performance.now() - _rt0;
   }
 }
 
