@@ -1420,7 +1420,6 @@ function gameLoop() {
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
       emo: p.emoji || '😀',
-      face: p.faceDataURL || null,
       col: p.colors || null,
       pau: p.paused ? 1 : 0,
       it: p.items, icd: +p.itemCooldown.toFixed(2),
@@ -1525,6 +1524,7 @@ io.on('connection', (socket) => {
     if (p && typeof val === 'string' && val.startsWith('data:image/png') && val.length < 50000) {
       p.faceDataURL = val;
       p.emoji = null;
+      io.emit('playerFace', { id: socket.id, face: val });
     }
   });
   socket.on('setColors', (val) => {

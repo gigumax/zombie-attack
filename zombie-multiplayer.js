@@ -274,6 +274,16 @@ class ZombieMultiplayerClient {
       this.renderPlayerList(list);
     });
 
+    this.socket.on('playerFace', (data) => {
+      this.playerFaces = this.playerFaces || {};
+      this.playerFaces[data.id] = data.face;
+      // If mesh already exists, update its face
+      const mesh = this.otherPlayerMeshes[data.id];
+      if (mesh && mesh.userData.faceDataURL === null) {
+        this.updatePlayerMeshFace(mesh, data.face);
+      }
+    });
+
     this.socket.on('disconnect', () => {
       this.connected = false;
     });
@@ -1359,7 +1369,8 @@ class ZombieMultiplayerClient {
       seenPlayerIds.add(p.id);
       let mesh = this.otherPlayerMeshes[p.id];
       if (!mesh) {
-        mesh = this.createPlayerMesh(p.emo || '😀', p.face || null, p.name || 'Player', p.col);
+        const faceData = (this.playerFaces && this.playerFaces[p.id]) || p.face || null;
+        mesh = this.createPlayerMesh(p.emo || '😀', faceData, p.name || 'Player', p.col);
         this.scene.add(mesh);
         this.otherPlayerMeshes[p.id] = mesh;
       }
@@ -1759,6 +1770,26 @@ class ZombieMultiplayerClient {
     group.userData = { nameTag: sprite, armL, armR, legL, legR, head, gunGroup, walkPhase: 0, healthBar: hb };
 
     return group;
+  }
+
+  updatePlayerMeshFace(mesh, faceDataURL) {
+    if (!faceDataURL || !mesh) return;
+    mesh.userData.faceDataURL = faceDataURL;
+    // Find the face plane (the one with a CanvasTexture map)
+    for (const child of mesh.children) {
+      if (child.material && child.material.map && child.material.map.image) {
+        const canvas = child.material.map.image;
+        const ctx = canvas.getContext('2d');
+        const img = new Image();
+        img.onload = () => {
+          ctx.clearRect(0, 0, 128, 128);
+          ctx.drawImage(img, 0, 0, 128, 128);
+          child.material.map.needsUpdate = true;
+        };
+        img.src = faceDataURL;
+        return;
+      }
+    }
   }
 
   // ─── Tracers ───
