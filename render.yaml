@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: zombie-attack
+    env: node
+    buildCommand: npm install
+    startCommand: node zombie-server.js
+    healthCheckPath: /
+    plan: free
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.1
