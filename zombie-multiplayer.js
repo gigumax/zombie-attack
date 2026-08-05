@@ -683,38 +683,6 @@ class ZombieMultiplayerClient {
       if (e.button === 0) this.socket.emit('shoot');
     });
 
-  }
-
-  setupWorldMap() {
-    // Fast travel buttons
-    document.querySelectorAll('.map-loc-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const world = btn.dataset.world;
-        if (world === 'skeleton') {
-          this.socket.emit('travelToWorld', 'skeleton');
-        } else {
-          const tx = parseFloat(btn.dataset.tx);
-          const tz = parseFloat(btn.dataset.tz);
-          this.socket.emit('teleport', { x: tx, z: tz });
-        }
-        this.toggleWorldMap();
-      });
-    });
-    // Click on map canvas to teleport to that location
-    const mapCanvas = document.getElementById('map-canvas');
-    if (mapCanvas) {
-      mapCanvas.addEventListener('click', (e) => {
-        const rect = mapCanvas.getBoundingClientRect();
-        const cx = e.clientX - rect.left;
-        const cy = e.clientY - rect.top;
-        const ws = CONFIG.worldSize;
-        const wx = (cx / mapCanvas.width) * (2 * ws) - ws;
-        const wz = (cy / mapCanvas.height) * (2 * ws) - ws;
-        this.socket.emit('teleport', { x: wx, z: wz });
-        this.toggleWorldMap();
-      });
-    }
-
     document.getElementById('start-btn').addEventListener('click', () => {
       this.kidFriendly = document.getElementById('kid-friendly-toggle').checked;
       this.socket.emit('setKidFriendly', this.kidFriendly);
@@ -873,6 +841,37 @@ class ZombieMultiplayerClient {
         } else {
           localStorage.removeItem('zombie_emoji');
         }
+      });
+    }
+  }
+
+  setupWorldMap() {
+    // Fast travel buttons
+    document.querySelectorAll('.map-loc-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const world = btn.dataset.world;
+        if (world === 'skeleton') {
+          this.socket.emit('travelToWorld', 'skeleton');
+        } else {
+          const tx = parseFloat(btn.dataset.tx);
+          const tz = parseFloat(btn.dataset.tz);
+          this.socket.emit('teleport', { x: tx, z: tz });
+        }
+        this.toggleWorldMap();
+      });
+    });
+    // Click on map canvas to teleport to that location
+    const mapCanvas = document.getElementById('map-canvas');
+    if (mapCanvas) {
+      mapCanvas.addEventListener('click', (e) => {
+        const rect = mapCanvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        const ws = CONFIG.worldSize;
+        const wx = (cx / mapCanvas.width) * (2 * ws) - ws;
+        const wz = (cy / mapCanvas.height) * (2 * ws) - ws;
+        this.socket.emit('teleport', { x: wx, z: wz });
+        this.toggleWorldMap();
       });
     }
   }
