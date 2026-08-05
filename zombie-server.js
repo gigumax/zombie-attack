@@ -1285,35 +1285,84 @@ function updateZombies(dt) {
       z.specialAttackTimer -= dt;
       if (z.specialAttackTimer <= 0) {
         z.specialAttackTimer = 5 + Math.random() * 3; // every 5-8 seconds
-        const attackType = Math.floor(Math.random() * 4);
-        if (attackType === 0) {
-          // CHARGE — fast dash toward target, dealing damage on hit
-          z.charging = true;
-          z.chargeTimer = 1.0;
-          z.chargeDx = dx / dist;
-          z.chargeDz = dz / dist;
-          broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS IS CHARGING!' : 'BOSS CHARGES!');
-        } else if (attackType === 1 || attackType === 2) {
-          // GROUND CRACK — boss smashes ground, crack line shoots toward target
-          z.crackAttack = true;
-          z.crackTimer = 0.6; // wind-up time before crack appears
-          z.crackDx = dx / dist;
-          z.crackDz = dz / dist;
-          z.crackLength = 30; // crack extends 30 units
-          z.crackWidth = 2.0;
-          z.slamEffect = 1; // visual: boss slams ground
-          z.attackTimer = 2.0;
-          broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS SMASHES THE GROUND!' : 'BOSS SMASHES THE GROUND!');
+        // Jump smash when player is far away (15+ units)
+        if (dist > 15 && !z.jumping) {
+          // JUMP SMASH — boss leaps into the air and crashes down at player's position
+          z.jumping = true;
+          z.jumpPhase = 'windup'; // windup -> air -> land
+          z.jumpTimer = 0.6; // windup duration
+          z.jumpTargetX = target.x;
+          z.jumpTargetZ = target.z;
+          z.jumpStartX = z.x;
+          z.jumpStartZ = z.z;
+          z.attackTimer = 3.0;
+          broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS JUMPS!' : 'BOSS LEAPS INTO THE AIR!');
         } else {
-          // RANGED — shoot projectile at target (instant hit, long range)
-          if (dist < 30) {
-            target.health -= z.damage * 0.4;
-            if (target.health <= 0) { target.health = 0; target.dead = true; }
-            z.rangedEffect = 1; // visual flag
-            z.attackTimer = 1.0;
-            broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS THROWS A BALL!' : 'BOSS HURLS A PROJECTILE!');
+          const attackType = Math.floor(Math.random() * 3);
+          if (attackType === 0) {
+            // CHARGE — fast dash toward target, dealing damage on hit
+            z.charging = true;
+            z.chargeTimer = 1.0;
+            z.chargeDx = dx / dist;
+            z.chargeDz = dz / dist;
+            broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS IS CHARGING!' : 'BOSS CHARGES!');
+          } else if (attackType === 1) {
+            // GROUND CRACK — boss smashes ground, crack line shoots toward target
+            z.crackAttack = true;
+            z.crackTimer = 0.6; // wind-up time before crack appears
+            z.crackDx = dx / dist;
+            z.crackDz = dz / dist;
+            z.crackLength = 30; // crack extends 30 units
+            z.crackWidth = 2.0;
+            z.slamEffect = 1; // visual: boss slams ground
+            z.attackTimer = 2.0;
+            broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS SMASHES THE GROUND!' : 'BOSS SMASHES THE GROUND!');
+          } else {
+            // RANGED — shoot projectile at target (instant hit, long range)
+            if (dist < 30) {
+              target.health -= z.damage * 0.4;
+              if (target.health <= 0) { target.health = 0; target.dead = true; }
+              z.rangedEffect = 1; // visual flag
+              z.attackTimer = 1.0;
+              broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS THROWS A BALL!' : 'BOSS HURLS A PROJECTILE!');
+            }
           }
         }
+      }
+      // Handle jump-smash attack
+      if (z.jumping) {
+        z.jumpTimer -= dt;
+        if (z.jumpPhase === 'windup' && z.jumpTimer <= 0) {
+          // Launch into the air
+          z.jumpPhase = 'air';
+          z.jumpTimer = 0.5; // air time
+          z.x = z.jumpStartX; // stay at start during windup
+          z.z = z.jumpStartZ;
+        } else if (z.jumpPhase === 'air' && z.jumpTimer <= 0) {
+          // Slam down at target position
+          z.jumpPhase = 'land';
+          z.jumpTimer = 0.3; // land impact duration
+          z.x = z.jumpTargetX;
+          z.z = z.jumpTargetZ;
+          z.slamEffect = 1;
+          // Deal 200 damage to any player near the landing spot (within 3 units)
+          for (const p of Object.values(players)) {
+            if (p.dead || p.paused || !p.ready) continue;
+            const pd = Math.hypot(p.x - z.jumpTargetX, p.z - z.jumpTargetZ);
+            if (pd < 3.0) {
+              p.health -= 200;
+              if (p.health <= 0) { p.health = 0; p.dead = true; }
+            }
+          }
+        } else if (z.jumpPhase === 'land' && z.jumpTimer <= 0) {
+          z.jumping = false;
+          z.jumpPhase = null;
+          z.attackTimer = 1.5;
+        }
+        // Keep boss in bounds during jump
+        const half = CONFIG.worldSize - 1;
+        z.x = Math.max(-half, Math.min(half, z.x));
+        z.z = Math.max(-half, Math.min(half, z.z));
       }
       // Handle ground crack attack
       if (z.crackAttack) {
@@ -1646,6 +1695,8 @@ function gameLoop() {
         cmb: z.inCombat ? 1 : 0,
         crv: z.reviveCount || 0,
         wdmg: z.waterDamage ? 1 : 0,
+        jmp: z.jumping ? 1 : 0, jp: z.jumpPhase || '', jtm: +((z.jumpTimer || 0)).toFixed(2),
+        jtx: +(z.jumpTargetX || 0).toFixed(2), jtz: +(z.jumpTargetZ || 0).toFixed(2),
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;

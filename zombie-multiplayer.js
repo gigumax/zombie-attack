@@ -1440,27 +1440,97 @@ class ZombieMultiplayerClient {
           ud.armR.rotation.x = 0;
         }
       } else {
-        if (ud.legL && ud.legR) {
-          ud.legL.rotation.x = swing * 0.4;
-          ud.legR.rotation.x = -swing * 0.4;
+        // Boss jump-smash animation
+        if (z.jmp && z.boss) {
+          const phase = z.jp;
+          const jtm = z.jtm || 0;
+          if (phase === 'windup') {
+            // Crouch down — bend knees, pull arms back
+            const windupProgress = 1 - (jtm / 0.6); // 0 to 1
+            const crouch = windupProgress;
+            mesh.position.y = -crouch * 0.4; // body lowers
+            if (ud.legL && ud.legR) {
+              ud.legL.rotation.x = crouch * 0.6; // bend knees
+              ud.legR.rotation.x = crouch * 0.6;
+            }
+            if (ud.armL && ud.armR) {
+              // Arms pulled back behind body
+              ud.armL.rotation.x = -Math.PI / 2 - crouch * 0.8;
+              ud.armR.rotation.x = -Math.PI / 2 - crouch * 0.8;
+              ud.armL.rotation.z = -crouch * 0.4;
+              ud.armR.rotation.z = crouch * 0.4;
+            }
+            if (ud.head) {
+              ud.head.rotation.x = crouch * 0.3; // head tilts down
+            }
+          } else if (phase === 'air') {
+            // Jumping up — knees unbend, arms raised high, body in air
+            const airProgress = 1 - (jtm / 0.5); // 0 to 1
+            // Parabolic arc: up then start coming down
+            const jumpHeight = Math.sin(airProgress * Math.PI) * 8; // peak at middle
+            mesh.position.y = jumpHeight;
+            if (ud.legL && ud.legR) {
+              ud.legL.rotation.x = -0.3 + airProgress * 0.5; // legs extend then tuck
+              ud.legR.rotation.x = -0.3 + airProgress * 0.5;
+            }
+            if (ud.armL && ud.armR) {
+              // Arms raised above head
+              ud.armL.rotation.x = -Math.PI - 0.3;
+              ud.armR.rotation.x = -Math.PI - 0.3;
+              ud.armL.rotation.z = -0.3;
+              ud.armR.rotation.z = 0.3;
+            }
+            if (ud.head) {
+              ud.head.rotation.x = -0.2; // head looks up
+            }
+          } else if (phase === 'land') {
+            // Slamming down — arms smash down, body crashes
+            const landProgress = 1 - (jtm / 0.3); // 0 to 1
+            mesh.position.y = 0;
+            if (ud.legL && ud.legR) {
+              ud.legL.rotation.x = landProgress * 0.4; // slight bend on impact
+              ud.legR.rotation.x = landProgress * 0.4;
+            }
+            if (ud.armL && ud.armR) {
+              // Arms slam down hard
+              ud.armL.rotation.x = -Math.PI / 2 + landProgress * 1.2;
+              ud.armR.rotation.x = -Math.PI / 2 + landProgress * 1.2;
+              ud.armL.rotation.z = 0;
+              ud.armR.rotation.z = 0;
+            }
+            if (ud.head) {
+              ud.head.rotation.x = landProgress * 0.4; // head snaps down
+            }
+            // Camera shake on land
+            if (this.myPlayer) {
+              const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
+              if (d < 10) this.cameraShake = Math.max(this.cameraShake, 0.6 * (1 - d / 10));
+            }
+          }
+        } else {
+          // Normal walk animation
+          if (ud.legL && ud.legR) {
+            ud.legL.rotation.x = swing * 0.4;
+            ud.legR.rotation.x = -swing * 0.4;
+          }
+          if (ud.armL && ud.armR) {
+            // Arms reach forward and sway
+            const baseArm = -Math.PI / 2; // forward reach
+            ud.armL.rotation.x = baseArm + swing * 0.15;
+            ud.armR.rotation.x = baseArm - swing * 0.15;
+          }
+          if (ud.head) {
+            ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
+            if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
+            ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
+            ud.head.rotation.z = swing * 0.05;
+          }
+          if (ud.torso) {
+            ud.torso.rotation.z = swing * 0.03;
+          }
+          // Whole body bob up/down
+          mesh.position.y = Math.abs(swing) * 0.05;
         }
-        if (ud.armL && ud.armR) {
-          // Arms reach forward and sway
-          const baseArm = -Math.PI / 2; // forward reach
-          ud.armL.rotation.x = baseArm + swing * 0.15;
-          ud.armR.rotation.x = baseArm - swing * 0.15;
-        }
-        if (ud.head) {
-          ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
-          if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
-          ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
-          ud.head.rotation.z = swing * 0.05;
-        }
-        if (ud.torso) {
-          ud.torso.rotation.z = swing * 0.03;
-        }
-        // Whole body bob up/down
-        mesh.position.y = Math.abs(swing) * 0.05;
       }
       // Apply hit knockback offsets to body parts
       const parts = ['head', 'armL', 'armR', 'legL', 'legR', 'torso'];
