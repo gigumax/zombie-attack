@@ -577,6 +577,10 @@ class ZombieMultiplayerClient {
       const skinColor = '#f5c89a';
       this.playerColors = { shirt: shirtColor, pants: pantsColor, skin: skinColor };
       this.socket.emit('setColors', this.playerColors);
+      // Save to localStorage for persistence across refresh
+      localStorage.setItem('zombie_shirt_color', shirtColor);
+      localStorage.setItem('zombie_pants_color', pantsColor);
+      localStorage.setItem('zombie_player_name', playerName);
       // Update first-person forearm color to match shirt
       if (this.gunParts.forearmMat) {
         this.gunParts.forearmMat.color.set(shirtColor);
@@ -608,9 +612,30 @@ class ZombieMultiplayerClient {
     const faceCanvas = document.getElementById('face-canvas');
     if (faceCanvas) {
       const fctx = faceCanvas.getContext('2d');
-      // Fill with skin color background
-      fctx.fillStyle = '#f5c89a';
-      fctx.fillRect(0, 0, 128, 128);
+      // Restore saved face from localStorage
+      const savedFace = localStorage.getItem('zombie_face_data');
+      if (savedFace) {
+        const img = new Image();
+        img.onload = () => {
+          fctx.drawImage(img, 0, 0, 128, 128);
+          this._faceDrawn = true;
+        };
+        img.src = savedFace;
+      } else {
+        fctx.fillStyle = '#f5c89a';
+        fctx.fillRect(0, 0, 128, 128);
+      }
+      // Restore saved emoji
+      const savedEmoji = localStorage.getItem('zombie_emoji');
+      if (savedEmoji) document.getElementById('emoji-select').value = savedEmoji;
+      // Restore saved colors
+      const savedShirt = localStorage.getItem('zombie_shirt_color');
+      const savedPants = localStorage.getItem('zombie_pants_color');
+      if (savedShirt) document.getElementById('shirt-color').value = savedShirt;
+      if (savedPants) document.getElementById('pants-color').value = savedPants;
+      // Restore saved name
+      const savedName = localStorage.getItem('zombie_player_name');
+      if (savedName) document.getElementById('player-name-input').value = savedName;
       let drawing = false, lastX = 0, lastY = 0;
       const getPos = (e) => {
         const rect = faceCanvas.getBoundingClientRect();
@@ -646,7 +671,10 @@ class ZombieMultiplayerClient {
         fctx.stroke();
         lastX = p.x; lastY = p.y;
       };
-      const endDraw = () => { drawing = false; };
+      const endDraw = () => {
+        drawing = false;
+        localStorage.setItem('zombie_face_data', faceCanvas.toDataURL('image/png'));
+      };
       faceCanvas.addEventListener('mousedown', startDraw);
       faceCanvas.addEventListener('mousemove', moveDraw);
       faceCanvas.addEventListener('mouseup', endDraw);
@@ -665,11 +693,16 @@ class ZombieMultiplayerClient {
         fctx.fillStyle = '#f5c89a';
         fctx.fillRect(0, 0, 128, 128);
         this._faceDrawn = false;
+        localStorage.removeItem('zombie_face_data');
       });
       // Emoji select clears the drawn face preference
       document.getElementById('emoji-select').addEventListener('change', () => {
         if (document.getElementById('emoji-select').value) {
           this._faceDrawn = false;
+          localStorage.setItem('zombie_emoji', document.getElementById('emoji-select').value);
+          localStorage.removeItem('zombie_face_data');
+        } else {
+          localStorage.removeItem('zombie_emoji');
         }
       });
     }
