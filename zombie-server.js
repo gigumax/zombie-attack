@@ -1819,6 +1819,8 @@ io.on('connection', (socket) => {
       zombies = [];
       goldPickups = [];
       chests = [];
+      postEscapeBoss = false;
+      skeletonWorld = false;
     }
   });
 });

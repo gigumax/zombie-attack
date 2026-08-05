@@ -241,12 +241,27 @@ class ZombieMultiplayerClient {
     this.socket.on('escapeWin', () => {
       document.getElementById('escape-overlay').classList.add('hidden');
       this.clearPrisonCell();
+      // Don't show escaped screen — boss fight begins now
+    });
+
+    this.socket.on('skeletonWorldStart', () => {
+      // Transition to skeleton world — change environment
+      this.enterSkeletonWorld();
+    });
+
+    this.socket.on('skeletonBossDefeated', (data) => {
+      // Victory! Show victory screen
       if (this.myPlayer) {
         document.getElementById('escaped-score').textContent =
-          `${this.myPlayer.k} kills · Wave ${this.serverState ? this.serverState.wave : 1} · Score ${this.myPlayer.s} · ${this.myPlayer.g} gold`;
+          `${this.myPlayer.k} kills · Wave ${data.wave} · Score ${data.score} · ${this.myPlayer.g} gold`;
       }
+      const title = document.querySelector('#escaped-screen h1');
+      const subtitle = document.querySelector('#escaped-screen h2');
+      if (title) title.textContent = 'SKELETON WORLD CONQUERED!';
+      if (subtitle) subtitle.textContent = 'You destroyed the Mutant Skeleton Boss and cleared the boneyard!';
       document.getElementById('escaped-screen').classList.remove('hidden');
       if (document.pointerLockElement) document.exitPointerLock();
+      this.exitSkeletonWorld();
     });
 
     this.socket.on('gameOver', (data) => {
@@ -320,10 +335,12 @@ class ZombieMultiplayerClient {
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
+    this.groundMesh = ground;
 
     const grid = new THREE.GridHelper(CONFIG.worldSize * 2, 40, 0x2a4a2a, 0x2a4a2a);
     grid.position.y = 0.01;
     this.scene.add(grid);
+    this.gridMesh = grid;
 
     // Water lake — irregular organic shape in the corner
     const waterX = -35, waterZ = -35, waterBaseRadius = 18;
@@ -1043,7 +1060,92 @@ class ZombieMultiplayerClient {
     return group;
   }
 
+  createMutantSkeletonBossMesh() {
+    const group = new THREE.Group();
+    const scale = 2.5; // Much bigger than normal skeleton
+    const boneMat = new THREE.MeshLambertMaterial({ color: this.kidFriendly ? 0xffffff : 0xe8e8e8, emissive: 0x222244, emissiveIntensity: 0.3 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: this.kidFriendly ? 0x4466aa : 0x1a1a2a });
+    const spikeMat = new THREE.MeshBasicMaterial({ color: this.kidFriendly ? 0xaaccff : 0xcccccc });
+
+    // Oversized skull head — mutated with bony protrusions
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.7*scale, 0.8*scale, 0.7*scale), boneMat);
+    head.position.y = 2.0*scale; head.castShadow = true; group.add(head);
+    // Skull spikes on top
+    for (let i = -2; i <= 2; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08*scale, 0.3*scale, 4), spikeMat);
+      spike.position.set(i * 0.12*scale, 2.5*scale, 0);
+      group.add(spike);
+    }
+    // Glowing eye sockets — deep red, large
+    const eyeColor = this.kidFriendly ? 0x44aaff : 0xff0000;
+    const eyeMat = new THREE.MeshBasicMaterial({ color: eyeColor });
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.18*scale, 0.18*scale, 0.08*scale), eyeMat);
+    eyeL.position.set(-0.16*scale, 2.05*scale, 0.36*scale); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.16*scale; group.add(eyeR);
+    // Eye glow halos
+    const glowMat = new THREE.MeshBasicMaterial({ color: eyeColor, transparent: true, opacity: 0.5 });
+    const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.2*scale, 6, 6), glowMat);
+    glowL.position.set(-0.16*scale, 2.05*scale, 0.38*scale); group.add(glowL);
+    const glowR = glowL.clone(); glowR.position.x = 0.16*scale; group.add(glowR);
+    // Massive jaw with fangs
+    const jawGroup = new THREE.Group();
+    jawGroup.position.set(0, 1.65*scale, 0.3*scale);
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale, 0.25*scale, 0.5*scale), boneMat);
+    jaw.position.set(0, -0.1*scale, 0); jawGroup.add(jaw);
+    const fangMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    for (let i = -2; i <= 2; i++) {
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(0.06*scale, 0.2*scale, 3), fangMat);
+      fang.position.set(i * 0.1*scale, -0.2*scale, 0.1*scale); fang.rotation.x = Math.PI; jawGroup.add(fang);
+    }
+    group.add(jawGroup);
+
+    // Huge ribcage torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6*scale, 1.2*scale, 0.45*scale), darkMat);
+    torso.position.y = 1.2*scale; torso.castShadow = true; group.add(torso);
+    // Rib bones — visible ribs on torso front
+    for (let i = 0; i < 4; i++) {
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.5*scale, 0.06*scale, 0.05*scale), boneMat);
+      rib.position.set(0, 1.5*scale - i * 0.25*scale, 0.25*scale);
+      group.add(rib);
+    }
+    // Spine spikes down the back
+    for (let i = 0; i < 5; i++) {
+      const spine = new THREE.Mesh(new THREE.ConeGeometry(0.06*scale, 0.25*scale, 4), spikeMat);
+      spine.position.set(0, 1.7*scale - i * 0.25*scale, -0.3*scale);
+      spine.rotation.x = -0.3;
+      group.add(spine);
+    }
+
+    // 4 arms — 2 normal + 2 extra mutant arms from shoulders
+    const armGeo = new THREE.BoxGeometry(0.15*scale, 1.0*scale, 0.15*scale);
+    // Normal arms
+    const armL = new THREE.Mesh(armGeo, boneMat); armL.position.set(-0.45*scale, 1.5*scale, 0.35*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(armGeo, boneMat); armR.position.set(0.45*scale, 1.5*scale, 0.35*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    // Extra mutant arms — from shoulders, reaching sideways
+    const armL2 = new THREE.Mesh(armGeo, boneMat); armL2.position.set(-0.55*scale, 1.7*scale, 0); armL2.rotation.z = Math.PI/2; armL2.castShadow = true; group.add(armL2);
+    const armR2 = new THREE.Mesh(armGeo, boneMat); armR2.position.set(0.55*scale, 1.7*scale, 0); armR2.rotation.z = -Math.PI/2; armR2.castShadow = true; group.add(armR2);
+    // Clawed hands on all 4 arms
+    const clawMat = new THREE.MeshBasicMaterial({ color: this.kidFriendly ? 0xaaccff : 0xaaaaaa });
+    for (const [ax, ay, az] of [[-0.45,1.5,0.85],[0.45,1.5,0.85],[-0.95,1.7,0],[0.95,1.7,0]]) {
+      for (let c = -1; c <= 1; c++) {
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.04*scale, 0.2*scale, 3), clawMat);
+        claw.position.set(ax + c*0.06*scale, ay, az);
+        if (az === 0) claw.rotation.z = ax < 0 ? Math.PI/2 : -Math.PI/2;
+        group.add(claw);
+      }
+    }
+
+    // Thick bone legs
+    const legGeo = new THREE.BoxGeometry(0.18*scale, 1.1*scale, 0.18*scale);
+    const legL = new THREE.Mesh(legGeo, boneMat); legL.position.set(-0.18*scale, 0.55*scale, 0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, boneMat); legR.position.set(0.18*scale, 0.55*scale, 0); legR.castShadow = true; group.add(legR);
+
+    group.userData = { armL, armR, legL, legR, head, jawGroup, isSkeletonBoss: true };
+    return group;
+  }
+
   createZombieMeshByType(type, isBoss, revivePhase = 0, creepyRevive = 0) {
+    if (type === 'skeletonBoss') return this.createMutantSkeletonBossMesh();
     if (isBoss) return this.createZombieMesh(true, revivePhase);
     if (type === 'buff') return this.createBuffZombieMesh();
     if (type === 'skeleton') return this.createSkeletonMesh();
@@ -1088,7 +1190,7 @@ class ZombieMultiplayerClient {
 
   // ─── Scene sync ───
   // Map short type char to full type name
-  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy' };
+  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss' };
 
   updateScene(state, dt) {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
@@ -1119,7 +1221,7 @@ class ZombieMultiplayerClient {
         mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
-        const hbY = z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : 2.3);
+        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : 2.3));
         const hb = this.createHealthBar(hbY);
         mesh.add(hb);
         mesh.userData.healthBar = hb;
@@ -2209,6 +2311,89 @@ class ZombieMultiplayerClient {
       this.keyMesh.material.dispose();
       this.keyMesh = null;
     }
+  }
+
+  enterSkeletonWorld() {
+    // Change ground to dark bone-filled wasteland
+    if (this.groundMesh) {
+      this.scene.remove(this.groundMesh);
+      this.groundMesh.geometry.dispose();
+      this.groundMesh.material.dispose();
+    }
+    const groundGeo = new THREE.PlaneGeometry(CONFIG.worldSize * 2, CONFIG.worldSize * 2);
+    const groundMat = new THREE.MeshLambertMaterial({ color: 0x2a2a35 });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+    this.groundMesh = ground;
+    // Darken grid
+    if (this.gridMesh) {
+      this.gridMesh.material.color.setHex(0x1a1a25);
+    }
+    // Add scattered bones on the ground
+    this.skeletonWorldObjects = [];
+    const boneMat = new THREE.MeshLambertMaterial({ color: 0xdddddd, emissive: 0x111122, emissiveIntensity: 0.2 });
+    for (let i = 0; i < 30; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = 5 + Math.random() * (CONFIG.worldSize - 10);
+      const x = Math.cos(angle) * dist;
+      const z = Math.sin(angle) * dist;
+      // Random bone shape — either a long bone or a skull
+      if (Math.random() < 0.6) {
+        const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.2 + Math.random() * 0.8, 5), boneMat);
+        bone.position.set(x, 0.1, z);
+        bone.rotation.z = Math.PI / 2;
+        bone.rotation.y = Math.random() * Math.PI * 2;
+        bone.castShadow = true;
+        this.scene.add(bone);
+        this.skeletonWorldObjects.push(bone);
+      } else {
+        const skull = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), boneMat);
+        skull.position.set(x, 0.2, z);
+        skull.rotation.y = Math.random() * Math.PI * 2;
+        skull.castShadow = true;
+        this.scene.add(skull);
+        this.skeletonWorldObjects.push(skull);
+      }
+    }
+    // Fog for atmosphere
+    this.scene.fog = new THREE.Fog(0x1a1a2a, 30, 80);
+    // Change background color
+    this.scene.background = new THREE.Color(0x1a1a2a);
+  }
+
+  exitSkeletonWorld() {
+    // Restore normal ground
+    if (this.groundMesh) {
+      this.scene.remove(this.groundMesh);
+      this.groundMesh.geometry.dispose();
+      this.groundMesh.material.dispose();
+    }
+    const groundGeo = new THREE.PlaneGeometry(CONFIG.worldSize * 2, CONFIG.worldSize * 2);
+    const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a5f3a });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    this.scene.add(ground);
+    this.groundMesh = ground;
+    // Restore grid color
+    if (this.gridMesh) {
+      this.gridMesh.material.color.setHex(0x2a4a2a);
+    }
+    // Remove scattered bones
+    if (this.skeletonWorldObjects) {
+      for (const obj of this.skeletonWorldObjects) {
+        this.scene.remove(obj);
+        obj.geometry.dispose();
+        obj.material.dispose();
+      }
+      this.skeletonWorldObjects = null;
+    }
+    // Remove fog
+    this.scene.fog = null;
+    // Restore background
+    this.scene.background = new THREE.Color(0x87ceeb);
   }
 
   applyHitKnockback(mesh, part, hx, hy, hz) {
