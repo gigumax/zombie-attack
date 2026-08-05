@@ -325,9 +325,24 @@ class ZombieMultiplayerClient {
     grid.position.y = 0.01;
     this.scene.add(grid);
 
-    // Water lake — big circular body in the corner
-    const waterX = -35, waterZ = -35, waterRadius = 18;
-    const waterGeo = new THREE.CircleGeometry(waterRadius, 48);
+    // Water lake — irregular organic shape in the corner
+    const waterX = -35, waterZ = -35, waterBaseRadius = 18;
+    // Generate the same irregular boundary as the server
+    const waterShape = new THREE.Shape();
+    const N = 24;
+    for (let i = 0; i <= N; i++) {
+      const angle = (i / N) * Math.PI * 2;
+      const r = waterBaseRadius
+        + Math.sin(angle * 3 + 1.2) * 4
+        + Math.sin(angle * 5 + 0.7) * 2.5
+        + Math.sin(angle * 7 + 2.1) * 1.5;
+      const px = Math.cos(angle) * r;
+      const pz = Math.sin(angle) * r;
+      if (i === 0) waterShape.moveTo(px, pz);
+      else waterShape.lineTo(px, pz);
+    }
+    waterShape.closePath();
+    const waterGeo = new THREE.ShapeGeometry(waterShape);
     const waterMat = new THREE.MeshLambertMaterial({
       color: 0x1a4a7a, transparent: true, opacity: 0.75,
       emissive: 0x0a2a4a, emissiveIntensity: 0.3
@@ -336,15 +351,27 @@ class ZombieMultiplayerClient {
     water.rotation.x = -Math.PI / 2;
     water.position.set(waterX, 0.02, waterZ);
     this.scene.add(water);
-    // Sandy shore ring around water
-    const shoreGeo = new THREE.RingGeometry(waterRadius, waterRadius + 2, 48);
+    // Sandy shore — slightly larger irregular shape
+    const shoreShape = new THREE.Shape();
+    for (let i = 0; i <= N; i++) {
+      const angle = (i / N) * Math.PI * 2;
+      const r = waterBaseRadius + 2.5
+        + Math.sin(angle * 3 + 1.2) * 4
+        + Math.sin(angle * 5 + 0.7) * 2.5
+        + Math.sin(angle * 7 + 2.1) * 1.5;
+      const px = Math.cos(angle) * r;
+      const pz = Math.sin(angle) * r;
+      if (i === 0) shoreShape.moveTo(px, pz);
+      else shoreShape.lineTo(px, pz);
+    }
+    shoreShape.closePath();
+    const shoreGeo = new THREE.ShapeGeometry(shoreShape);
     const shoreMat = new THREE.MeshLambertMaterial({ color: 0xc4a878 });
     const shore = new THREE.Mesh(shoreGeo, shoreMat);
     shore.rotation.x = -Math.PI / 2;
     shore.position.set(waterX, 0.015, waterZ);
     this.scene.add(shore);
     this.waterMesh = water;
-    this.waterConfig = { x: waterX, z: waterZ, radius: waterRadius };
 
     const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a });
     const wallH = 6;

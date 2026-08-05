@@ -28,8 +28,39 @@ const CONFIG = {
   waveBaseCount: 5, waveSpeedIncrease: 0.2, waveCountIncrease: 3,
   waveBreakTime: 5, goldPickupRadius: 1.5, maxGoldPickups: 8, goldSpawnInterval: 8,
 };
-// Water lake — big circular body on the map
-const WATER = { x: -35, z: -35, radius: 18 };
+// Water lake — irregular organic shape on the map
+const WATER = { x: -35, z: -35, baseRadius: 18 };
+// Generate irregular boundary points (deterministic — same on client & server)
+WATER.points = (() => {
+  const pts = [];
+  const N = 24;
+  for (let i = 0; i < N; i++) {
+    const angle = (i / N) * Math.PI * 2;
+    // Pseudo-random radius variation using sine waves for organic shape
+    const r = WATER.baseRadius
+      + Math.sin(angle * 3 + 1.2) * 4
+      + Math.sin(angle * 5 + 0.7) * 2.5
+      + Math.sin(angle * 7 + 2.1) * 1.5;
+    pts.push({
+      x: WATER.x + Math.cos(angle) * r,
+      z: WATER.z + Math.sin(angle) * r,
+    });
+  }
+  return pts;
+})();
+// Point-in-polygon test for water
+function isInWater(x, z) {
+  const pts = WATER.points;
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    const xi = pts[i].x, zi = pts[i].z;
+    const xj = pts[j].x, zj = pts[j].z;
+    if (((zi > z) !== (zj > z)) && (x < (xj - xi) * (z - zi) / (zj - zi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
 
 const GUNS = {
   knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
@@ -87,6 +118,8 @@ let keyDropped = false;
 let keyPos = null;
 let killFeed = [];
 let weaponPickups = []; // {id, gun, x, z} — weapons to find after escaping cell
+let postEscapeBoss = false; // boss fight after escaping cell
+let skeletonWorld = false; // skeleton world unlocked after killing post-escape boss
 
 function getGunStat(player, stat) {
   const gun = GUNS[player.currentGun];
@@ -222,8 +255,7 @@ function spawnEscapeZombie() {
 
 function killZombie(zombie, killerId, dirX, dirZ) {
   if (zombie.dying) return; // already dead, no double rewards
-  const player = players[killerId];
-  if (!player) return;
+  const player = killerId ? players[killerId] : null;
 
   // Boss revive logic — revives 3 times before truly dying
   if (zombie.isBoss && zombie.reviveCount < 3 && !zombie.reviving) {
@@ -233,11 +265,13 @@ function killZombie(zombie, killerId, dirX, dirZ) {
     zombie.lostLimbs = {}; // limbs grow back on revive
     zombie.limbDamage = {};
     // Give partial reward for downing the boss
-    const downScore = 50 * wave;
-    const downGold = 30 + wave * 5;
-    player.score += downScore;
-    player.gold += downGold;
-    broadcastKillFeed(anyKidFriendly() ? `${player.name}: BIG BOSS TAGGED! Getting up... (${zombie.reviveCount + 1}/3)` : `${player.name}: BOSS DOWNED! Reviving... (${zombie.reviveCount + 1}/3)`);
+    if (player) {
+      const downScore = 50 * wave;
+      const downGold = 30 + wave * 5;
+      player.score += downScore;
+      player.gold += downGold;
+      broadcastKillFeed(anyKidFriendly() ? `${player.name}: BIG BOSS TAGGED! Getting up... (${zombie.reviveCount + 1}/3)` : `${player.name}: BOSS DOWNED! Reviving... (${zombie.reviveCount + 1}/3)`);
+    }
     return;
   }
 
@@ -260,10 +294,13 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   else if (zombie.type === 'guard') { score = 50 * wave; goldDrop = 50 + wave * 10; }
   else if (zombie.type === 'buff') { score = 25 * wave; goldDrop = 20 + wave * 5; }
   else if (zombie.type === 'skeleton') { score = 15 * wave; goldDrop = 10 + wave * 3; }
+  else if (zombie.type === 'skeletonBoss') { score = 500 * wave; goldDrop = 300 + wave * 50; }
 
-  player.score += score;
-  player.kills++;
-  player.gold += goldDrop;
+  if (player) {
+    player.score += score;
+    player.kills++;
+    player.gold += goldDrop;
+  }
 
   // Drop key if guard
   if (zombie.hasKey) {
@@ -274,12 +311,27 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   // Kill feed
   const kid = anyKidFriendly();
   let msg = '';
-  if (zombie.isBoss) msg = kid ? `BIG BOSS TAGGED! +${score}` : `BOSS ELIMINATED! +${score}`;
+  if (zombie.type === 'skeletonBoss') msg = kid ? `MUTANT SKELETON BOSS TAGGED! +${score}` : `MUTANT SKELETON BOSS DESTROYED! +${score}`;
+  else if (zombie.isBoss) msg = kid ? `BIG BOSS TAGGED! +${score}` : `BOSS ELIMINATED! +${score}`;
   else if (zombie.type === 'guard') msg = kid ? `GUARD BONKED! +${score}` : `GUARD ELIMINATED! +${score}`;
   else if (zombie.type === 'buff') msg = kid ? `BIG ZOMBIE TAGGED! +${score}` : `BUFF ZOMBIE ELIMINATED! +${score}`;
   else if (zombie.type === 'skeleton') msg = kid ? `BONEY ZOMBIE TAGGED! +${score}` : `SKELETON ELIMINATED! +${score}`;
   else msg = `+${score} ${kid ? 'Zombie tagged' : 'Zombie eliminated'}!`;
-  broadcastKillFeed(`${player.name}: ${msg}`);
+  broadcastKillFeed(player ? `${player.name}: ${msg}` : msg);
+
+  // Post-escape boss killed → transition to skeleton world
+  if (zombie.isBoss && postEscapeBoss) {
+    postEscapeBoss = false;
+    startSkeletonWorld();
+    return;
+  }
+
+  // Skeleton boss killed → victory!
+  if (zombie.type === 'skeletonBoss') {
+    io.emit('skeletonBossDefeated', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
+    skeletonWorld = false;
+    return;
+  }
 
   // Check wave complete or escape win (only count active zombies)
   const aliveZombies = zombies.filter(z => !z.dying && !z.reviving);
@@ -455,7 +507,71 @@ function endEscape() {
     p.score += 1000;
   }
   weaponPickups = [];
+  // Spawn boss with reduced health — not infinite, killable
+  postEscapeBoss = true;
+  const angle = Math.random() * Math.PI * 2;
+  const dist = CONFIG.worldSize - 5;
+  const bossHealth = 3000; // Reasonable health — killable with weapons
+  zombies.push({
+    id: nextZombieId++, x: Math.cos(angle) * dist, z: Math.sin(angle) * dist, type: 'boss',
+    health: bossHealth, maxHealth: bossHealth, speed: CONFIG.zombieSpeed * 0.85,
+    damage: CONFIG.zombieDamage * 50, attackRange: CONFIG.zombieAttackRange * 2.5,
+    attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: true, hasKey: false,
+    lostLimbs: {}, limbDamage: {},
+    reviveCount: 0, reviveTimer: 0, reviving: false,
+    specialAttackTimer: 5,
+  });
   io.emit('escapeWin', {});
+  io.emit('waveAnnounce', anyKidFriendly() ? 'BIG BOSS IS BACK! Defeat it to unlock the SKELETON WORLD!' : 'BOSS RETURNED! Destroy it to unlock the SKELETON WORLD!');
+}
+
+function startSkeletonWorld() {
+  skeletonWorld = true;
+  zombies = [];
+  bossPending = false;
+  bossSpawned = false;
+  waveActive = true;
+  zombiesToSpawn = 0;
+  // Restore players
+  for (const p of Object.values(players)) {
+    p.health = getGunStat(p, 'maxHealth');
+    p.dead = false;
+    p.x = 0; p.y = CONFIG.playerHeight; p.z = 0;
+    p.vx = 0; p.vy = 0; p.vz = 0;
+  }
+  // Spawn tons of skeletons
+  for (let i = 0; i < 15; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 10 + Math.random() * 30;
+    zombies.push({
+      id: nextZombieId++, x: Math.cos(angle) * dist, z: Math.sin(angle) * dist, type: 'skeleton',
+      health: CONFIG.zombieHealth, maxHealth: CONFIG.zombieHealth,
+      speed: CONFIG.zombieSpeed * 1.2,
+      damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false,
+      lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 3 + Math.random() * 2,
+    });
+  }
+  // Spawn mutant skeleton boss
+  const bossAngle = Math.random() * Math.PI * 2;
+  const bossDist = CONFIG.worldSize - 10;
+  const skelBossHealth = 5000;
+  zombies.push({
+    id: nextZombieId++, x: Math.cos(bossAngle) * bossDist, z: Math.sin(bossAngle) * bossDist, type: 'skeletonBoss',
+    health: skelBossHealth, maxHealth: skelBossHealth,
+    speed: CONFIG.zombieSpeed * 1.0,
+    damage: CONFIG.zombieDamage * 40, attackRange: CONFIG.zombieAttackRange * 2,
+    attackTimer: 0, attackCooldown: 0.8, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: true, hasKey: false,
+    lostLimbs: {}, limbDamage: {},
+    reviveCount: 3, reviveTimer: 0, reviving: false, // no revives — dies permanently
+    specialAttackTimer: 5,
+  });
+  io.emit('skeletonWorldStart', {});
+  broadcastKillFeed(anyKidFriendly() ? 'WELCOME TO BONEYARD! Mutant Skeleton Boss appeared!' : 'SKELETON WORLD UNLOCKED! Mutant Skeleton Boss has awakened!');
 }
 
 // ─── Shooting (server-side raycast) ───
@@ -869,8 +985,7 @@ function processPendingEffects(p, dt) {
 function updatePlayer(p, dt) {
   if (p.dead || p.paused || !p.ready) return;
   // Check if player is in water
-  const waterDist = Math.hypot(p.x - WATER.x, p.z - WATER.z);
-  const inWater = waterDist < WATER.radius;
+  const inWater = isInWater(p.x, p.z);
   const speedMult = inWater ? 0.45 : 1.0;
   const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed) * speedMult;
   let mx = 0, mz = 0;
@@ -1050,11 +1165,11 @@ function updateZombies(dt) {
       if (z.reviveTimer <= 0) {
         z.reviving = false;
         z.reviveCount++;
-        // Each revival: 5x base, increasing damage and speed
-        const baseHealth = 137500;
+        // Each revival: increasing damage and speed
+        const baseHealth = postEscapeBoss ? 3000 : 137500;
         z.maxHealth = Math.floor(baseHealth * (1 + z.reviveCount * 0.3));
         z.health = z.maxHealth;
-        z.damage = CONFIG.zombieDamage * 75 * (1 + z.reviveCount * 0.5);
+        z.damage = CONFIG.zombieDamage * (postEscapeBoss ? 50 : 75) * (1 + z.reviveCount * 0.5);
         z.speed = CONFIG.zombieSpeed * 0.85 * (1 + z.reviveCount * 0.2);
         z.lostLimbs = {}; // limbs grow back creepier
         z.limbDamage = {};
@@ -1085,7 +1200,7 @@ function updateZombies(dt) {
     // Creepy zombies hate water — take damage and try to flee
     if (z.type === 'creepy') {
       const zwDist = Math.hypot(z.x - WATER.x, z.z - WATER.z);
-      if (zwDist < WATER.radius) {
+      if (isInWater(z.x, z.z)) {
         // Take damage in water
         z.health -= 50 * dt;
         z.waterDamage = 1; // visual flag
@@ -1104,8 +1219,7 @@ function updateZombies(dt) {
       // Also steer around water if heading toward it
       const nextX = z.x + (dx / dist) * z.speed * dt * 2;
       const nextZ = z.z + (dz / dist) * z.speed * dt * 2;
-      const nextWaterDist = Math.hypot(nextX - WATER.x, nextZ - WATER.z);
-      if (nextWaterDist < WATER.radius + 2) {
+      if (isInWater(nextX, nextZ)) {
         // Steer perpendicular to avoid water
         const perpX = -dz / dist, perpZ = dx / dist;
         const steerDir = (Math.hypot(z.x + perpX - WATER.x, z.z + perpZ - WATER.z) > zwDist) ? 1 : -1;
@@ -1218,7 +1332,7 @@ function updateZombies(dt) {
         if (z.chargeTimer <= 0) z.charging = false;
         // If boss killed someone during charge, trigger escape
         const anyDead = Object.values(players).some(p => p.dead);
-        if (anyDead && !escapeMode) { startEscape(); return; }
+        if (anyDead && !escapeMode && !postEscapeBoss && !skeletonWorld) { startEscape(); return; }
         // Keep world bounds
         const half = CONFIG.worldSize - 1;
         z.x = Math.max(-half, Math.min(half, z.x));
@@ -1231,8 +1345,8 @@ function updateZombies(dt) {
         if (target.health <= 0) {
           target.health = 0;
           target.dead = true;
-          // Boss knocks player out → trigger escape sequence
-          if (!escapeMode) {
+          // Boss knocks player out → trigger escape sequence (only first time)
+          if (!escapeMode && !postEscapeBoss && !skeletonWorld) {
             startEscape();
             return;
           }
@@ -1482,7 +1596,7 @@ function gameLoop() {
     zombies: zombies.map(z => {
       const ll = z.lostLimbs || {};
       const base = {
-        id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type[0],
+        id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type === 'skeletonBoss' ? 'k' : z.type[0],
         boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
         la: ll.armL ? 1 : 0, ra: ll.armR ? 1 : 0, ll: ll.legL ? 1 : 0, rl: ll.legR ? 1 : 0,
         rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,
@@ -1509,7 +1623,8 @@ function gameLoop() {
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
     zRemain: zombies.filter(z => !z.dying && !z.reviving).length + zombiesToSpawn,
-    water: { x: WATER.x, z: WATER.z, r: WATER.radius },
+    water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
+    skeletonWorld,
   };
   io.emit('state', state);
 }
