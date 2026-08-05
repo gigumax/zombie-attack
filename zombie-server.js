@@ -217,7 +217,7 @@ function spawnEscapeZombie() {
   });
 }
 
-function killZombie(zombie, killerId) {
+function killZombie(zombie, killerId, dirX, dirZ) {
   if (zombie.dying) return; // already dead, no double rewards
   const player = players[killerId];
   if (!player) return;
@@ -242,8 +242,10 @@ function killZombie(zombie, killerId) {
   zombie.dying = true;
   zombie.deathTimer = 10;
   zombie.dead = true;
-  zombie.corpseVx = 0;
-  zombie.corpseVz = 0;
+  // Launch corpse backward from shooter direction
+  const launchSpeed = 12;
+  zombie.corpseVx = (dirX || 0) * launchSpeed;
+  zombie.corpseVz = (dirZ || 0) * launchSpeed;
   // Creepy zombies can revive if a player goes near their corpse — only once
   if (zombie.type === 'creepy' && !zombie.isBoss && !zombie.hasRevived) {
     zombie.canRevive = true;
@@ -487,7 +489,7 @@ function handleShoot(playerId) {
     p.shootTracers.push({ x1: p.x, y1: p.y - 0.2, z1: p.z, x2: slashEnd.x, y2: slashEnd.y - 0.2, z2: slashEnd.z, life: 0.1, gun: 'knife', hit: (closestHit || closestPlayerHit) ? 1 : 0 });
     if (closestHit) {
       closestHit.zombie.health -= damage;
-      if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId);
+      if (closestHit.zombie.health <= 0) killZombie(closestHit.zombie, playerId, dir.x, dir.z);
     } else if (closestPlayerHit) {
       damagePlayer(closestPlayerHit.player, playerId, damage);
     }
@@ -547,7 +549,7 @@ function handleShoot(playerId) {
       if (part === 'head' && !z.isBoss) {
         z.health -= z.maxHealth;
         p.shootTracers[p.shootTracers.length - 1].explode = 1; // visual pop
-        if (z.health <= 0) killZombie(z, playerId);
+        if (z.health <= 0) killZombie(z, playerId, dir.x, dir.z);
         continue;
       }
       // Accumulate limb damage — 100 damage to rip off a limb
@@ -572,7 +574,7 @@ function handleShoot(playerId) {
       } else {
         z.health -= damage;
       }
-      if (z.health <= 0) killZombie(z, playerId);
+      if (z.health <= 0) killZombie(z, playerId, dir.x, dir.z);
     }
   }
 }
@@ -1541,6 +1543,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || p.dead) return;
     const newPaused = !p.paused;
+    console.log(`[PAUSE] ${p.name} toggled pause: ${newPaused}`);
     // Pause/unpause ALL players
     for (const pl of Object.values(players)) {
       pl.paused = newPaused;
