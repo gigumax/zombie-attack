@@ -1500,6 +1500,12 @@ io.on('connection', (socket) => {
   socket.emit('connected', { id: socket.id, name: players[socket.id].name });
   // Send full player meta to the new player
   sendPlayerMeta(socket.id);
+  // Send existing players' face data to the new player
+  for (const [pid, p] of Object.entries(players)) {
+    if (pid !== socket.id && p.faceDataURL) {
+      socket.emit('playerFace', { id: pid, face: p.faceDataURL });
+    }
+  }
   io.emit('playerList', Object.values(players).map(p => ({ id: p.id, name: p.name })));
 
   socket.on('setKidFriendly', (val) => {
@@ -1637,6 +1643,10 @@ io.on('connection', (socket) => {
     p.health = getGunStat(p, 'maxHealth');
     p.x = 0; p.y = CONFIG.playerHeight; p.z = 0;
     p.vx = 0; p.vy = 0; p.vz = 0;
+    // Re-broadcast face data so new players can see it
+    if (p.faceDataURL) {
+      io.emit('playerFace', { id: socket.id, face: p.faceDataURL });
+    }
     sendPlayerMeta(socket.id);
   });
 
