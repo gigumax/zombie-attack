@@ -393,17 +393,33 @@
     <button id="escaped-restart-btn" class="btn">CONTINUE</button>
   </div>
 
-  <div id="world-map-overlay" class="overlay hidden" style="background:rgba(0,0,0,0.85);">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
-      <h2 style="color:#f1c40f;">WORLD MAP</h2>
-      <canvas id="map-canvas" width="400" height="400" style="border:2px solid #555;border-radius:12px;background:#1a2a1a;cursor:crosshair;"></canvas>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:420px;">
-        <button class="btn map-loc-btn" data-tx="0" data-tz="0" style="font-size:13px;padding:8px 14px;">Spawn (Center)</button>
-        <button class="btn map-loc-btn" data-tx="-35" data-tz="-35" style="font-size:13px;padding:8px 14px;">Water Lake</button>
-        <button class="btn map-loc-btn" data-tx="35" data-tz="35" style="font-size:13px;padding:8px 14px;">Creepy Zone</button>
-        <button class="btn map-loc-btn" data-tx="0" data-tz="0" data-world="skeleton" style="font-size:13px;padding:8px 14px;">Skeleton World</button>
+  <div id="world-map-overlay" class="overlay hidden" style="background:rgba(0,0,0,0.9);">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:20px;max-width:600px;">
+      <h2 style="color:#f1c40f;font-size:28px;">WORLD MAP</h2>
+      <p style="color:rgba(255,255,255,0.5);font-size:13px;">Choose a world to travel to</p>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;">
+        <div class="world-card" data-world="main" style="width:160px;height:200px;border:3px solid #4a8a4a;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#2a4a2a,#1a3a1a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;">
+          <div style="font-size:48px;">🌳</div>
+          <div style="color:#4a8a4a;font-weight:700;font-size:16px;">Grasslands</div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">Main world<br>Waves of zombies</div>
+        </div>
+        <div class="world-card" data-world="creepy" style="width:160px;height:200px;border:3px solid #884488;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#2a0a2a,#1a051a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;">
+          <div style="font-size:48px;">🧟</div>
+          <div style="color:#cc66cc;font-weight:700;font-size:16px;">Creepy Zone</div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">Dark wasteland<br>Creepy zombies</div>
+        </div>
+        <div class="world-card" data-world="water" style="width:160px;height:200px;border:3px solid #4466aa;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#1a2a4a,#0a1a3a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;">
+          <div style="font-size:48px;">🌊</div>
+          <div style="color:#4a9ada;font-weight:700;font-size:16px;">Water Lake</div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">Irregular lake<br>Swim at your own risk</div>
+        </div>
+        <div class="world-card" data-world="skeleton" style="width:160px;height:200px;border:3px solid #aa4444;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#3a1a1a,#2a0a0a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;">
+          <div style="font-size:48px;">💀</div>
+          <div style="color:#ff6666;font-weight:700;font-size:16px;">Skeleton World</div>
+          <div style="color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">Bone wasteland<br>Mutant skeleton boss</div>
+        </div>
       </div>
-      <p style="color:rgba(255,255,255,0.4);font-size:12px;">Click a location to fast travel · Press M to close</p>
+      <p style="color:rgba(255,255,255,0.3);font-size:12px;">Press Tab to close</p>
     </div>
   </div>
 
@@ -418,6 +434,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=23"></script>
+  <script src="zombie-multiplayer.js?v=24"></script>
 </body>
 </html>
