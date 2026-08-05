@@ -57,6 +57,7 @@ class ZombieMultiplayerClient {
     this.playerEmoji = '😀';
     this.playerFaceDataURL = null;
     this.cameraShake = 0;
+    this.thirdPerson = false;
     this._seenEff = new Set();
 
     // Input
@@ -487,6 +488,10 @@ class ZombieMultiplayerClient {
       if (e.code === 'KeyH' && this.playing) this.socket.emit('buyGun', 'shotgun');
       if (e.code === 'KeyJ' && this.playing) this.socket.emit('buyGun', 'katana');
       if (e.code === 'KeyK' && this.playing) this.socket.emit('buyGun', 'rifle');
+      if (e.code === 'KeyM' && this.playing) {
+        this.thirdPerson = !this.thirdPerson;
+        e.preventDefault();
+      }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
       if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
@@ -494,7 +499,6 @@ class ZombieMultiplayerClient {
       if (e.code === 'KeyV' && this.playing) this.socket.emit('buyUpgrade', 'health');
       // Buy item hotkeys
       if (e.code === 'KeyN' && this.playing) this.socket.emit('buyItem', 'grenade');
-      if (e.code === 'KeyM' && this.playing) this.socket.emit('buyItem', 'rocket');
       if (e.code === 'Comma' && this.playing) this.socket.emit('buyItem', 'medkit');
       if (e.code === 'Period' && this.playing) this.socket.emit('buyItem', 'airstrike');
       // Use item hotkeys
@@ -1502,10 +1506,36 @@ class ZombieMultiplayerClient {
 
     // Update camera to my player
     if (this.myPlayer) {
-      this.camera.position.set(this.myPlayer.x, this.myPlayer.y, this.myPlayer.z);
       this.camera.rotation.order = 'YXZ';
       this.camera.rotation.y = this.yaw;
       this.camera.rotation.x = this.pitch;
+
+      if (this.thirdPerson) {
+        // Third-person: camera behind and above player
+        const dist = 5;
+        const camX = this.myPlayer.x - Math.sin(this.yaw) * Math.cos(this.pitch) * dist;
+        const camY = this.myPlayer.y + 2 - Math.sin(this.pitch) * dist;
+        const camZ = this.myPlayer.z - Math.cos(this.yaw) * Math.cos(this.pitch) * dist;
+        this.camera.position.set(camX, camY, camZ);
+        // Show local player mesh
+        if (!this.localPlayerMesh) {
+          this.localPlayerMesh = this.createPlayerMesh(this.playerEmoji, this.playerFaceDataURL, this.myName || 'You');
+          this.scene.add(this.localPlayerMesh);
+        }
+        if (this.localPlayerMesh) {
+          this.localPlayerMesh.visible = true;
+          this.localPlayerMesh.position.set(this.myPlayer.x, 0, this.myPlayer.z);
+          this.localPlayerMesh.rotation.y = this.yaw + Math.PI;
+        }
+        // Hide gun in third person
+        this.gun.visible = false;
+      } else {
+        // First-person: camera at player eye
+        this.camera.position.set(this.myPlayer.x, this.myPlayer.y, this.myPlayer.z);
+        // Hide local player mesh
+        if (this.localPlayerMesh) this.localPlayerMesh.visible = false;
+        // Gun visibility handled below
+      }
 
       // Camera shake from creepy zombie attacks
       if (this.cameraShake > 0) {
@@ -1522,8 +1552,8 @@ class ZombieMultiplayerClient {
       // Gun recoil
       const recoil = this.myPlayer.gr || 0;
       const isPaused = this.myPlayer.pau === 1;
-      // Hide gun when paused
-      this.gun.visible = !isPaused;
+      // Hide gun when paused or in third-person
+      this.gun.visible = !isPaused && !this.thirdPerson;
       // Reload animation — dip gun down and rotate
       const isReloading = this.myPlayer.r === 1;
       if (isReloading) {
