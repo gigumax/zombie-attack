@@ -205,7 +205,29 @@ class ZombieMultiplayerClient {
       document.getElementById('escape-overlay').classList.remove('hidden');
       document.getElementById('start-screen').classList.add('hidden');
       document.getElementById('game-over-screen').classList.add('hidden');
-      this.buildPrisonCell();
+      // Black screen transition — fade to black, build cell, then fade back in
+      let blackEl = document.getElementById('black-transition');
+      if (!blackEl) {
+        blackEl = document.createElement('div');
+        blackEl.id = 'black-transition';
+        blackEl.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.5s ease;';
+        document.body.appendChild(blackEl);
+      }
+      // Fade to black
+      blackEl.style.opacity = '1';
+      // After 0.5s (screen is black), build the cell
+      setTimeout(() => {
+        this.buildPrisonCell();
+      }, 500);
+      // After 2s, fade back in — player is now in the cell
+      setTimeout(() => {
+        blackEl.style.opacity = '0';
+      }, 2000);
+      // Remove after fade completes
+      setTimeout(() => {
+        blackEl.style.opacity = '0';
+        if (blackEl.parentElement) blackEl.parentElement.removeChild(blackEl);
+      }, 2800);
     });
 
     this.socket.on('escapeUpdate', (text) => {
@@ -2050,7 +2072,7 @@ class ZombieMultiplayerClient {
     } else {
       document.getElementById('ammo-val').textContent = `${gunName}${autoTag} — ${p.ammo}/∞`;
     }
-    const maxHP = this.playerMeta.maxHealth || CONFIG.maxHealth;
+    const maxHP = p.mhp || this.playerMeta.maxHealth || CONFIG.maxHealth;
     const pct = (p.h / maxHP) * 100;
     document.getElementById('health-bar').style.width = pct + '%';
 

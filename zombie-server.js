@@ -323,12 +323,16 @@ function startEscape() {
   keyPos = null;
   doorOpen = false;
   zombies = [];
+  bossPending = false;
+  bossSpawned = false;
+  waveActive = false;
 
   for (const p of Object.values(players)) {
     p.escapeMode = true;
     p.escapeStep = 'guard';
     p.hasKey = false;
     p.health = getGunStat(p, 'maxHealth');
+    p.maxHealth = getGunStat(p, 'maxHealth');
     p.preEscapeGun = p.currentGun;
     p.preEscapeOwned = { ...p.ownedGuns };
     p.ownedGuns = { knife: true };
@@ -404,6 +408,10 @@ function endEscape() {
   escapeStep = 'won';
   for (const p of Object.values(players)) {
     p.escapeMode = false;
+    // Restore full health
+    p.health = getGunStat(p, 'maxHealth');
+    p.maxHealth = getGunStat(p, 'maxHealth');
+    p.dead = false;
     // Restore any weapons they didn't pick up during escape
     const saved = p.preEscapeOwned || {};
     for (const gunName of Object.keys(saved)) {
