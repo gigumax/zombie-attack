@@ -574,7 +574,7 @@ class ZombieMultiplayerClient {
       // Send character colors
       const shirtColor = document.getElementById('shirt-color').value;
       const pantsColor = document.getElementById('pants-color').value;
-      const skinColor = document.getElementById('skin-color').value;
+      const skinColor = '#f5c89a';
       this.playerColors = { shirt: shirtColor, pants: pantsColor, skin: skinColor };
       this.socket.emit('setColors', this.playerColors);
       // Update first-person forearm color to match shirt
