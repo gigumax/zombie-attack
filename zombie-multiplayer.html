@@ -114,6 +114,14 @@
       align-items: center; justify-content: center; z-index: 20;
       background: radial-gradient(ellipse at center, rgba(20,0,0,0.92), rgba(0,0,0,0.98));
     }
+    #start-screen {
+      overflow-y: auto;
+      justify-content: flex-start;
+      padding: 40px 20px 60px;
+      scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
+    }
+    #start-screen h1 { margin-top: 20px; }
     .overlay h1 {
       font-size: 64px; font-weight: 900; color: #2ecc71;
       text-shadow: 0 0 40px rgba(46,204,113,0.5); margin-bottom: 8px; letter-spacing: 4px;
@@ -221,6 +229,11 @@
       background: rgba(0,0,0,0.4); color: #fff; font-size: 16px; margin-bottom: 12px;
     }
     #connect-btn { width: 100%; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.7; }
+    }
   </style>
 </head>
 <body>
@@ -343,6 +356,10 @@
       </div>
     </div>
     <button id="start-btn" class="btn">START SHOOTING</button>
+    <div id="swipe-hint" style="margin-top:30px;color:rgba(255,255,255,0.3);font-size:13px;text-align:center;animation:pulse 2s infinite;">
+      Swipe down for more info ↓
+    </div>
+    <div style="height:40px;"></div>
   </div>
 
   <div id="game-over-screen" class="overlay hidden">
@@ -370,6 +387,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=7"></script>
+  <script src="zombie-multiplayer.js?v=8"></script>
 </body>
 </html>
