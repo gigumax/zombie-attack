@@ -1595,18 +1595,6 @@ function updateZombies(dt) {
       // Still face the target even when stopped
       z.rot = Math.atan2(dx, dz);
     }
-    // Zombie-vs-zombie separation — push apart from nearby zombies to prevent overlap
-    for (const oz of zombies) {
-      if (oz === z || oz.dying || oz.reviving) continue;
-      const sdx = z.x - oz.x, sdz = z.z - oz.z;
-      const sd = Math.hypot(sdx, sdz);
-      const minSep = 1.0;
-      if (sd > 0.001 && sd < minSep) {
-        const push = (minSep - sd) * 0.5;
-        z.x += (sdx / sd) * push;
-        z.z += (sdz / sd) * push;
-      }
-    }
     // Obstacle collision — zombies can't walk through blocks
     for (const obs of OBSTACLES) {
       const odx = z.x - obs.x, odz = z.z - obs.z;
@@ -1988,10 +1976,11 @@ function updateZombies(dt) {
         // NORMAL — lunge attack: quick burst toward player, bite
         if (dist < attackRange * 1.5 && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown;
-          // Lunge forward
-          if (dist > 0.01) {
-            z.x += (dx / dist) * 1.5;
-            z.z += (dz / dist) * 1.5;
+          // Lunge forward — stop short of the target so we don't land inside it
+          const lungeAmt = Math.min(1.5, Math.max(0, dist - 1.0));
+          if (dist > 0.01 && lungeAmt > 0) {
+            z.x += (dx / dist) * lungeAmt;
+            z.z += (dz / dist) * lungeAmt;
           }
           const normAttackingZombie = zombieTarget && (!target || zombieTargetDist < minDist);
           if (normAttackingZombie) {
@@ -2029,6 +2018,30 @@ function updateZombies(dt) {
           io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
         }
       }
+    }
+  }
+
+  // Separation pass — keep all zombies (idle, wandering, friendly, fighting) from overlapping.
+  // Big types get bigger radii; bosses are too heavy to be pushed.
+  const sepRadius = t => t === 'skeletonBoss' ? 2.0 : t === 'ironGolem' ? 1.0 : t === 'buffSkeleton' ? 0.8 : (t === 'buff' || t === 'guard') ? 0.75 : 0.55;
+  for (let i = 0; i < zombies.length; i++) {
+    const a = zombies[i];
+    if (a.dying || a.reviving || a.jumping) continue;
+    const aBig = a.isBoss || a.type === 'skeletonBoss';
+    const ra = aBig ? 2.0 : sepRadius(a.type);
+    for (let j = i + 1; j < zombies.length; j++) {
+      const b = zombies[j];
+      if (b.dying || b.reviving || b.jumping) continue;
+      const bBig = b.isBoss || b.type === 'skeletonBoss';
+      const minSep = ra + (bBig ? 2.0 : sepRadius(b.type));
+      const sdx = a.x - b.x, sdz = a.z - b.z;
+      if (Math.abs(sdx) > minSep || Math.abs(sdz) > minSep) continue;
+      const sd = Math.hypot(sdx, sdz);
+      if (sd < 0.001 || sd >= minSep) continue;
+      const push = (minSep - sd) * 0.4;
+      const ux = sdx / sd, uz = sdz / sd;
+      if (!aBig) { a.x += ux * push; a.z += uz * push; }
+      if (!bBig) { b.x -= ux * push; b.z -= uz * push; }
     }
   }
 }
