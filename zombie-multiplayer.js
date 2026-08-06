@@ -724,6 +724,7 @@ class ZombieMultiplayerClient {
         if (e.code === 'Comma') this.socket.emit('spawnEgg', 'buff');
         if (e.code === 'Period') this.socket.emit('spawnEgg', 'spitter');
         if (e.code === 'Equal') this.socket.emit('spawnEgg', 'buffSkeleton');
+        if (e.code === 'Digit0') this.socket.emit('spawnEgg', 'friendly');
       }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
@@ -3790,6 +3791,10 @@ class ZombieMultiplayerClient {
       html += `<div class="shop-item" data-action="spawnEgg" data-key="buffSkeleton" style="border-color:#1a1a1a;">
         <span>🦴 Buff Skeleton Egg<br><span style="font-size:10px;color:#666;">Heavy skeleton with slam AoE</span></span>
         <span style="font-size:10px;color:#666;">[=]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="friendly" style="border-color:#1a1a1a;">
+        <span>💚 Zombie Buddy Egg<br><span style="font-size:10px;color:#666;">Friendly ally, fights zombies for you</span></span>
+        <span style="font-size:10px;color:#666;">[0]</span>
       </div>`;
     }
     html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle <kbd>L</kbd>Sniper · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;

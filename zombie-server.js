@@ -311,6 +311,17 @@ function spawnEgg(playerId, eggType) {
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
       specialAttackTimer: 2 + Math.random() * 2,
     });
+  } else if (eggType === 'friendly') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'normal',
+      health: CONFIG.zombieHealth * 5, maxHealth: CONFIG.zombieHealth * 5,
+      speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.2,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      rot: 0, attacking: 0,
+      friendly: true, owner: playerId,
+      slamEffect: 0,
+    });
   } else if (eggType === 'skeleton') {
     zombies.push({
       id: nextZombieId++, x, z, type: 'skeleton',
