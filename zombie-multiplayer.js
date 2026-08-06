@@ -2237,30 +2237,30 @@ class ZombieMultiplayerClient {
       const isPaused = this.myPlayer.pau === 1;
       // Hide gun when paused or in third-person
       this.gun.visible = !isPaused && !this.thirdPerson;
-      // Reload animation — tilt gun and bring left hand from bottom to swap mag
+      // Reload animation — left arm drops below gun to swap mag, right hand stays on grip
       const isReloading = this.myPlayer.r === 1;
       if (isReloading) {
         const reloadT = performance.now() / 1000;
         const phase = Math.min(reloadT * 3, Math.PI);
-        const dip = Math.sin(phase) * 0.25;
-        const rot = Math.sin(phase) * 0.5;
-        // Gun dips down and tilts
-        this.gun.position.z = -0.5 + recoil + dip * 0.3;
-        this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.25;
-        this.gun.rotation.x = rot;
-        this.gun.rotation.z = rot * 0.6;
-        // Left hand comes from below the gun (magazine area) — swings up from bottom
+        const dip = Math.sin(phase) * 0.15;
+        // Gun tilts slightly but stays relatively steady — right hand holds it
+        this.gun.position.z = -0.5 + recoil + dip * 0.15;
+        this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.1;
+        this.gun.rotation.x = dip * 0.8;
+        this.gun.rotation.z = dip * 0.4;
+        // Right hand stays on grip — no movement
+        // Left arm: drops down below the gun (reaching for mag), then comes up to bottom of gun
         const handReach = Math.sin(phase);
         if (this.gunParts.handL) {
-          // Hand starts below and behind, moves up to the magazine at the bottom of the gun
+          // Hand drops far below, then swings up to the magazine at bottom of gun
           this.gunParts.handL.position.x = -0.04;
-          this.gunParts.handL.position.y = -0.05 - handReach * 0.35; // comes from below
-          this.gunParts.handL.position.z = 0.05 + handReach * 0.15; // moves to mag area (bottom of gun)
+          this.gunParts.handL.position.y = -0.05 - handReach * 0.6; // drops well below the gun
+          this.gunParts.handL.position.z = 0.1 + handReach * 0.2; // comes forward to mag area
         }
         if (this.gunParts.forearmL) {
           this.gunParts.forearmL.position.x = -0.04;
-          this.gunParts.forearmL.position.y = -0.05 - handReach * 0.25;
-          this.gunParts.forearmL.position.z = 0.2 + handReach * 0.1;
+          this.gunParts.forearmL.position.y = -0.05 - handReach * 0.45;
+          this.gunParts.forearmL.position.z = 0.25 + handReach * 0.15;
         }
       } else {
         this.gun.position.z = -0.5 + recoil;
