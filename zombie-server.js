@@ -1281,7 +1281,7 @@ function updateZombies(dt) {
 
   // Find nearest alive player for each zombie
   // Skip zombie AI entirely if all players are paused or not ready
-  const allPaused = Object.values(players).every(p => p.paused || p.dead || !p.ready || p.spawnerMode);
+  const allPaused = Object.values(players).every(p => p.paused || p.dead || !p.ready);
   if (allPaused) return;
 
   for (const z of zombies) {
@@ -1292,7 +1292,20 @@ function updateZombies(dt) {
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
-    if (!target) continue;
+    if (!target) {
+      // No target (e.g. all players in creative mode) — wander randomly
+      z.walkPhase += dt * z.speed * 2;
+      if (!z.wanderDir || Math.random() < 0.01) {
+        z.wanderDir = Math.random() * Math.PI * 2;
+      }
+      z.x += Math.cos(z.wanderDir) * z.speed * 0.5 * dt;
+      z.z += Math.sin(z.wanderDir) * z.speed * 0.5 * dt;
+      z.rot = z.wanderDir;
+      const half = CONFIG.worldSize - 1;
+      z.x = Math.max(-half, Math.min(half, z.x));
+      z.z = Math.max(-half, Math.min(half, z.z));
+      continue;
+    }
 
     const dx = target.x - z.x, dz = target.z - z.z;
     const dist = Math.hypot(dx, dz);
