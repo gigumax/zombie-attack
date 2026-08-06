@@ -422,7 +422,8 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   }
 
   // Check wave complete or escape win (only count active zombies, exclude creepy zone spawns)
-  const aliveZombies = zombies.filter(z => !z.dying && !z.reviving && !z.fromCreepyZone);
+  // Reviving bosses count as alive so the wave doesn't end and spawn a duplicate boss
+  const aliveZombies = zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone);
   if (escapeMode) {
     checkEscapeWin();
   } else if (aliveZombies.length === 0 && zombiesToSpawn === 0) {
@@ -1807,7 +1808,7 @@ function gameLoop() {
     chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
-    zRemain: zombies.filter(z => !z.dying && !z.reviving && !z.fromCreepyZone).length + zombiesToSpawn,
+    zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone).length + zombiesToSpawn,
     water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
     creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
     skeletonWorld,
