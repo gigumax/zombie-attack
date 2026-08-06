@@ -2259,6 +2259,13 @@ class ZombieMultiplayerClient {
       }
     }
 
+    // Friendly-zombie cage (escape story) — [x, z, open, cagedCount]
+    if (state.cage && !state.cage[2]) {
+      if (!this.cageGroup) this.buildCage(state.cage[0], state.cage[1], state.cage[3]);
+    } else if (this.cageGroup) {
+      this.clearCage();
+    }
+
     // Update gold pickups — state.gold is now [id, x, z] arrays
     const seenGoldIds = new Set();
     const goldArr = state.gold || [];
@@ -3263,6 +3270,43 @@ class ZombieMultiplayerClient {
       this.keyMesh.material.dispose();
       this.keyMesh = null;
     }
+  }
+
+  buildCage(x, z, cagedCount) {
+    this.clearCage();
+    const g = new THREE.Group();
+    const barMat = new THREE.MeshLambertMaterial({ color: 0x444455 });
+    const size = 5, h = 3;
+    for (let i = 0; i <= 8; i++) {
+      const t = -size / 2 + (i * size / 8);
+      for (const [bx, bz] of [[t, -size / 2], [t, size / 2], [-size / 2, t], [size / 2, t]]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.12, h, 0.12), barMat);
+        bar.position.set(bx, h / 2, bz); bar.castShadow = true; g.add(bar);
+      }
+    }
+    const top = new THREE.Mesh(new THREE.BoxGeometry(size + 0.3, 0.15, size + 0.3), barMat);
+    top.position.y = h; g.add(top);
+    // Caged buddies pacing inside (visual only — real ones spawn when unlocked)
+    const shown = Math.min(3, Math.max(2, cagedCount + 2));
+    for (let i = 0; i < shown; i++) {
+      const buddy = this.createFriendlyZombieMesh();
+      buddy.position.set((Math.random() - 0.5) * 2.5, 0, (Math.random() - 0.5) * 2.5);
+      buddy.rotation.y = Math.random() * Math.PI * 2;
+      g.add(buddy);
+    }
+    g.position.set(x, 0, z);
+    this.scene.add(g);
+    this.cageGroup = g;
+  }
+
+  clearCage() {
+    if (!this.cageGroup) return;
+    this.scene.remove(this.cageGroup);
+    this.cageGroup.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    this.cageGroup = null;
   }
 
   enterSkeletonWorld() {

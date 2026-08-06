@@ -166,6 +166,9 @@ let escapeStep = null;
 let doorOpen = false;
 let keyDropped = false;
 let keyPos = null;
+let cagePos = null;       // friendly-zombie cage during escape story
+let cageOpen = false;
+let cagedFriendlies = null; // {ownerId: count} captured when the boss cages your buddies
 let killFeed = [];
 
 // ─── Day/Night cycle ───
@@ -295,6 +298,19 @@ function spawnZombie() {
   });
 }
 
+function spawnFriendlyZombie(ownerId, x, z) {
+  zombies.push({
+    id: nextZombieId++, x, z, type: 'normal',
+    health: 75, maxHealth: 75,
+    speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.2,
+    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+    rot: 0, attacking: 0,
+    friendly: true, owner: ownerId,
+    slamEffect: 0,
+  });
+}
+
 function spawnEgg(playerId, eggType) {
   const p = players[playerId];
   if (!p || p.dead || !p.spawnerMode) return;
@@ -312,16 +328,7 @@ function spawnEgg(playerId, eggType) {
       specialAttackTimer: 2 + Math.random() * 2,
     });
   } else if (eggType === 'friendly') {
-    zombies.push({
-      id: nextZombieId++, x, z, type: 'normal',
-      health: 75, maxHealth: 75,
-      speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.2,
-      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
-      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
-      rot: 0, attacking: 0,
-      friendly: true, owner: playerId,
-      slamEffect: 0,
-    });
+    spawnFriendlyZombie(playerId, x, z);
   } else if (eggType === 'skeleton') {
     zombies.push({
       id: nextZombieId++, x, z, type: 'skeleton',
@@ -629,6 +636,13 @@ function startEscape() {
   keyDropped = false;
   keyPos = null;
   doorOpen = false;
+  // The boss cages your friendly zombies — free them later with the key
+  cagedFriendlies = {};
+  for (const z of zombies) {
+    if (z.friendly && !z.dying) cagedFriendlies[z.owner] = (cagedFriendlies[z.owner] || 0) + 1;
+  }
+  cagePos = { x: -18, z: 18 };
+  cageOpen = false;
   zombies = [];
   bossPending = false;
   bossSpawned = false;
@@ -658,7 +672,7 @@ function startEscape() {
 
   spawnGuard();
   io.emit('escapeStart', {
-    text: 'The boss knocked you out... Your eyes open in a dark prison cell. They took your guns, but forgot your knife. A zombie guard holds the key.',
+    text: 'The boss knocked you out... Your eyes open in a dark prison cell. They took your guns and locked your zombie buddies in a cage outside. They forgot your knife. A zombie guard holds the key.',
   });
 }
 
@@ -670,8 +684,9 @@ function pickUpKey(playerId) {
   keyDropped = false;
   keyPos = null;
   p.hasKey = true;
+  p.keyUses = 2;
   p.escapeStep = 'key';
-  io.emit('escapeUpdate', 'You got the key. Press Shift near the cell door to unlock it.');
+  io.emit('escapeUpdate', 'You got the key — it has 2 uses. Press Shift near the cell door to unlock it.');
 }
 
 function unlockCell(playerId) {
@@ -682,7 +697,8 @@ function unlockCell(playerId) {
   const dx = Math.abs(p.x);
   if (dx > 3.5 || dz > 3.5) return;
   doorOpen = true;
-  p.hasKey = false;
+  p.keyUses = (p.keyUses || 1) - 1;
+  if (p.keyUses <= 0) p.hasKey = false;
   escapeStep = 'fight';
   for (const pl of Object.values(players)) pl.escapeStep = 'fight';
   for (let i = 0; i < 5; i++) spawnEscapeZombie();
@@ -701,12 +717,34 @@ function unlockCell(playerId) {
       cornerIdx++;
     }
   }
-  io.emit('escapeUpdate', 'ALERT! The cell is open. 5 zombies are coming in! Find your weapons in the corners of the map!');
+  io.emit('escapeUpdate', 'ALERT! The cell is open. 5 zombies are coming in! Find your weapons in the corners — and use the key once more on the cage to free your zombie buddies!');
+}
+
+function unlockCage(playerId) {
+  const p = players[playerId];
+  if (!p || !cagePos || cageOpen || !p.hasKey || (p.keyUses || 0) <= 0) return;
+  if (Math.hypot(p.x - cagePos.x, p.z - cagePos.z) > 4) return;
+  cageOpen = true;
+  p.keyUses -= 1;
+  if (p.keyUses <= 0) p.hasKey = false;
+  // Release caged buddies to their owners — the opener gets 2 extra
+  const counts = cagedFriendlies || {};
+  counts[playerId] = (counts[playerId] || 0) + 2;
+  let freed = 0;
+  for (const [ownerId, n] of Object.entries(counts)) {
+    if (!players[ownerId]) continue;
+    for (let i = 0; i < n; i++) {
+      spawnFriendlyZombie(ownerId, cagePos.x + (Math.random() - 0.5) * 3, cagePos.z + (Math.random() - 0.5) * 3);
+      freed++;
+    }
+  }
+  cagedFriendlies = null;
+  broadcastKillFeed(anyKidFriendly() ? `Cage open! ${freed} zombie buddies are free!` : `CAGE UNLOCKED — ${freed} zombie buddies rejoin the fight!`);
 }
 
 function checkEscapeWin() {
   if (escapeStep !== 'fight') return;
-  const aliveCount = zombies.filter(z => !z.dying && !z.reviving).length;
+  const aliveCount = zombies.filter(z => !z.dying && !z.reviving && !z.friendly).length;
   if (aliveCount === 0) endEscape();
 }
 
@@ -761,6 +799,7 @@ function startSkeletonWorld() {
   skeletonWorld = true;
   skeletonUnlocked = true;
   zombies = [];
+  cagePos = null; cageOpen = false; cagedFriendlies = null;
   bossPending = false;
   bossSpawned = false;
   waveActive = true;
@@ -2092,18 +2131,7 @@ function applyPowerUp(p, type) {
       const allyDamage = CONFIG.zombieDamage * 3;
       for (let ai = 0; ai < 3; ai++) {
         const aAngle = (ai / 3) * Math.PI * 2;
-        zombies.push({
-          id: nextZombieId++, x: p.x + Math.cos(aAngle) * 2, z: p.z + Math.sin(aAngle) * 2, type: 'normal',
-          health: allyHealth, maxHealth: allyHealth,
-          speed: CONFIG.playerSpeed,
-          damage: allyDamage, attackRange: CONFIG.zombieAttackRange * 1.2,
-          attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
-          isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
-          rot: 0, attacking: 0,
-          friendly: true, // fights until killed by enemies
-          owner: p.id,
-          slamEffect: 0,
-        });
+        spawnFriendlyZombie(p.id, p.x + Math.cos(aAngle) * 2, p.z + Math.sin(aAngle) * 2);
       }
       p.necroSkullEffect = 1;
       broadcastKillFeed(kid ? `${p.name} summoned 3 zombie buddies! Go team!` : `${p.name} used NECROMANCER'S SKULL — 3 friendly zombies summoned! They fight until they fall! (HP: ${allyHealth}, DMG: ${allyDamage} each)`);
@@ -2403,6 +2431,7 @@ function gameLoop() {
     chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
+    cage: cagePos ? [+cagePos.x.toFixed(1), +cagePos.z.toFixed(1), cageOpen ? 1 : 0, Object.values(cagedFriendlies || {}).reduce((s, n) => s + n, 0)] : null,
     tod: +timeOfDay.toFixed(3), night: isNight ? 1 : 0,
     zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone).length + zombiesToSpawn,
     water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
@@ -2444,6 +2473,7 @@ io.on('connection', (socket) => {
     goldPickups = [];
     powerUpPickups = [];
     escapeMode = false;
+    cagePos = null; cageOpen = false; cagedFriendlies = null;
   }
 
   socket.emit('connected', { id: socket.id, name: players[socket.id].name });
@@ -2664,9 +2694,13 @@ io.on('connection', (socket) => {
   });
   socket.on('escapeInteract', () => {
     const p = players[socket.id];
-    if (!p || !p.escapeMode) return;
-    if (p.escapeStep === 'guard' && keyDropped) pickUpKey(socket.id);
-    else if (p.escapeStep === 'key' && p.hasKey) unlockCell(socket.id);
+    if (!p) return;
+    if (p.escapeMode) {
+      if (p.escapeStep === 'guard' && keyDropped) pickUpKey(socket.id);
+      else if (p.escapeStep === 'key' && p.hasKey) unlockCell(socket.id);
+    }
+    // Cage stays unlockable after the cell opens (even into the boss fight)
+    if (p.hasKey) unlockCage(socket.id);
   });
   socket.on('respawn', () => {
     const p = players[socket.id];
@@ -2697,6 +2731,7 @@ io.on('connection', (socket) => {
       chests = [];
       postEscapeBoss = false;
       skeletonWorld = false;
+      cagePos = null; cageOpen = false; cagedFriendlies = null;
     }
   });
 });
