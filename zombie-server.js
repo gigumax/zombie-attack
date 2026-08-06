@@ -1667,8 +1667,8 @@ function updateZombies(dt) {
           }
         }
       }
-      // Check all dead
-      if (target.dead) {
+      // Check all dead (only when targeting a player, not a zombie)
+      if (target && target.dead) {
         const allDead = Object.values(players).every(p => p.dead);
         if (allDead && !escapeMode) {
           io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
