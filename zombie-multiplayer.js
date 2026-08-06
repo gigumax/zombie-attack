@@ -1933,20 +1933,24 @@ class ZombieMultiplayerClient {
             ud.gunGroup.userData.handL.position.set(0, -0.03, -0.3);
           }
         }
-        // Reload animation for other players — dip gun down to reload
+        // Reload animation for other players — dip gun and bring left hand from bottom
         if (p.r === 1 && !pIsMelee) {
           const rT = performance.now() / 1000;
-          const dip = Math.sin(Math.min(rT * 3, Math.PI)) * 0.15;
+          const rPhase = Math.min(rT * 3, Math.PI);
+          const dip = Math.sin(rPhase) * 0.2;
           ud.gunGroup.position.set(0.45, 1.25 - dip, 0.1);
-          ud.gunGroup.rotation.x = -0.15 - dip * 0.5; // dip down for reload
+          ud.gunGroup.rotation.x = -0.15 - dip * 0.8; // dip down for reload
+          ud.gunGroup.rotation.z = dip * 0.3; // tilt gun
           if (ud.armR) ud.armR.rotation.x = -1.2 - dip;
           if (ud.armL) {
+            // Left arm swings down to bottom of gun (magazine swap)
+            const reach = Math.sin(rPhase);
             if (twoHanded) {
-              ud.armL.rotation.x = -1.4 - dip * 0.5;
-              ud.armL.rotation.z = 0.3;
+              ud.armL.rotation.x = -0.5 + reach * 0.8; // arm drops down then comes back up
+              ud.armL.rotation.z = 0.3 - reach * 0.5;
             } else {
-              ud.armL.rotation.x = -0.8 - dip * 0.3;
-              ud.armL.rotation.z = 0;
+              ud.armL.rotation.x = -0.2 + reach * 0.6;
+              ud.armL.rotation.z = -reach * 0.3;
             }
           }
         } else {
@@ -2144,25 +2148,30 @@ class ZombieMultiplayerClient {
       const isPaused = this.myPlayer.pau === 1;
       // Hide gun when paused or in third-person
       this.gun.visible = !isPaused && !this.thirdPerson;
-      // Reload animation — dip gun down and rotate
+      // Reload animation — tilt gun and bring left hand from bottom to swap mag
       const isReloading = this.myPlayer.r === 1;
       if (isReloading) {
         const reloadT = performance.now() / 1000;
-        const dip = Math.sin(Math.min(reloadT * 3, Math.PI)) * 0.25; // dip down then back up
-        const rot = Math.sin(Math.min(reloadT * 3, Math.PI)) * 0.4; // tilt gun
+        const phase = Math.min(reloadT * 3, Math.PI);
+        const dip = Math.sin(phase) * 0.25;
+        const rot = Math.sin(phase) * 0.5;
+        // Gun dips down and tilts
         this.gun.position.z = -0.5 + recoil + dip * 0.3;
-        this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.2;
+        this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.25;
         this.gun.rotation.x = rot;
-        this.gun.rotation.z = rot * 0.5;
-        // Left hand moves to magazine during reload
-        const handReach = Math.sin(Math.min(reloadT * 3, Math.PI));
+        this.gun.rotation.z = rot * 0.6;
+        // Left hand comes from below the gun (magazine area) — swings up from bottom
+        const handReach = Math.sin(phase);
         if (this.gunParts.handL) {
-          this.gunParts.handL.position.z = -0.45 + handReach * 0.55; // move from barrel to mag
-          this.gunParts.handL.position.y = -0.05 + handReach * 0.15;
+          // Hand starts below and behind, moves up to the magazine at the bottom of the gun
+          this.gunParts.handL.position.x = -0.04;
+          this.gunParts.handL.position.y = -0.05 - handReach * 0.35; // comes from below
+          this.gunParts.handL.position.z = 0.05 + handReach * 0.15; // moves to mag area (bottom of gun)
         }
         if (this.gunParts.forearmL) {
-          this.gunParts.forearmL.position.z = -0.2 + handReach * 0.35;
-          this.gunParts.forearmL.position.y = -0.05 + handReach * 0.1;
+          this.gunParts.forearmL.position.x = -0.04;
+          this.gunParts.forearmL.position.y = -0.05 - handReach * 0.25;
+          this.gunParts.forearmL.position.z = 0.2 + handReach * 0.1;
         }
       } else {
         this.gun.position.z = -0.5 + recoil;
