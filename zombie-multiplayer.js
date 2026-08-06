@@ -1333,8 +1333,8 @@ class ZombieMultiplayerClient {
         oozeGeo: new THREE.BoxGeometry(0.06, 0.15, 0.04),
         skinMat: new THREE.MeshLambertMaterial({color: 0x020202, emissive: 0x330000, emissiveIntensity: 0.6}),
         darkMat: new THREE.MeshLambertMaterial({color: 0x010101, emissive: 0x110000, emissiveIntensity: 0.3}),
-        eyeMat: new THREE.MeshBasicMaterial({color: 0xff0000}),
-        glowMat: new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.5}),
+        eyeMat: new THREE.MeshBasicMaterial({color: 0xffffff}),
+        glowMat: new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.5}),
         fangMat: new THREE.MeshBasicMaterial({color: 0xddccaa}),
         jawMat: new THREE.MeshLambertMaterial({color: 0x020202, emissive: 0x220000, emissiveIntensity: 0.6}),
         ribMat: new THREE.MeshBasicMaterial({color: 0xaaaa88}),
@@ -1353,13 +1353,13 @@ class ZombieMultiplayerClient {
     const skinMat = useCache ? c.skinMat : new THREE.MeshLambertMaterial({color: 0x020202, emissive: 0x330000, emissiveIntensity: 0.6 + reviveCount * 0.2});
     const darkMat = useCache ? c.darkMat : new THREE.MeshLambertMaterial({color: 0x010101, emissive: 0x110000, emissiveIntensity: 0.3});
     const spikeMat = useCache ? c.spikeMat : new THREE.MeshBasicMaterial({color: 0x660000});
-    const glowMat = useCache ? c.glowMat : new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.5 + reviveCount * 0.15});
+    const glowMat = useCache ? c.glowMat : new THREE.MeshBasicMaterial({color: 0xffffff, transparent: true, opacity: 0.5 + reviveCount * 0.15});
 
     // Oversized, hunched head
     const head = new THREE.Mesh(useCache ? c.headGeo : new THREE.BoxGeometry(0.6*scale,0.8*scale,0.6*scale), skinMat);
     head.position.y = 1.9*scale; head.castShadow = true; head.rotation.x = 0.4; group.add(head);
     const headBottom = 1.9*scale - 0.4*scale;
-    // Glowing red eyes
+    // Glowing white eyes
     const eyeL = new THREE.Mesh(useCache ? c.eyeGeo : new THREE.BoxGeometry(0.18*scale,0.18*scale,0.1*scale), c.eyeMat);
     eyeL.position.set(-0.14*scale,1.98*scale,0.31*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.14*scale; group.add(eyeR);
