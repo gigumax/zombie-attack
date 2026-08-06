@@ -529,10 +529,14 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   else msg = `+${score} ${kid ? 'Zombie tagged' : 'Zombie eliminated'}!`;
   broadcastKillFeed(player ? `${player.name}: ${msg}` : msg);
 
-  // Post-escape boss killed → transition to skeleton world
+  // Post-escape boss killed → grasslands completed; skeleton world unlocks but you travel when you want
   if (zombie.isBoss && postEscapeBoss) {
     postEscapeBoss = false;
-    startSkeletonWorld();
+    skeletonUnlocked = true;
+    waveActive = false;
+    waveBreakTimer = CONFIG.waveBreakTime * 2;
+    io.emit('waveAnnounce', anyKidFriendly() ? 'GRASSLANDS COMPLETED! Yay!' : 'GRASSLANDS COMPLETED!');
+    broadcastKillFeed(anyKidFriendly() ? 'Grasslands completed! Skeleton World is open — press B to travel when you want!' : 'GRASSLANDS COMPLETED — Skeleton World unlocked! Press B and pick it on the world map whenever you\'re ready.');
     return;
   }
 
