@@ -2024,7 +2024,8 @@ class ZombieMultiplayerClient {
         }
         // Reload animation for other players — dip gun and bring left hand from bottom
         if (p.r === 1 && !pIsMelee) {
-          const rT = performance.now() / 1000;
+          if (!ud.reloadStart) ud.reloadStart = performance.now() / 1000;
+          const rT = performance.now() / 1000 - ud.reloadStart;
           const rPhase = Math.min(rT * 3, Math.PI);
           const dip = Math.sin(rPhase) * 0.2;
           ud.gunGroup.position.set(0.45, 1.25 - dip, 0.1);
@@ -2043,6 +2044,7 @@ class ZombieMultiplayerClient {
             }
           }
         } else {
+          ud.reloadStart = 0;
           // Idle / walking — gun held forward and up
           ud.gunGroup.position.set(0.45, 1.25, 0.1);
           ud.gunGroup.rotation.x = -0.15; // barrel forward, slight upward aim
@@ -2240,7 +2242,9 @@ class ZombieMultiplayerClient {
       // Reload animation — left arm drops below gun to swap mag, right hand stays on grip
       const isReloading = this.myPlayer.r === 1;
       if (isReloading) {
-        const reloadT = performance.now() / 1000;
+        // Track when reload started so animation plays from the beginning
+        if (!this._reloadStartTime) this._reloadStartTime = performance.now() / 1000;
+        const reloadT = performance.now() / 1000 - this._reloadStartTime;
         const phase = Math.min(reloadT * 3, Math.PI);
         const dip = Math.sin(phase) * 0.15;
         // Gun tilts slightly but stays relatively steady — right hand holds it
@@ -2263,6 +2267,7 @@ class ZombieMultiplayerClient {
           this.gunParts.forearmL.position.z = 0.25 + handReach * 0.15;
         }
       } else {
+        this._reloadStartTime = 0;
         this.gun.position.z = -0.5 + recoil;
         this.gun.position.y = -0.3 - recoil * 0.3;
         this.gun.rotation.x = 0;
