@@ -1577,11 +1577,11 @@ function updateZombies(dt) {
       if (z.type === 'skeleton') {
         // SKELETON — ranged bone throw every 3s from distance, plus weak melee
         // Can attack buff zombies as well as players
+        const attackingZombie = zombieTarget && (!target || zombieTargetDist < minDist);
         z.specialAttackTimer -= dt;
         if (z.specialAttackTimer <= 0 && dist < 20 && dist > attackRange) {
           z.specialAttackTimer = 3 + Math.random() * 2;
-          if (zombieTarget && !target) {
-            // Attacking a buff zombie
+          if (attackingZombie) {
             zombieTarget.health -= z.damage * 0.5;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
@@ -1593,7 +1593,7 @@ function updateZombies(dt) {
         }
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.2;
-          if (zombieTarget && !target) {
+          if (attackingZombie) {
             zombieTarget.health -= z.damage * 0.6;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
@@ -1615,7 +1615,8 @@ function updateZombies(dt) {
             }
           }
           // Also damage zombie target (skeleton)
-          if (zombieTarget && !target) {
+          const buffAttackingZombie = zombieTarget && (!target || zombieTargetDist < minDist);
+          if (buffAttackingZombie) {
             zombieTarget.health -= z.damage * 1.5;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           }
@@ -1665,7 +1666,8 @@ function updateZombies(dt) {
             z.x += (dx / dist) * 1.5;
             z.z += (dz / dist) * 1.5;
           }
-          if (zombieTarget && !target) {
+          const normAttackingZombie = zombieTarget && (!target || zombieTargetDist < minDist);
+          if (normAttackingZombie) {
             // Attacking a skeleton
             const newDist = Math.hypot(zombieTarget.x - z.x, zombieTarget.z - z.z);
             if (newDist < attackRange) {
