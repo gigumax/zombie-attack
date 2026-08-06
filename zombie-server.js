@@ -90,6 +90,23 @@ function spawnCreepyZoneZombie() {
   });
 }
 
+function spawnCreepyBoss() {
+  const health = 5000;
+  zombies.push({
+    id: nextZombieId++, x: CREEPY_ZONE.x, z: CREEPY_ZONE.z + 15, type: 'creepy',
+    health, maxHealth: health,
+    speed: CONFIG.zombieSpeed * 2.5,
+    damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 2,
+    attackTimer: 0, walkPhase: 0,
+    isBoss: true, isCreepyBoss: true, hasKey: false,
+    lostLimbs: {}, limbDamage: {},
+    specialAttackTimer: 5 + Math.random() * 3,
+    fromCreepyZone: true,
+    reviveCount: 2, reviveTimer: 0, reviving: false,
+  });
+  broadcastKillFeed(anyKidFriendly() ? 'A BIG CREEPY MONSTER appeared in the Creepy World!' : 'CREEPY BOSS has awakened! A towering horror looms in the darkness!');
+}
+
 const GUNS = {
   knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
   katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
@@ -1695,7 +1712,7 @@ function gameLoop() {
           }
         }
       } else {
-        // Clear creepy zombies when no one is in the creepy world
+        // Clear creepy zombies and boss when no one is in the creepy world
         zombies = zombies.filter(z => !z.fromCreepyZone);
       }
     }
@@ -1929,12 +1946,10 @@ io.on('connection', (socket) => {
       p.vx = 0; p.vy = 0; p.vz = 0;
       p.currentWorld = 'creepy';
       io.emit('worldChange', 'creepy');
-    } else if (data === 'water') {
-      // Teleport to water lake
-      p.x = -35; p.z = -35; p.y = CONFIG.playerHeight;
-      p.vx = 0; p.vy = 0; p.vz = 0;
-      p.currentWorld = 'water';
-      io.emit('worldChange', 'water');
+      // Spawn creepy world boss if not already present
+      if (!zombies.some(z => z.isCreepyBoss && !z.dying)) {
+        spawnCreepyBoss();
+      }
     }
   });
   socket.on('buyGun', (gun) => {

@@ -888,6 +888,106 @@ class ZombieMultiplayerClient {
   }
 
   setupWorldMap() {
+    // Draw world card icons on canvas
+    document.querySelectorAll('canvas[data-icon]').forEach(canvas => {
+      const ctx = canvas.getContext('2d');
+      const icon = canvas.dataset.icon;
+      ctx.clearRect(0, 0, 64, 64);
+      if (icon === 'grasslands') {
+        // Tree icon
+        ctx.fillStyle = '#5a3a2a';
+        ctx.fillRect(28, 36, 8, 22);
+        ctx.fillStyle = '#2a6a2a';
+        ctx.beginPath();
+        ctx.arc(32, 28, 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3a8a3a';
+        ctx.beginPath();
+        ctx.arc(26, 24, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(38, 24, 10, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (icon === 'creepy') {
+        // Creepy zombie face — dark green skin, hollow eyes, jagged mouth
+        ctx.fillStyle = '#2a4a1a';
+        ctx.beginPath();
+        ctx.arc(32, 32, 26, 0, Math.PI * 2);
+        ctx.fill();
+        // Hollow eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(22, 26, 7, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(42, 26, 7, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Red glow in eyes
+        ctx.fillStyle = '#ff0000';
+        ctx.beginPath();
+        ctx.arc(22, 27, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(42, 27, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Jagged teeth mouth
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(20, 42, 24, 8);
+        ctx.fillStyle = '#ddd';
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(22 + i * 5, 42);
+          ctx.lineTo(25 + i * 5, 42);
+          ctx.lineTo(23.5 + i * 5, 47);
+          ctx.fill();
+        }
+        // Cracks on face
+        ctx.strokeStyle = '#0a0a0a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(32, 8); ctx.lineTo(30, 18); ctx.lineTo(34, 22);
+        ctx.stroke();
+      } else if (icon === 'skeleton') {
+        // Skeleton skull face
+        ctx.fillStyle = '#e8e8d0';
+        ctx.beginPath();
+        ctx.arc(32, 28, 22, 0, Math.PI * 2);
+        ctx.fill();
+        // Jaw
+        ctx.fillRect(22, 42, 20, 12);
+        // Eye sockets
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.ellipse(23, 26, 7, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(41, 26, 7, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Nose
+        ctx.beginPath();
+        ctx.moveTo(32, 32); ctx.lineTo(28, 40); ctx.lineTo(36, 40);
+        ctx.fill();
+        // Teeth
+        ctx.fillStyle = '#e8e8d0';
+        for (let i = 0; i < 5; i++) {
+          ctx.fillRect(24 + i * 4, 42, 3, 10);
+        }
+        ctx.strokeStyle = '#999';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath();
+          ctx.moveTo(24 + i * 4, 42); ctx.lineTo(24 + i * 4, 52);
+          ctx.stroke();
+        }
+        // Cracks
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(14, 20); ctx.lineTo(20, 24);
+        ctx.stroke();
+      }
+    });
+
     document.querySelectorAll('.world-card').forEach(card => {
       card.addEventListener('click', () => {
         const world = card.dataset.world;
@@ -895,8 +995,6 @@ class ZombieMultiplayerClient {
           this.socket.emit('travelToWorld', 'main');
         } else if (world === 'creepy') {
           this.socket.emit('travelToWorld', 'creepy');
-        } else if (world === 'water') {
-          this.socket.emit('travelToWorld', 'water');
         } else if (world === 'skeleton') {
           this.socket.emit('travelToWorld', 'skeleton');
         }
