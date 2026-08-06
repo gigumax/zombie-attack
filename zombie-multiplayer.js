@@ -507,6 +507,20 @@ class ZombieMultiplayerClient {
     // Crates — at large obstacle positions (can jump on top)
     const cratePositions = [[-3,-5,1.5],[6,3,1.5],[-8,8,1.5],[10,-12,1.5],[15,6,1.5]];
     for (const [x,z,s] of cratePositions) this.createCrate(x, z, s);
+
+    // Cover walls — long blocks for hiding behind
+    const coverMat = new THREE.MeshLambertMaterial({ color: 0x6a5a4a });
+    const coverWalls = [
+      {x:-18,z:12,w:4,d:1},{x:20,z:-15,w:4,d:1},{x:0,z:-22,w:1,d:4},
+      {x:-30,z:0,w:1,d:4},{x:28,z:10,w:4,d:1},{x:3,z:25,w:1,d:4},
+      {x:-10,z:-28,w:4,d:1},{x:30,z:-25,w:4,d:1},
+    ];
+    for (const c of coverWalls) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(c.w, 1.5, c.d), coverMat);
+      wall.position.set(c.x, 0.75, c.z);
+      wall.castShadow = true; wall.receiveShadow = true;
+      this.scene.add(wall);
+    }
   }
 
   createTree(x, z) {

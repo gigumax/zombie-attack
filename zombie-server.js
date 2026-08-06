@@ -119,6 +119,10 @@ const OBSTACLES = [
   {x:-12,z:-20,w:1,d:1},{x:5,z:-15,w:1,d:1},{x:22,z:-5,w:1,d:1},
   {x:-25,z:-3,w:1,d:1},{x:-3,z:-5,w:1.5,d:1.5},{x:6,z:3,w:1.5,d:1.5},
   {x:-8,z:8,w:1.5,d:1.5},{x:10,z:-12,w:1.5,d:1.5},{x:15,z:6,w:1.5,d:1.5},
+  // Cover walls — long blocks for hiding behind
+  {x:-18,z:12,w:4,d:1},{x:20,z:-15,w:4,d:1},{x:0,z:-22,w:1,d:4},
+  {x:-30,z:0,w:1,d:4},{x:28,z:10,w:4,d:1},{x:3,z:25,w:1,d:4},
+  {x:-10,z:-28,w:4,d:1},{x:30,z:-25,w:4,d:1},
 ];
 
 // ─── Game State ───
@@ -603,6 +607,29 @@ function startSkeletonWorld() {
 }
 
 // ─── Shooting (server-side raycast) ───
+
+// Ray-AABB intersection for obstacle bullet blocking
+function rayHitObstacle(ox, oy, oz, dx, dy, dz, maxDist) {
+  let closestDist = maxDist;
+  for (const obs of OBSTACLES) {
+    const obsHeight = obs.w > 1.2 ? 1.5 : 4.0; // crates 1.5 tall, trees 4.0 tall
+    const hx = obs.w / 2, hz = obs.d / 2;
+    // AABB: [obs.x-hx, obs.x+hx] x [0, obsHeight] x [obs.z-hz, obs.z+hz]
+    const tminx = (obs.x - hx - ox) / (Math.abs(dx) < 1e-8 ? 1e-8 : dx);
+    const tmaxx = (obs.x + hx - ox) / (Math.abs(dx) < 1e-8 ? 1e-8 : dx);
+    const tminy = (0 - oy) / (Math.abs(dy) < 1e-8 ? 1e-8 : dy);
+    const tmaxy = (obsHeight - oy) / (Math.abs(dy) < 1e-8 ? 1e-8 : dy);
+    const tminz = (obs.z - hz - oz) / (Math.abs(dz) < 1e-8 ? 1e-8 : dz);
+    const tmaxz = (obs.z + hz - oz) / (Math.abs(dz) < 1e-8 ? 1e-8 : dz);
+    const tenter = Math.max(Math.min(tminx, tmaxx), Math.min(tminy, tmaxy), Math.min(tminz, tmaxz));
+    const texit = Math.min(Math.max(tminx, tmaxx), Math.max(tminy, tmaxy), Math.max(tminz, tmaxz));
+    if (tenter < texit && texit > 0 && tenter < closestDist) {
+      closestDist = Math.max(tenter, 0);
+    }
+  }
+  return closestDist < maxDist ? closestDist : null;
+}
+
 function handleShoot(playerId) {
   const p = players[playerId];
   if (!p || p.dead || p.paused || p.reloading || p.fireTimer > 0) return;
@@ -669,6 +696,13 @@ function handleShoot(playerId) {
         const hit = rayHitPlayer(p, dir, other, closestDist);
         if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
       }
+    }
+    // Check obstacle hit — bullets blocked by blocks
+    const obsDist = rayHitObstacle(p.x, p.y, p.z, dir.x, dir.y, dir.z, closestDist);
+    if (obsDist !== null && obsDist < closestDist) {
+      closestDist = obsDist;
+      closestHit = null;
+      closestPlayerHit = null;
     }
     // Tracer endpoint
     const hitSomething = closestHit !== null || closestPlayerHit !== null;
@@ -1269,6 +1303,16 @@ function updateZombies(dt) {
     } else {
       // Still face the player even when stopped
       z.rot = Math.atan2(dx, dz);
+    }
+    // Obstacle collision — zombies can't walk through blocks
+    for (const obs of OBSTACLES) {
+      const odx = z.x - obs.x, odz = z.z - obs.z;
+      const minDX = obs.w / 2 + 0.4;
+      const minDZ = obs.d / 2 + 0.4;
+      if (Math.abs(odx) < minDX && Math.abs(odz) < minDZ) {
+        if (Math.abs(odx) > Math.abs(odz)) z.x = obs.x + Math.sign(odx) * minDX;
+        else z.z = obs.z + Math.sign(odz) * minDZ;
+      }
     }
     // Creepy zombie in combat range — continuous flag for animation
     if (z.type === 'creepy' && dist < (z.attackRange || CONFIG.zombieAttackRange) + 1) {
