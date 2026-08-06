@@ -1204,6 +1204,33 @@ class ZombieMultiplayerClient {
     return group;
   }
 
+  createFriendlyZombieMesh() {
+    const group = new THREE.Group();
+    const skinMat = new THREE.MeshLambertMaterial({color: 0x55cc55});
+    const shirtMat = new THREE.MeshLambertMaterial({color: 0xddaa22});
+    const pantsMat = new THREE.MeshLambertMaterial({color: 0x5a4a2a});
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.5,0.5), skinMat);
+    head.position.y = 1.8; head.castShadow = true; group.add(head);
+    // Glowing green eyes
+    const eyeMat = new THREE.MeshBasicMaterial({color:0x00ff66});
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.05), eyeMat);
+    eyeL.position.set(-0.12,1.85,0.26); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.12; group.add(eyeR);
+    // Green headband
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.54,0.1,0.54), new THREE.MeshBasicMaterial({color:0x00cc44}));
+    band.position.y = 2.0; group.add(band);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.75,0.3), shirtMat);
+    torso.position.y = 1.15; torso.castShadow = true; group.add(torso);
+    const armGeo = new THREE.BoxGeometry(0.25,0.5,0.25);
+    const armL = new THREE.Mesh(armGeo, skinMat); armL.position.set(-0.38,1.3,0.3); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(armGeo, skinMat); armR.position.set(0.38,1.3,0.3); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    const legGeo = new THREE.BoxGeometry(0.22,0.75,0.22);
+    const legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.13,0.375,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.13,0.375,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, isFriendly: true };
+    return group;
+  }
+
   createBuffZombieMesh() {
     const group = new THREE.Group();
     const scale = 1.4;
@@ -1874,7 +1901,7 @@ class ZombieMultiplayerClient {
         mesh = null;
       }
       if (!mesh) {
-        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
+        mesh = z.fr ? this.createFriendlyZombieMesh() : this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
         const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'ironGolem' ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' || TYPE_MAP[z.t] === 'buffSkeleton' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3)))));

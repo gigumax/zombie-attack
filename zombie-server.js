@@ -529,7 +529,7 @@ function killZombie(zombie, killerId, dirX, dirZ) {
 
   // Check wave complete or escape win (only count active zombies, exclude creepy zone spawns)
   // Reviving bosses count as alive so the wave doesn't end and spawn a duplicate boss
-  const aliveZombies = zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone);
+  const aliveZombies = zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone && !z.friendly);
   if (escapeMode) {
     checkEscapeWin();
   } else if (aliveZombies.length === 0 && zombiesToSpawn === 0) {
@@ -1460,10 +1460,11 @@ function updateZombies(dt) {
     let zombieTarget = null, zombieTargetDist = Infinity;
     // Friendly zombies target enemy zombies, not players
     if (z.friendly) {
+      // Limited sight — only chase enemies within 12 units, otherwise stay with owner
       for (const oz of zombies) {
         if (oz === z || oz.dying || oz.reviving || oz.friendly) continue;
         const d = Math.hypot(oz.x - z.x, oz.z - z.z);
-        if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
+        if (d < zombieTargetDist && d < 12) { zombieTargetDist = d; zombieTarget = oz; }
       }
       if (zombieTarget) {
         // Attack nearest enemy zombie
@@ -2078,7 +2079,7 @@ function applyPowerUp(p, type) {
         zombies.push({
           id: nextZombieId++, x: p.x + Math.cos(aAngle) * 2, z: p.z + Math.sin(aAngle) * 2, type: 'normal',
           health: allyHealth, maxHealth: allyHealth,
-          speed: CONFIG.playerSpeed * 0.9,
+          speed: CONFIG.zombieSpeed * 1.3,
           damage: allyDamage, attackRange: CONFIG.zombieAttackRange * 1.2,
           attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
           isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
