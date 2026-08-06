@@ -480,6 +480,15 @@ function endWave() {
 }
 
 // ─── Escape sequence ───
+// Check if any player was killed by the boss and trigger escape sequence
+function checkBossKillEscape() {
+  if (escapeMode || postEscapeBoss || skeletonWorld) return;
+  const anyDead = Object.values(players).some(p => p.dead);
+  if (anyDead) {
+    startEscape();
+  }
+}
+
 function startEscape() {
   escapeMode = true;
   escapeStep = 'guard';
@@ -1397,6 +1406,7 @@ function updateZombies(dt) {
               z.rangedEffect = 1; // visual flag
               z.attackTimer = 1.0;
               broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS THROWS A BALL!' : 'BOSS HURLS A PROJECTILE!');
+              checkBossKillEscape();
             }
           }
         }
@@ -1426,6 +1436,7 @@ function updateZombies(dt) {
               if (p.health <= 0) { p.health = 0; p.dead = true; }
             }
           }
+          checkBossKillEscape();
         } else if (z.jumpPhase === 'land' && z.jumpTimer <= 0) {
           z.jumping = false;
           z.jumpPhase = null;
@@ -1460,6 +1471,7 @@ function updateZombies(dt) {
           }
           z.crackAttack = false;
           z.attackTimer = 1.5;
+          checkBossKillEscape();
         }
       }
       // Handle charge movement
@@ -1479,9 +1491,8 @@ function updateZombies(dt) {
           }
         }
         if (z.chargeTimer <= 0) z.charging = false;
-        // If boss killed someone during charge, trigger escape
-        const anyDead = Object.values(players).some(p => p.dead);
-        if (anyDead && !escapeMode && !postEscapeBoss && !skeletonWorld) { startEscape(); return; }
+        checkBossKillEscape();
+        if (escapeMode) return;
         // Keep world bounds
         const half = CONFIG.worldSize - 1;
         z.x = Math.max(-half, Math.min(half, z.x));
@@ -1494,11 +1505,8 @@ function updateZombies(dt) {
         if (target.health <= 0) {
           target.health = 0;
           target.dead = true;
-          // Boss knocks player out → trigger escape sequence (only first time)
-          if (!escapeMode && !postEscapeBoss && !skeletonWorld) {
-            startEscape();
-            return;
-          }
+          checkBossKillEscape();
+          if (escapeMode) return;
         }
       }
     } else {
