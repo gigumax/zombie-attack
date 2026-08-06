@@ -114,6 +114,7 @@ const GUNS = {
   smg:    { name:'SMG', magSize:100, reloadTime:1.8, fireRate:0.08, damage:25, pellets:1, spread:0.03, price:150 },
   shotgun:{ name:'Shotgun', magSize:6, reloadTime:2.5, fireRate:0.6, damage:20, pellets:8, spread:0.12, price:250 },
   rifle:  { name:'Rifle', magSize:500, reloadTime:1.0, fireRate:0.06, damage:55, pellets:1, spread:0.005, price:400 },
+  sniper: { name:'Sniper', magSize:5, reloadTime:2.5, fireRate:1.2, damage:300, pellets:1, spread:0, price:600, pierce:true },
 };
 
 const UPGRADES = {
@@ -280,6 +281,14 @@ function spawnEgg(playerId, eggType) {
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
       specialAttackTimer: 3 + Math.random() * 2,
     });
+  } else if (eggType === 'buff') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'buff',
+      health: CONFIG.zombieHealth * 3, maxHealth: CONFIG.zombieHealth * 3,
+      speed: CONFIG.zombieSpeed * 0.7, damage: CONFIG.zombieDamage * 2, attackRange: CONFIG.zombieAttackRange * 1.3,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+    });
   } else if (eggType === 'creepy') {
     zombies.push({
       id: nextZombieId++, x, z, type: 'creepy',
@@ -288,7 +297,6 @@ function spawnEgg(playerId, eggType) {
       attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
       specialAttackTimer: 2 + Math.random() * 2,
-      fromCreepyZone: true,
     });
   }
 }
@@ -723,15 +731,23 @@ function handleShoot(playerId) {
   const damage = getGunStat(p, 'damage');
   const pellets = getGunStat(p, 'pellets');
   const spread = getGunStat(p, 'spread');
+  const isPiercing = GUNS[p.currentGun] && GUNS[p.currentGun].pierce;
 
   for (let pellet = 0; pellet < pellets; pellet++) {
     const dir = getLookDir(p, spread);
     let closestHit = null, closestDist = CONFIG.bulletRange;
     let closestPlayerHit = null;
+    let piercedZombies = [];
     for (const z of zombies) {
       if (z.dying || z.reviving) continue;
       const hit = rayHitZombie(p, dir, z, closestDist);
-      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; closestPlayerHit = null; }
+      if (hit && hit.dist < closestDist) {
+        if (isPiercing) {
+          piercedZombies.push({ zombie: z, point: hit.point, part: hit.part, dist: hit.dist });
+        } else {
+          closestDist = hit.dist; closestHit = { zombie: z, point: hit.point, part: hit.part }; closestPlayerHit = null;
+        }
+      }
     }
     // PvP — check for player hits (only if friendly fire is on)
     if (friendlyFire) {
@@ -793,6 +809,15 @@ function handleShoot(playerId) {
         z.health -= damage;
       }
       if (z.health <= 0) killZombie(z, playerId, dir.x, dir.z);
+    }
+    // Piercing (sniper) — apply damage to all zombies the bullet passed through
+    if (isPiercing && piercedZombies.length > 0) {
+      for (const ph of piercedZombies) {
+        const z = ph.zombie;
+        if (z.dying) continue;
+        z.health -= damage;
+        if (z.health <= 0) killZombie(z, playerId, dir.x, dir.z);
+      }
     }
   }
 }
@@ -1287,12 +1312,26 @@ function updateZombies(dt) {
   for (const z of zombies) {
     if (z.dying || z.reviving) continue; // skip dead/reviving zombies
     let target = null, minDist = Infinity;
+    let zombieTarget = null, zombieTargetDist = Infinity;
     for (const p of Object.values(players)) {
       if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
-    if (!target) {
+    // Skeletons also target buff zombies
+    if (z.type === 'skeleton') {
+      for (const oz of zombies) {
+        if (oz === z || oz.dying || oz.reviving || oz.type !== 'buff') continue;
+        const d = Math.hypot(oz.x - z.x, oz.z - z.z);
+        if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
+      }
+    }
+    // If skeleton has a zombie target and it's closer than the player target, prefer it
+    if (z.type === 'skeleton' && zombieTarget && zombieTargetDist < minDist) {
+      target = null; // skeleton will chase the buff zombie instead
+      minDist = zombieTargetDist;
+    }
+    if (!target && !zombieTarget) {
       // No target (e.g. all players in creative mode) — wander randomly
       z.walkPhase += dt * z.speed * 2;
       if (!z.wanderDir || Math.random() < 0.01) {
@@ -1307,7 +1346,9 @@ function updateZombies(dt) {
       continue;
     }
 
-    const dx = target.x - z.x, dz = target.z - z.z;
+    // Use zombie target (buff zombie) if skeleton is chasing one instead of player
+    const chaseTarget = target || zombieTarget;
+    const dx = chaseTarget.x - z.x, dz = chaseTarget.z - z.z;
     const dist = Math.hypot(dx, dz);
 
     // Creepy zombies hate water — take damage and try to flee
@@ -1533,18 +1574,30 @@ function updateZombies(dt) {
       // Non-boss zombie attacks — different per type
       if (z.type === 'skeleton') {
         // SKELETON — ranged bone throw every 3s from distance, plus weak melee
+        // Can attack buff zombies as well as players
         z.specialAttackTimer -= dt;
         if (z.specialAttackTimer <= 0 && dist < 20 && dist > attackRange) {
           z.specialAttackTimer = 3 + Math.random() * 2;
-          target.health -= z.damage * 0.5;
-          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          if (zombieTarget && !target) {
+            // Attacking a buff zombie
+            zombieTarget.health -= z.damage * 0.5;
+            if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+          } else {
+            target.health -= z.damage * 0.5;
+            if (target.health <= 0) { target.health = 0; target.dead = true; }
+          }
           z.rangedEffect = 1;
           z.attackTimer = 1.0;
         }
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.2;
-          target.health -= z.damage * 0.6;
-          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          if (zombieTarget && !target) {
+            zombieTarget.health -= z.damage * 0.6;
+            if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+          } else {
+            target.health -= z.damage * 0.6;
+            if (target.health <= 0) { target.health = 0; target.dead = true; }
+          }
         }
       } else if (z.type === 'buff') {
         // BUFF — heavy slam attack, 2x damage, longer cooldown, AoE
