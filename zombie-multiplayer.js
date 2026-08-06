@@ -1179,24 +1179,34 @@ class ZombieMultiplayerClient {
   createBuffZombieMesh() {
     const group = new THREE.Group();
     const scale = 1.4;
-    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xff8844 : 0x8a2a2a});
-    const shirtMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffaa00 : 0x4a1a1a});
-    const pantsMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x4488ff : 0x2a0a0a});
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale,0.55*scale,0.55*scale), skinMat);
+    // Cache shared geometries and materials to avoid GPU memory explosion with many buff zombies
+    if (!this._buffCache) {
+      this._buffCache = {
+        skinMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xff8844 : 0x8a2a2a}),
+        shirtMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffaa00 : 0x4a1a1a}),
+        pantsMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x4488ff : 0x2a0a0a}),
+        eyeMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x4444ff : 0xff0000}),
+        headGeo: new THREE.BoxGeometry(0.55*scale, 0.55*scale, 0.55*scale),
+        eyeGeo: new THREE.BoxGeometry(0.13*scale, 0.13*scale, 0.06*scale),
+        torsoGeo: new THREE.BoxGeometry(0.65*scale, 0.85*scale, 0.4*scale),
+        armGeo: new THREE.BoxGeometry(0.35*scale, 0.65*scale, 0.35*scale),
+        legGeo: new THREE.BoxGeometry(0.28*scale, 0.85*scale, 0.28*scale),
+      };
+    }
+    const c = this._buffCache;
+    const head = new THREE.Mesh(c.headGeo, c.skinMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x4444ff : 0xff0000});
-    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.13*scale,0.13*scale,0.06*scale), eyeMat);
-    eyeL.position.set(-0.13*scale,1.85*scale,0.29*scale); group.add(eyeL);
-    const eyeR = eyeL.clone(); eyeR.position.x = 0.13*scale; group.add(eyeR);
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.65*scale,0.85*scale,0.4*scale), shirtMat);
+    const eyeL = new THREE.Mesh(c.eyeGeo, c.eyeMat);
+    eyeL.position.set(-0.13*scale, 1.85*scale, 0.29*scale); group.add(eyeL);
+    const eyeR = new THREE.Mesh(c.eyeGeo, c.eyeMat);
+    eyeR.position.set(0.13*scale, 1.85*scale, 0.29*scale); group.add(eyeR);
+    const torso = new THREE.Mesh(c.torsoGeo, c.shirtMat);
     torso.position.y = 1.15*scale; torso.castShadow = true; group.add(torso);
-    const armGeo = new THREE.BoxGeometry(0.35*scale,0.65*scale,0.35*scale);
-    const armL = new THREE.Mesh(armGeo, skinMat); armL.position.set(-0.45*scale,1.35*scale,0.35*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
-    const armR = new THREE.Mesh(armGeo, skinMat); armR.position.set(0.45*scale,1.35*scale,0.35*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
-    const legGeo = new THREE.BoxGeometry(0.28*scale,0.85*scale,0.28*scale);
-    const legL = new THREE.Mesh(legGeo, pantsMat); legL.position.set(-0.15*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
-    const legR = new THREE.Mesh(legGeo, pantsMat); legR.position.set(0.15*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
-    group.userData = { armL, armR, legL, legR, head };
+    const armL = new THREE.Mesh(c.armGeo, c.skinMat); armL.position.set(-0.45*scale, 1.35*scale, 0.35*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(c.armGeo, c.skinMat); armR.position.set(0.45*scale, 1.35*scale, 0.35*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    const legL = new THREE.Mesh(c.legGeo, c.pantsMat); legL.position.set(-0.15*scale, 0.425*scale, 0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(c.legGeo, c.pantsMat); legR.position.set(0.15*scale, 0.425*scale, 0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, sharedGeo: true };
     return group;
   }
 
@@ -1862,7 +1872,18 @@ class ZombieMultiplayerClient {
     // Remove dead zombies
     for (const id of Object.keys(this.zombieMeshes)) {
       if (!seenZombieIds.has(parseInt(id))) {
-        this.scene.remove(this.zombieMeshes[id]);
+        const m = this.zombieMeshes[id];
+        this.scene.remove(m);
+        // Skip disposing shared cached geometries/materials (e.g. buff zombies)
+        if (!m.userData.sharedGeo) {
+          m.traverse(c => {
+            if (c.geometry) c.geometry.dispose();
+            if (c.material) {
+              if (Array.isArray(c.material)) c.material.forEach(mat => mat.dispose());
+              else c.material.dispose();
+            }
+          });
+        }
         delete this.zombieMeshes[id];
         delete this.prevPositions.zombies[id];
       }
