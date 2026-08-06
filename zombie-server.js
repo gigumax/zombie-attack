@@ -230,8 +230,7 @@ function anyKidFriendly() {
 function spawnZombie() {
   let type = 'normal';
   const r = Math.random();
-  if (wave >= 4 && r < 0.15) type = 'skeleton';
-  else if (wave >= 3 && r < 0.35) type = 'buff';
+  if (wave >= 3 && r < 0.35) type = 'buff';
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
