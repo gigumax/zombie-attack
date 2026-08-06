@@ -1442,6 +1442,12 @@ function updateZombies(dt) {
           z.jumpPhase = null;
           z.attackTimer = 1.5;
         }
+        // During air phase, interpolate X/Z from start to target so boss doesn't teleport
+        if (z.jumpPhase === 'air') {
+          const airProgress = 1 - (z.jumpTimer / 0.5); // 0 to 1
+          z.x = z.jumpStartX + (z.jumpTargetX - z.jumpStartX) * airProgress;
+          z.z = z.jumpStartZ + (z.jumpTargetZ - z.jumpStartZ) * airProgress;
+        }
         // Keep boss in bounds during jump
         const half = CONFIG.worldSize - 1;
         z.x = Math.max(-half, Math.min(half, z.x));
