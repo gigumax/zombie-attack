@@ -1500,6 +1500,54 @@ function updateZombies(dt) {
     // Friendly zombies target enemy zombies, not players
     if (z.friendly) {
       z.attackTimer -= dt;
+      // Dodge instincts — scramble out of boss attack danger zones
+      let dodgeX = 0, dodgeZ = 0;
+      for (const b of zombies) {
+        if ((!b.isBoss && b.type !== 'skeletonBoss') || b.dying) continue;
+        // Jump smash incoming — flee the landing zone
+        if (b.jumping && b.jumpPhase !== 'land') {
+          const rx = z.x - b.jumpTargetX, rz = z.z - b.jumpTargetZ;
+          const rd = Math.hypot(rx, rz);
+          if (rd < 5) { dodgeX += rx / (rd || 1); dodgeZ += rz / (rd || 1); }
+        }
+        // Charge — sidestep perpendicular out of the charge path
+        if (b.charging) {
+          const rx = z.x - b.x, rz = z.z - b.z;
+          const along = rx * b.chargeDx + rz * b.chargeDz;
+          if (along > -2 && along < 14) {
+            const perpX = rx - along * b.chargeDx, perpZ = rz - along * b.chargeDz;
+            const pd = Math.hypot(perpX, perpZ);
+            if (pd < 3.5) {
+              dodgeX += pd > 0.01 ? perpX / pd : -b.chargeDz;
+              dodgeZ += pd > 0.01 ? perpZ / pd : b.chargeDx;
+            }
+          }
+        }
+        // Ground crack winding up — step off the crack line
+        if (b.crackAttack) {
+          const rx = z.x - b.x, rz = z.z - b.z;
+          const along = rx * b.crackDx + rz * b.crackDz;
+          if (along > 0 && along < b.crackLength) {
+            const perpX = rx - along * b.crackDx, perpZ = rz - along * b.crackDz;
+            const pd = Math.hypot(perpX, perpZ);
+            if (pd < b.crackWidth + 1.5) {
+              dodgeX += pd > 0.01 ? perpX / pd : -b.crackDz;
+              dodgeZ += pd > 0.01 ? perpZ / pd : b.crackDx;
+            }
+          }
+        }
+      }
+      if (dodgeX || dodgeZ) {
+        const dl = Math.hypot(dodgeX, dodgeZ);
+        z.x += (dodgeX / dl) * z.speed * 1.4 * dt;
+        z.z += (dodgeZ / dl) * z.speed * 1.4 * dt;
+        const half = CONFIG.worldSize - 1;
+        z.x = Math.max(-half, Math.min(half, z.x));
+        z.z = Math.max(-half, Math.min(half, z.z));
+        z.walkPhase += dt * z.speed * 4;
+        z.rot = Math.atan2(dodgeX, dodgeZ);
+        continue; // dodging overrides fighting this tick
+      }
       // Limited sight — only chase enemies within 12 units, otherwise stay with owner
       // (invisible creepies included — allies can smell them)
       for (const oz of zombies) {
