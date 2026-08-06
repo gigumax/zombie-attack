@@ -406,7 +406,11 @@
           <div style="color:#4a8a4a;font-weight:700;font-size:16px;">Grasslands</div>
           <div style="color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">Main world<br>Waves of zombies</div>
         </div>
-        <div class="world-card" data-world="creepy" style="width:160px;height:200px;border:3px solid #884488;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#2a0a2a,#1a051a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;">
+        <div class="world-card" data-world="creepy" id="creepy-card" style="width:160px;height:200px;border:3px solid #884488;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#2a0a2a,#1a051a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;position:relative;overflow:hidden;">
+          <div id="creepy-lock" style="position:absolute;inset:0;background:rgba(0,0,0,0.75);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;z-index:2;">
+            <div style="font-size:36px;">🔒</div>
+            <div style="color:#888;font-size:11px;text-align:center;padding:0 10px;">Defeat Skeleton World boss to unlock</div>
+          </div>
           <canvas width="64" height="64" data-icon="creepy" style="width:64px;height:64px;"></canvas>
           <div style="color:#cc66cc;font-weight:700;font-size:16px;">Creepy World</div>
           <div style="color:rgba(255,255,255,0.4);font-size:11px;text-align:center;">Dark wasteland<br>Creepy zombies & boss</div>
@@ -436,6 +440,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=30"></script>
+  <script src="zombie-multiplayer.js?v=31"></script>
 </body>
 </html>

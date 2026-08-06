@@ -170,6 +170,7 @@ let weaponPickups = []; // {id, gun, x, z} — weapons to find after escaping ce
 let postEscapeBoss = false; // boss fight after escaping cell
 let skeletonWorld = false; // skeleton world unlocked after killing post-escape boss
 let skeletonUnlocked = false; // becomes true after escaping + defeating post-escape boss
+let creepyUnlocked = false; // becomes true after defeating skeleton boss
 
 function getGunStat(player, stat) {
   const gun = GUNS[player.currentGun];
@@ -374,10 +375,12 @@ function killZombie(zombie, killerId, dirX, dirZ) {
     return;
   }
 
-  // Skeleton boss killed → victory!
+  // Skeleton boss killed → victory! Unlock creepy world
   if (zombie.type === 'skeletonBoss') {
     io.emit('skeletonBossDefeated', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
     skeletonWorld = false;
+    creepyUnlocked = true;
+    broadcastKillFeed(anyKidFriendly() ? 'Skeleton Boss defeated! Creepy World unlocked!' : 'SKELETON BOSS DESTROYED! Creepy World is now available!');
     return;
   }
 
@@ -1754,7 +1757,7 @@ function gameLoop() {
       const ll = z.lostLimbs || {};
       const base = {
         id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type === 'skeletonBoss' ? 'k' : z.type[0],
-        boss: z.isBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
+        boss: z.isBoss ? 1 : 0, cb: z.isCreepyBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
         la: ll.armL ? 1 : 0, ra: ll.armR ? 1 : 0, ll: ll.legL ? 1 : 0, rl: ll.legR ? 1 : 0,
         rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,
         chg: z.charging ? 1 : 0, slm: z.slamEffect ? 1 : 0, rng: z.rangedEffect ? 1 : 0,
@@ -1786,6 +1789,7 @@ function gameLoop() {
     creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
     skeletonWorld,
     skeletonUnlocked,
+    creepyUnlocked,
   };
   io.emit('state', state);
   } catch(e) {
@@ -1941,6 +1945,7 @@ io.on('connection', (socket) => {
       p.currentWorld = 'main';
       io.emit('worldChange', 'main');
     } else if (data === 'creepy') {
+      if (!creepyUnlocked) return;
       // Teleport to creepy zone
       p.x = 35; p.z = 35; p.y = CONFIG.playerHeight;
       p.vx = 0; p.vy = 0; p.vz = 0;

@@ -174,6 +174,11 @@ class ZombieMultiplayerClient {
       if (skelLock) {
         skelLock.style.display = state.skeletonUnlocked ? 'none' : 'flex';
       }
+      // Update creepy world lock
+      const creepyLock = document.getElementById('creepy-lock');
+      if (creepyLock) {
+        creepyLock.style.display = state.creepyUnlocked ? 'none' : 'flex';
+      }
       // PvP indicator
       const pvpEl = document.getElementById('pvp-indicator');
       if (pvpEl) pvpEl.style.display = state.friendlyFire ? 'block' : 'none';
@@ -1393,8 +1398,87 @@ class ZombieMultiplayerClient {
     return group;
   }
 
-  createZombieMeshByType(type, isBoss, revivePhase = 0, creepyRevive = 0) {
+  createCreepyBossMesh(revivePhase = 0) {
+    if (this.kidFriendly) return this.createZombieMesh(true, revivePhase);
+    const group = new THREE.Group();
+    const scale = 2.0 + revivePhase * 0.2;
+    // Dark corrupted skin
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0x1a3a0a, emissive: 0x0a1a00, emissiveIntensity: 0.3 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x0a1a05, emissive: 0x050a00, emissiveIntensity: 0.2 });
+    // Body — large torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.0*scale, 1.4*scale, 0.6*scale), skinMat);
+    torso.position.y = 1.5*scale; torso.castShadow = true; group.add(torso);
+    // Chest spikes
+    const spikeMat = new THREE.MeshLambertMaterial({ color: 0x0a0a00, emissive: 0x330000, emissiveIntensity: 0.4 });
+    for (let i = 0; i < 4; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.08*scale, 0.4*scale, 4), spikeMat);
+      spike.position.set(-0.3*scale + i*0.2*scale, 1.8*scale, 0.3*scale);
+      spike.rotation.x = Math.PI / 2;
+      group.add(spike);
+    }
+    // Head — large creepy head
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5*scale, 0.55*scale, 0.5*scale), darkMat);
+    head.position.y = 2.6*scale; head.castShadow = true; group.add(head);
+    // Glowing red eyes
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale, 0.06*scale, 0.05*scale), eyeMat);
+    eyeL.position.set(-0.12*scale, 2.65*scale, 0.26*scale); group.add(eyeL);
+    const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale, 0.06*scale, 0.05*scale), eyeMat);
+    eyeR.position.set(0.12*scale, 2.65*scale, 0.26*scale); group.add(eyeR);
+    // Horns
+    const hornMat = new THREE.MeshLambertMaterial({ color: 0x1a0a00 });
+    const hornL = new THREE.Mesh(new THREE.ConeGeometry(0.08*scale, 0.4*scale, 6), hornMat);
+    hornL.position.set(-0.2*scale, 3.0*scale, 0); hornL.rotation.z = 0.3; group.add(hornL);
+    const hornR = new THREE.Mesh(new THREE.ConeGeometry(0.08*scale, 0.4*scale, 6), hornMat);
+    hornR.position.set(0.2*scale, 3.0*scale, 0); hornR.rotation.z = -0.3; group.add(hornR);
+    // Jaw with jagged teeth
+    const jawGroup = new THREE.Group();
+    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.4*scale, 0.15*scale, 0.4*scale), darkMat);
+    jaw.position.y = 2.35*scale; jawGroup.add(jaw);
+    const toothMat = new THREE.MeshBasicMaterial({ color: 0xddccaa });
+    for (let i = 0; i < 5; i++) {
+      const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.04*scale, 0.12*scale, 4), toothMat);
+      tooth.position.set(-0.15*scale + i*0.075*scale, 2.25*scale, 0.2*scale);
+      tooth.rotation.x = Math.PI;
+      jawGroup.add(tooth);
+    }
+    group.add(jawGroup);
+    // Arms — long, reaching
+    const armGeo = new THREE.BoxGeometry(0.22*scale, 1.6*scale, 0.22*scale);
+    const armL = new THREE.Mesh(armGeo, skinMat);
+    armL.position.set(-0.65*scale, 1.5*scale, 0); armL.castShadow = true; group.add(armL);
+    armL.rotation.z = 0.3;
+    const armR = new THREE.Mesh(armGeo, skinMat);
+    armR.position.set(0.65*scale, 1.5*scale, 0); armR.castShadow = true; group.add(armR);
+    armR.rotation.z = -0.3;
+    // Clawed hands
+    const clawMat = new THREE.MeshLambertMaterial({ color: 0x0a0a00, emissive: 0x220000, emissiveIntensity: 0.3 });
+    const handL = new THREE.Mesh(new THREE.BoxGeometry(0.25*scale, 0.3*scale, 0.25*scale), clawMat);
+    handL.position.set(-0.8*scale, 0.7*scale, 0); group.add(handL);
+    const handR = new THREE.Mesh(new THREE.BoxGeometry(0.25*scale, 0.3*scale, 0.25*scale), clawMat);
+    handR.position.set(0.8*scale, 0.7*scale, 0); group.add(handR);
+    // Legs — thick, stompy
+    const legGeo = new THREE.BoxGeometry(0.3*scale, 1.3*scale, 0.3*scale);
+    const legL = new THREE.Mesh(legGeo, skinMat);
+    legL.position.set(-0.25*scale, 0.65*scale, 0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, skinMat);
+    legR.position.set(0.25*scale, 0.65*scale, 0); legR.castShadow = true; group.add(legR);
+    // Purple aura particles
+    const auraMat = new THREE.MeshBasicMaterial({ color: 0x660066, transparent: true, opacity: 0.2 });
+    for (let i = 0; i < 8; i++) {
+      const aura = new THREE.Mesh(new THREE.SphereGeometry(0.3*scale, 6, 6), auraMat);
+      const angle = (i / 8) * Math.PI * 2;
+      aura.position.set(Math.cos(angle) * 0.8*scale, 1.5*scale + Math.sin(angle) * 0.5*scale, Math.sin(angle) * 0.4*scale);
+      group.add(aura);
+    }
+
+    group.userData = { armL, armR, legL, legR, head, jawGroup, isCreepyBoss: true, revivePhase };
+    return group;
+  }
+
+  createZombieMeshByType(type, isBoss, revivePhase = 0, creepyRevive = 0, isCreepyBoss = false) {
     if (type === 'skeletonBoss') return this.createMutantSkeletonBossMesh();
+    if (isCreepyBoss) return this.createCreepyBossMesh(revivePhase);
     if (isBoss) return this.createZombieMesh(true, revivePhase);
     if (type === 'buff') return this.createBuffZombieMesh();
     if (type === 'skeleton') return this.createSkeletonMesh();
@@ -1461,16 +1545,21 @@ class ZombieMultiplayerClient {
         this.scene.remove(mesh);
         mesh = null;
       }
+      // Recreate creepy boss mesh if revive phase changed
+      if (mesh && z.cb && mesh.userData.revivePhase !== (z.rv || 0)) {
+        this.scene.remove(mesh);
+        mesh = null;
+      }
       // Recreate creepy zombie mesh if creepy revive count changed
-      if (mesh && TYPE_MAP[z.t] === 'creepy' && mesh.userData.creepyRevive !== (z.crv || 0)) {
+      if (mesh && TYPE_MAP[z.t] === 'creepy' && !z.cb && mesh.userData.creepyRevive !== (z.crv || 0)) {
         this.scene.remove(mesh);
         mesh = null;
       }
       if (!mesh) {
-        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0);
+        mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
-        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : 2.3));
+        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : 2.3)));
         const hb = this.createHealthBar(hbY);
         mesh.add(hb);
         mesh.userData.healthBar = hb;
