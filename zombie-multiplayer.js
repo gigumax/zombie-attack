@@ -3042,7 +3042,10 @@ class ZombieMultiplayerClient {
     document.getElementById('health-val').textContent = p.h;
     document.getElementById('score-val').textContent = p.s;
     document.getElementById('wave-val').textContent = this.serverState ? this.serverState.wave : 1;
-    document.getElementById('gold-val').textContent = p.g;
+    document.getElementById('gold-val').textContent = p.sp ? '∞' : p.g;
+    // Spawner mode indicator
+    const spawnerEl = document.getElementById('spawner-indicator');
+    if (spawnerEl) spawnerEl.style.display = p.sp ? 'block' : 'none';
     const gunName = GUNS[p.gun] ? GUNS[p.gun].name : p.gun;
     const autoTag = p.af ? ' [AUTO]' : '';
     if (p.r) {
@@ -3142,7 +3145,8 @@ class ZombieMultiplayerClient {
     const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6' };
     const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K' };
     const upgradeHotkeys = { damage: 'Z', fireRate: 'X', magSize: 'C', health: 'V' };
-    let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${p.g}</div>`;
+    const isSpawner = p.sp === 1;
+    let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${isSpawner ? '∞' : p.g}</div>`;
 
     // Inventory section — owned weapons with hotkeys
     html += '<div style="color:#8bc;font-size:11px;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:1px;">Inventory</div>';
@@ -3163,9 +3167,9 @@ class ZombieMultiplayerClient {
     for (const [key, gun] of Object.entries(GUNS)) {
       const owned = meta.ownedGuns[key];
       if (owned) continue;
-      const canBuy = p.g >= gun.price;
+      const canBuy = isSpawner || p.g >= gun.price;
       const stats = gun.melee ? `DMG ${gun.damage} · RNG ${gun.meleeRange}` : `DMG ${gun.damage} · MAG ${gun.magSize}`;
-      html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name} ${buyHotkeys[key]?`<span style="color:#666;font-size:10px;">[${buyHotkeys[key]}]</span>`:''}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${gun.price}g</span></div>`;
+      html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name} ${buyHotkeys[key]?`<span style="color:#666;font-size:10px;">[${buyHotkeys[key]}]</span>`:''}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${isSpawner?'FREE':gun.price+'g'}</span></div>`;
     }
 
     // Upgrades
@@ -3174,11 +3178,11 @@ class ZombieMultiplayerClient {
       const lvl = meta.upgrades[key] || 0;
       const maxed = lvl >= up.maxLevel;
       const price = up.price * (lvl + 1);
-      const canBuy = !maxed && p.g >= price;
+      const canBuy = !maxed && (isSpawner || p.g >= price);
       const uhk = upgradeHotkeys[key] || '';
       html += `<div class="shop-item ${maxed?'maxed':(canBuy?'':'disabled')}" ${canBuy?`data-action="buyUpgrade" data-key="${key}"`:''}>
         <span>${up.name} ${uhk?`<span style="color:#666;font-size:10px;">[${uhk}]</span>`:''} <span style="color:#666;font-size:10px;">Lv.${lvl}/${up.maxLevel}</span></span>
-        <span>${maxed?'MAX':price+'g'}</span>
+        <span>${maxed?'MAX':(isSpawner?'FREE':price+'g')}</span>
       </div>`;
     }
     // Items (consumables)
@@ -3189,17 +3193,16 @@ class ZombieMultiplayerClient {
     const playerItems = p.it || { grenade:0, rocket:0, medkit:0, airstrike:0 };
     for (const [key, item] of Object.entries(ITEMS)) {
       const count = playerItems[key] || 0;
-      const canBuy = count < item.maxStack && p.g >= item.price;
+      const canBuy = count < item.maxStack && (isSpawner || p.g >= item.price);
       const bhk = itemBuyHotkeys[key] || '';
       const uhk = itemUseHotkeys[key] || '';
       const desc = itemDescs[key] || '';
       html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyItem" data-key="${key}"`:''}>
         <span>${item.name} ${bhk?`<span style="color:#666;font-size:10px;">[buy:${bhk}]</span>`:''} ${uhk?`<span style="color:#888;font-size:10px;">[use:${uhk}]</span>`:''}<br><span style="font-size:10px;color:#666;">${desc} · x${count}/${item.maxStack}</span></span>
-        <span>${item.price}g</span>
+        <span>${isSpawner?'FREE':item.price+'g'}</span>
       </div>`;
     }
     // Spawner mode section
-    const isSpawner = p.sp === 1;
     html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Spawner Mode</div>';
     html += `<div class="shop-item ${isSpawner?'equipped':''}" style="${isSpawner?'border-color:#2ecc71;':''}">
       <span>Spawner Mode ${isSpawner?'<span style="color:#2ecc71;font-size:10px;">ACTIVE</span>':'<span style="color:#666;font-size:10px;">OFF</span>'}<br><span style="font-size:10px;color:#666;">Invincible, free purchases, spawn eggs</span></span>

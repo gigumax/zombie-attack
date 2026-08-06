@@ -2023,17 +2023,21 @@ io.on('connection', (socket) => {
     if (!p || p.dead) return;
     p.spawnerMode = !p.spawnerMode;
     if (p.spawnerMode) {
+      // Give all guns and max upgrades first so maxHealth is correct
+      for (const [key] of Object.entries(GUNS)) p.ownedGuns[key] = true;
+      p.upgrades = { damage: 5, fireRate: 5, magSize: 5, health: 5 };
+      p.maxHealth = getGunStat(p, 'maxHealth');
       p.health = p.maxHealth;
       p.gold = 99999;
-      // Give all guns
-      for (const [key] of Object.entries(GUNS)) p.ownedGuns[key] = true;
-      // Max all upgrades
-      p.upgrades = { damage: 5, fireRate: 5, magSize: 5, health: 5 };
       p.ammo = getGunStat(p, 'magSize');
       p.reserveAmmo = 99999;
+      p.reloading = false;
+      // Give max items
+      p.items = { grenade: 99, rocket: 99, medkit: 99, airstrike: 99 };
       broadcastKillFeed(`${p.name} entered SPAWNER MODE — invincible, free purchases, spawn eggs!`);
     } else {
       p.gold = 0;
+      p.items = { grenade: 0, rocket: 0, medkit: 0, airstrike: 0 };
       broadcastKillFeed(`${p.name} left spawner mode`);
     }
     sendPlayerMeta(socket.id);
