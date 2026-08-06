@@ -1370,6 +1370,57 @@ class ZombieMultiplayerClient {
     return group;
   }
 
+  createIronGolemMesh() {
+    const group = new THREE.Group();
+    const s = 1.6; // larger than normal zombies
+    if (!this._golemCache) {
+      this._golemCache = {
+        headGeo: new THREE.BoxGeometry(0.7*s, 0.6*s, 0.7*s),
+        torsoGeo: new THREE.BoxGeometry(1.0*s, 1.2*s, 0.7*s),
+        armGeo: new THREE.BoxGeometry(0.35*s, 1.0*s, 0.35*s),
+        legGeo: new THREE.BoxGeometry(0.4*s, 0.9*s, 0.4*s),
+        fistGeo: new THREE.BoxGeometry(0.5*s, 0.5*s, 0.5*s),
+        eyeGeo: new THREE.BoxGeometry(0.12*s, 0.12*s, 0.05*s),
+        bodyMat: new THREE.MeshLambertMaterial({ color: 0x666677, emissive: 0x111122, emissiveIntensity: 0.2 }),
+        jointMat: new THREE.MeshLambertMaterial({ color: 0x444455 }),
+        eyeMat: new THREE.MeshBasicMaterial({ color: 0x00ff44 }),
+      };
+    }
+    const c = this._golemCache;
+    const head = new THREE.Mesh(c.headGeo, c.bodyMat);
+    head.position.y = 2.5*s; head.castShadow = true; group.add(head);
+    // Glowing green eyes
+    const eyeL = new THREE.Mesh(c.eyeGeo, c.eyeMat);
+    eyeL.position.set(-0.18*s, 2.55*s, 0.36*s); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.18*s; group.add(eyeR);
+    // Torso
+    const torso = new THREE.Mesh(c.torsoGeo, c.bodyMat);
+    torso.position.y = 1.4*s; torso.castShadow = true; group.add(torso);
+    // Shoulder joints
+    const shoulderL = new THREE.Mesh(new THREE.BoxGeometry(0.2*s, 0.2*s, 0.2*s), c.jointMat);
+    shoulderL.position.set(-0.55*s, 1.9*s, 0); group.add(shoulderL);
+    const shoulderR = shoulderL.clone(); shoulderR.position.x = 0.55*s; group.add(shoulderR);
+    // Big arms with fists
+    const armL = new THREE.Mesh(c.armGeo, c.bodyMat);
+    armL.position.set(-0.7*s, 1.3*s, 0); armL.castShadow = true; group.add(armL);
+    const fistL = new THREE.Mesh(c.fistGeo, c.bodyMat);
+    fistL.position.set(-0.7*s, 0.7*s, 0); fistL.castShadow = true; group.add(fistL);
+    const armR = new THREE.Mesh(c.armGeo, c.bodyMat);
+    armR.position.set(0.7*s, 1.3*s, 0); armR.castShadow = true; group.add(armR);
+    const fistR = new THREE.Mesh(c.fistGeo, c.bodyMat);
+    fistR.position.set(0.7*s, 0.7*s, 0); fistR.castShadow = true; group.add(fistR);
+    // Legs
+    const legL = new THREE.Mesh(c.legGeo, c.bodyMat);
+    legL.position.set(-0.25*s, 0.45*s, 0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(c.legGeo, c.bodyMat);
+    legR.position.set(0.25*s, 0.45*s, 0); legR.castShadow = true; group.add(legR);
+    // Hip joint
+    const hip = new THREE.Mesh(new THREE.BoxGeometry(0.3*s, 0.2*s, 0.3*s), c.jointMat);
+    hip.position.set(0, 0.8*s, 0); group.add(hip);
+    group.userData = { armL, armR, legL, legR, head, fistL, fistR, isGolem: true, sharedGeo: true };
+    return group;
+  }
+
   createCreepyZombieMesh(reviveCount = 0) {
     if (this.kidFriendly) return this.createZombieMesh();
     const group = new THREE.Group();
@@ -1694,6 +1745,7 @@ class ZombieMultiplayerClient {
     if (type === 'necromancer') return this.createNecromancerMesh();
     if (type === 'exploder') return this.createExploderMesh();
     if (type === 'spitter') return this.createSpitterMesh();
+    if (type === 'ironGolem') return this.createIronGolemMesh();
     return this.createZombieMesh();
   }
 
@@ -1755,7 +1807,7 @@ class ZombieMultiplayerClient {
 
   // ─── Scene sync ───
   // Map short type char to full type name
-  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer', p: 'spitter' };
+  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer', p: 'spitter', i: 'ironGolem' };
 
   updateScene(state, dt) {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
@@ -1794,7 +1846,7 @@ class ZombieMultiplayerClient {
         mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
-        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3))));
+        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'ironGolem' ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3)))));
         const hb = this.createHealthBar(hbY);
         mesh.add(hb);
         mesh.userData.healthBar = hb;
@@ -2060,27 +2112,45 @@ class ZombieMultiplayerClient {
           }
         } else {
           // Normal walk animation
-          if (ud.legL && ud.legR) {
-            ud.legL.rotation.x = swing * 0.4;
-            ud.legR.rotation.x = -swing * 0.4;
+          if (ud.isGolem) {
+            // Iron Golem — heavier stomp animation
+            if (ud.legL && ud.legR) {
+              ud.legL.rotation.x = swing * 0.3;
+              ud.legR.rotation.x = -swing * 0.3;
+            }
+            if (ud.armL && ud.armR) {
+              ud.armL.rotation.x = swing * 0.25;
+              ud.armR.rotation.x = -swing * 0.25;
+            }
+            if (ud.head) {
+              ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
+              if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
+              ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.05;
+            }
+            mesh.position.y = Math.abs(swing) * 0.08;
+          } else {
+            if (ud.legL && ud.legR) {
+              ud.legL.rotation.x = swing * 0.4;
+              ud.legR.rotation.x = -swing * 0.4;
+            }
+            if (ud.armL && ud.armR) {
+              // Arms reach forward and sway
+              const baseArm = -Math.PI / 2; // forward reach
+              ud.armL.rotation.x = baseArm + swing * 0.15;
+              ud.armR.rotation.x = baseArm - swing * 0.15;
+            }
+            if (ud.head) {
+              ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
+              if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
+              ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
+              ud.head.rotation.z = swing * 0.05;
+            }
+            if (ud.torso) {
+              ud.torso.rotation.z = swing * 0.03;
+            }
+            // Whole body bob up/down
+            mesh.position.y = Math.abs(swing) * 0.05;
           }
-          if (ud.armL && ud.armR) {
-            // Arms reach forward and sway
-            const baseArm = -Math.PI / 2; // forward reach
-            ud.armL.rotation.x = baseArm + swing * 0.15;
-            ud.armR.rotation.x = baseArm - swing * 0.15;
-          }
-          if (ud.head) {
-            ud.head.position.y = (ud.head.userData.baseY || ud.head.position.y);
-            if (!ud.head.userData.baseY) ud.head.userData.baseY = ud.head.position.y;
-            ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.03;
-            ud.head.rotation.z = swing * 0.05;
-          }
-          if (ud.torso) {
-            ud.torso.rotation.z = swing * 0.03;
-          }
-          // Whole body bob up/down
-          mesh.position.y = Math.abs(swing) * 0.05;
         }
       }
       // Apply hit knockback offsets to body parts

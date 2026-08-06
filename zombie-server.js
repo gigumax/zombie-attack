@@ -1452,20 +1452,37 @@ function updateZombies(dt) {
         const d = Math.hypot(oz.x - z.x, oz.z - z.z);
         if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
       }
-      if (!zombieTarget) continue; // no enemies to fight, skip
-      const dx = zombieTarget.x - z.x, dz = zombieTarget.z - z.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 0.01) {
-        z.x += (dx / dist) * z.speed * dt;
-        z.z += (dz / dist) * z.speed * dt;
-      }
-      z.walkPhase += dt * z.speed * 3;
-      z.r = Math.atan2(dx, dz);
-      if (dist < CONFIG.zombieAttackRange && z.attackTimer <= 0) {
-        z.attackTimer = CONFIG.zombieAttackCooldown;
-        zombieTarget.health -= z.damage;
-        if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
-        z.attacking = 1;
+      if (zombieTarget) {
+        // Attack nearest enemy zombie
+        const dx = zombieTarget.x - z.x, dz = zombieTarget.z - z.z;
+        const dist = Math.hypot(dx, dz);
+        const golemAttackRange = z.attackRange || CONFIG.zombieAttackRange;
+        if (dist > golemAttackRange && dist > 0.01) {
+          z.x += (dx / dist) * z.speed * dt;
+          z.z += (dz / dist) * z.speed * dt;
+        }
+        z.walkPhase += dt * z.speed * 3;
+        z.r = Math.atan2(dx, dz);
+        if (dist < golemAttackRange && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
+          zombieTarget.health -= z.damage;
+          if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+          z.attacking = 1;
+          z.slamEffect = 1;
+        }
+      } else {
+        // No enemies — follow owner player
+        const owner = players[z.owner];
+        if (owner && !owner.dead) {
+          const dx = owner.x - z.x, dz = owner.z - z.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > 3.0 && dist > 0.01) {
+            z.x += (dx / dist) * z.speed * dt;
+            z.z += (dz / dist) * z.speed * dt;
+            z.walkPhase += dt * z.speed * 3;
+          }
+          z.r = Math.atan2(dx, dz);
+        }
       }
       continue;
     }
@@ -1474,15 +1491,21 @@ function updateZombies(dt) {
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
-    // Zombie-vs-zombie targeting: skeletons hunt buff zombies, buff/normal zombies hunt skeletons
-    const huntTypes = { skeleton: ['buff', 'normal'], buff: ['skeleton'], normal: ['skeleton'] };
+    // Zombie-vs-zombie targeting: skeletons hunt all non-skeleton zombies, buff/normal zombies hunt skeletons
+    const huntTypes = { skeleton: ['buff', 'normal', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard'], buff: ['skeleton'], normal: ['skeleton'] };
     const huntList = huntTypes[z.type];
     if (huntList) {
       for (const oz of zombies) {
-        if (oz === z || oz.dying || oz.reviving || !huntList.includes(oz.type)) continue;
+        if (oz === z || oz.dying || oz.reviving || oz.isBoss || oz.friendly || !huntList.includes(oz.type)) continue;
         const d = Math.hypot(oz.x - z.x, oz.z - z.z);
         if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
       }
+    }
+    // All enemy zombies can target friendly zombies (Iron Golem) if no hunt target or it's closer
+    for (const oz of zombies) {
+      if (oz === z || oz.dying || oz.reviving || !oz.friendly) continue;
+      const d = Math.hypot(oz.x - z.x, oz.z - z.z);
+      if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
     }
     // If zombie has a hunt target — skeletons always prefer zombie targets over players
     if (zombieTarget) {
@@ -1734,8 +1757,8 @@ function updateZombies(dt) {
       // Non-boss zombie attacks — different per type
       if (z.type === 'skeleton') {
         // SKELETON — ranged bone throw every 3s from distance, plus weak melee
-        // Can attack buff zombies as well as players
-        const attackingZombie = zombieTarget && (!target || zombieTargetDist < minDist);
+        // Can attack other zombies as well as players
+        const attackingZombie = !target && zombieTarget;
         z.specialAttackTimer -= dt;
         if (z.specialAttackTimer <= 0 && dist < 20 && dist > attackRange) {
           z.specialAttackTimer = 3 + Math.random() * 2;
@@ -1943,6 +1966,16 @@ function updateZombies(dt) {
           }
         }
       }
+      // Generic: if attacking a zombie target (Iron Golem) and no player target, deal damage
+      if (!target && zombieTarget && z.attackTimer <= 0 && dist < attackRange) {
+        z.attackTimer = CONFIG.zombieAttackCooldown;
+        zombieTarget.health -= z.damage;
+        if (zombieTarget.health <= 0 && !zombieTarget.dying) {
+          killZombie(zombieTarget, null);
+          broadcastKillFeed(anyKidFriendly() ? 'The Iron Golem fell! :(' : 'Iron Golem destroyed!');
+        }
+        z.attacking = 1;
+      }
       // Check all dead (only when targeting a player, not a zombie)
       if (target && target.dead) {
         const allGone = Object.values(players).every(p => p.dead || p.downed);
@@ -1992,25 +2025,23 @@ function applyPowerUp(p, type) {
       broadcastKillFeed(kid ? `${p.name} used a Lightning Rod! Zap zap!` : `${p.name} used LIGHTNING ROD — struck ${struck} zombies for 300 damage each!`);
       break;
     case 'necroSkull':
-      // Revive 3 nearest dead zombies as friendly allies
-      const deadZs = zombies.filter(z => z.dying && !z.isBoss);
-      deadZs.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
-      let revived = 0;
-      for (const z of deadZs) {
-        if (revived >= 3) break;
-        z.dying = false;
-        z.dead = false;
-        z.health = z.maxHealth * 0.5;
-        z.canRevive = false;
-        z.corpseVx = 0;
-        z.corpseVz = 0;
-        z.friendly = true; // friendly zombie — fights for player
-        z.friendlyTimer = 30; // lasts 30 seconds
-        z.attackTimer = 1;
-        revived++;
-      }
+      // Spawn 1 Iron Golem ally that follows player and attacks all zombies
+      const buffHealth = CONFIG.zombieHealth * 3; // 1 buff zombie health
+      const buffDamage = CONFIG.zombieDamage * 2; // 1 buff zombie damage
+      zombies.push({
+        id: nextZombieId++, x: p.x + 1, z: p.z + 1, type: 'ironGolem',
+        health: buffHealth * 5, maxHealth: buffHealth * 5,
+        speed: CONFIG.playerSpeed * 0.9,
+        damage: buffDamage * 5, attackRange: CONFIG.zombieAttackRange * 1.5,
+        attackTimer: 0, walkPhase: 0,
+        isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+        rot: 0, attacking: 0,
+        friendly: true, friendlyTimer: 120, // lasts 2 minutes
+        owner: p.id,
+        slamEffect: 0,
+      });
       p.necroSkullEffect = 1;
-      broadcastKillFeed(kid ? `${p.name} used a Magic Skull! Friendly zombies!` : `${p.name} used NECROMANCER'S SKULL — revived ${revived} zombies as allies for 30s!`);
+      broadcastKillFeed(kid ? `${p.name} summoned an Iron Golem! Smash!` : `${p.name} used NECROMANCER'S SKULL — Iron Golem summoned for 120s! (HP: ${buffHealth*5}, DMG: ${buffDamage*5})`);
       break;
   }
 }
