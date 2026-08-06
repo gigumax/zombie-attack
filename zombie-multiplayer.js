@@ -2239,32 +2239,31 @@ class ZombieMultiplayerClient {
       const isPaused = this.myPlayer.pau === 1;
       // Hide gun when paused or in third-person
       this.gun.visible = !isPaused && !this.thirdPerson;
-      // Reload animation — left arm drops below gun to swap mag, right hand stays on grip
+      // Reload animation — left arm swings from barrel to magazine (bottom of gun) and back
       const isReloading = this.myPlayer.r === 1;
       if (isReloading) {
-        // Track when reload started so animation plays from the beginning
         if (!this._reloadStartTime) this._reloadStartTime = performance.now() / 1000;
         const reloadT = performance.now() / 1000 - this._reloadStartTime;
         const phase = Math.min(reloadT * 3, Math.PI);
         const dip = Math.sin(phase) * 0.15;
-        // Gun tilts slightly but stays relatively steady — right hand holds it
+        // Gun tilts slightly — right hand holds it steady
         this.gun.position.z = -0.5 + recoil + dip * 0.15;
         this.gun.position.y = -0.3 - recoil * 0.3 - dip * 0.1;
         this.gun.rotation.x = dip * 0.8;
         this.gun.rotation.z = dip * 0.4;
-        // Right hand stays on grip — no movement
-        // Left arm: drops down below the gun (reaching for mag), then comes up to bottom of gun
-        const handReach = Math.sin(phase);
+        // Left arm: swings from barrel position down to magazine (bottom of gun) and back
+        // sin(phase): 0 → 1 → 0, so hand goes to mag at peak and returns
+        const reach = Math.sin(phase);
         if (this.gunParts.handL) {
-          // Hand drops far below, then swings up to the magazine at bottom of gun
+          // From barrel (-0.45 z, -0.05 y) to magazine (0 z, -0.25 y) — visible on screen
           this.gunParts.handL.position.x = -0.04;
-          this.gunParts.handL.position.y = -0.05 - handReach * 0.6; // drops well below the gun
-          this.gunParts.handL.position.z = 0.1 + handReach * 0.2; // comes forward to mag area
+          this.gunParts.handL.position.y = -0.05 - reach * 0.2;  // drops to mag level
+          this.gunParts.handL.position.z = -0.45 + reach * 0.45;  // slides from barrel to mag
         }
         if (this.gunParts.forearmL) {
           this.gunParts.forearmL.position.x = -0.04;
-          this.gunParts.forearmL.position.y = -0.05 - handReach * 0.45;
-          this.gunParts.forearmL.position.z = 0.25 + handReach * 0.15;
+          this.gunParts.forearmL.position.y = -0.05 - reach * 0.15;
+          this.gunParts.forearmL.position.z = -0.2 + reach * 0.2;
         }
       } else {
         this._reloadStartTime = 0;
