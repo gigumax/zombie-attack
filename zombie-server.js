@@ -1445,22 +1445,13 @@ function updateZombies(dt) {
 
   for (const z of zombies) {
     if (z.dying || z.reviving) continue; // skip dead/reviving zombies
-    // Friendly zombie timer
-    if (z.friendly) {
-      z.friendlyTimer -= dt;
-      if (z.friendlyTimer <= 0) {
-        z.dying = true;
-        z.deathTimer = 3;
-        z.dead = true;
-        z.friendly = false;
-        continue;
-      }
-    }
     let target = null, minDist = Infinity;
     let zombieTarget = null, zombieTargetDist = Infinity;
     // Friendly zombies target enemy zombies, not players
     if (z.friendly) {
+      z.attackTimer -= dt;
       // Limited sight — only chase enemies within 12 units, otherwise stay with owner
+      // (invisible creepies included — allies can smell them)
       for (const oz of zombies) {
         if (oz === z || oz.dying || oz.reviving || oz.friendly) continue;
         const d = Math.hypot(oz.x - z.x, oz.z - z.z);
@@ -1478,8 +1469,9 @@ function updateZombies(dt) {
         z.walkPhase += dt * z.speed * 3;
         z.rot = Math.atan2(dx, dz);
         if (dist < golemAttackRange && z.attackTimer <= 0) {
-          z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
+          z.attackTimer = CONFIG.zombieAttackCooldown * 0.4;
           zombieTarget.health -= z.damage;
+          if (zombieTarget.type === 'creepy') zombieTarget.invisible = 0; // ally hits reveal creepies
           if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           z.attacking = 1;
           z.slamEffect = 1;
@@ -2092,18 +2084,18 @@ function applyPowerUp(p, type) {
         zombies.push({
           id: nextZombieId++, x: p.x + Math.cos(aAngle) * 2, z: p.z + Math.sin(aAngle) * 2, type: 'normal',
           health: allyHealth, maxHealth: allyHealth,
-          speed: CONFIG.zombieSpeed * 1.3,
+          speed: CONFIG.playerSpeed,
           damage: allyDamage, attackRange: CONFIG.zombieAttackRange * 1.2,
           attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
           isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
           rot: 0, attacking: 0,
-          friendly: true, friendlyTimer: 120, // lasts 2 minutes
+          friendly: true, // fights until killed by enemies
           owner: p.id,
           slamEffect: 0,
         });
       }
       p.necroSkullEffect = 1;
-      broadcastKillFeed(kid ? `${p.name} summoned 3 zombie buddies! Go team!` : `${p.name} used NECROMANCER'S SKULL — 3 friendly zombies summoned for 120s! (HP: ${allyHealth}, DMG: ${allyDamage} each)`);
+      broadcastKillFeed(kid ? `${p.name} summoned 3 zombie buddies! Go team!` : `${p.name} used NECROMANCER'S SKULL — 3 friendly zombies summoned! They fight until they fall! (HP: ${allyHealth}, DMG: ${allyDamage} each)`);
       break;
   }
 }
