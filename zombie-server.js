@@ -271,7 +271,7 @@ function spawnZombie() {
 
   if (type === 'buff') { health *= 3; damage *= 2; attackRange *= 1.3; }
   else if (type === 'skeleton') { health *= 0.6; damage *= 1.2; attackRange *= 1.2; }
-  else if (type === 'buffSkeleton') { health *= 2.5; damage *= 2.5; attackRange *= 1.5; }
+  else if (type === 'buffSkeleton') { health *= 5; damage *= 3.5; attackRange *= 1.6; }
   else if (type === 'necromancer') { health *= 1.5; damage *= 0.8; attackRange *= 1.0; }
   else if (type === 'exploder') { health *= 0.8; damage *= 2.5; attackRange *= 1.5; }
   else if (type === 'creepy') { health *= 2; damage *= 1.8; attackRange *= 1.5; }
@@ -285,7 +285,7 @@ function spawnZombie() {
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: (type === 'skeleton' ? speed * 1.6 : type === 'buffSkeleton' ? speed * 1.0 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : type === 'spitter' ? speed * 0.9 : speed) * diff.speed,
+    speed: (type === 'skeleton' ? speed * 1.6 : type === 'buffSkeleton' ? speed * 1.2 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : type === 'spitter' ? speed * 0.9 : speed) * diff.speed,
     damage, attackRange, attackTimer: 0,
     enrage: diff.enrage ? 1 : 0,
     walkPhase: Math.random() * Math.PI * 2,
@@ -323,8 +323,8 @@ function spawnEgg(playerId, eggType) {
   } else if (eggType === 'buffSkeleton') {
     zombies.push({
       id: nextZombieId++, x, z, type: 'buffSkeleton',
-      health: CONFIG.zombieHealth * 2.5, maxHealth: CONFIG.zombieHealth * 2.5,
-      speed: CONFIG.zombieSpeed, damage: CONFIG.zombieDamage * 2.5, attackRange: CONFIG.zombieAttackRange * 1.5,
+      health: CONFIG.zombieHealth * 5, maxHealth: CONFIG.zombieHealth * 5,
+      speed: CONFIG.zombieSpeed * 1.2, damage: CONFIG.zombieDamage * 3.5, attackRange: CONFIG.zombieAttackRange * 1.6,
       attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
       specialAttackTimer: 3 + Math.random() * 2,
