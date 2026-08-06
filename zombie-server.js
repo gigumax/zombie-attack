@@ -261,6 +261,7 @@ function spawnZombie() {
 function spawnEgg(playerId, eggType) {
   const p = players[playerId];
   if (!p || p.dead || !p.spawnerMode) return;
+  if (zombies.length >= 200) return;
   const x = p.x + Math.cos(p.yaw) * 3;
   const z = p.z - Math.sin(p.yaw) * 3;
   if (eggType === 'zombie') {
