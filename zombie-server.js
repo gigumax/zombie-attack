@@ -256,6 +256,7 @@ function spawnZombie() {
   else if (wave >= 5 && r < 0.26) type = 'necromancer';
   else if (wave >= 4 && r < 0.36) type = 'exploder';
   else if (wave >= 6 && r < 0.46) type = 'spitter';
+  else if (wave >= 8 && r < 0.56) type = 'buffSkeleton';
   else if (wave >= 3 && r < 0.66) type = 'creepy'; // 20% chance for creepy in grasslands
 
   const angle = Math.random() * Math.PI * 2;
@@ -270,6 +271,7 @@ function spawnZombie() {
 
   if (type === 'buff') { health *= 3; damage *= 2; attackRange *= 1.3; }
   else if (type === 'skeleton') { health *= 0.6; damage *= 1.2; attackRange *= 1.2; }
+  else if (type === 'buffSkeleton') { health *= 2.5; damage *= 2.5; attackRange *= 1.5; }
   else if (type === 'necromancer') { health *= 1.5; damage *= 0.8; attackRange *= 1.0; }
   else if (type === 'exploder') { health *= 0.8; damage *= 2.5; attackRange *= 1.5; }
   else if (type === 'creepy') { health *= 2; damage *= 1.8; attackRange *= 1.5; }
@@ -283,7 +285,7 @@ function spawnZombie() {
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: (type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : type === 'spitter' ? speed * 0.9 : speed) * diff.speed,
+    speed: (type === 'skeleton' ? speed * 1.6 : type === 'buffSkeleton' ? speed * 1.0 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : type === 'spitter' ? speed * 0.9 : speed) * diff.speed,
     damage, attackRange, attackTimer: 0,
     enrage: diff.enrage ? 1 : 0,
     walkPhase: Math.random() * Math.PI * 2,
@@ -314,6 +316,15 @@ function spawnEgg(playerId, eggType) {
       id: nextZombieId++, x, z, type: 'skeleton',
       health: CONFIG.zombieHealth * 0.6, maxHealth: CONFIG.zombieHealth * 0.6,
       speed: CONFIG.zombieSpeed * 1.6, damage: CONFIG.zombieDamage * 1.2, attackRange: CONFIG.zombieAttackRange * 1.2,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 3 + Math.random() * 2,
+    });
+  } else if (eggType === 'buffSkeleton') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'buffSkeleton',
+      health: CONFIG.zombieHealth * 2.5, maxHealth: CONFIG.zombieHealth * 2.5,
+      speed: CONFIG.zombieSpeed, damage: CONFIG.zombieDamage * 2.5, attackRange: CONFIG.zombieAttackRange * 1.5,
       attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
       specialAttackTimer: 3 + Math.random() * 2,
@@ -453,6 +464,7 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   else if (zombie.type === 'guard') { score = 50 * wave; goldDrop = 50 + wave * 10; }
   else if (zombie.type === 'buff') { score = 25 * wave; goldDrop = 20 + wave * 5; }
   else if (zombie.type === 'skeleton') { score = 15 * wave; goldDrop = 10 + wave * 3; }
+  else if (zombie.type === 'buffSkeleton') { score = 40 * wave; goldDrop = 30 + wave * 8; }
   else if (zombie.type === 'skeletonBoss') { score = 500 * wave; goldDrop = 300 + wave * 50; }
 
   if (player) {
@@ -471,9 +483,9 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   const kid = anyKidFriendly();
 
   // Rare power-up drop — 5% chance for normal zombies, 15% for special types, 100% for boss
-  let dropChance = 0.05;
+  let dropChance = 1.0; // TEMP: 100% for testing
   if (zombie.isBoss || zombie.type === 'skeletonBoss') dropChance = 1.0;
-  else if (['buff', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard'].includes(zombie.type)) dropChance = 0.15;
+  else if (['buff', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard', 'buffSkeleton'].includes(zombie.type)) dropChance = 0.15;
   if (Math.random() < dropChance) {
     const dropTypes = ['maxHealth', 'speedBoots', 'reloadGlove', 'goldenBullet', 'lightningRod', 'necroSkull'];
     // Weighted: permanent upgrades more common, special items rarer
@@ -495,6 +507,7 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   else if (zombie.type === 'guard') msg = kid ? `GUARD BONKED! +${score}` : `GUARD ELIMINATED! +${score}`;
   else if (zombie.type === 'buff') msg = kid ? `BIG ZOMBIE TAGGED! +${score}` : `BUFF ZOMBIE ELIMINATED! +${score}`;
   else if (zombie.type === 'skeleton') msg = kid ? `BONEY ZOMBIE TAGGED! +${score}` : `SKELETON ELIMINATED! +${score}`;
+  else if (zombie.type === 'buffSkeleton') msg = kid ? `BIG BONEY ZOMBIE TAGGED! +${score}` : `BUFF SKELETON ELIMINATED! +${score}`;
   else msg = `+${score} ${kid ? 'Zombie tagged' : 'Zombie eliminated'}!`;
   broadcastKillFeed(player ? `${player.name}: ${msg}` : msg);
 
@@ -1462,7 +1475,7 @@ function updateZombies(dt) {
           z.z += (dz / dist) * z.speed * dt;
         }
         z.walkPhase += dt * z.speed * 3;
-        z.r = Math.atan2(dx, dz);
+        z.rot = Math.atan2(dx, dz);
         if (dist < golemAttackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
           zombieTarget.health -= z.damage;
@@ -1481,7 +1494,7 @@ function updateZombies(dt) {
             z.z += (dz / dist) * z.speed * dt;
             z.walkPhase += dt * z.speed * 3;
           }
-          z.r = Math.atan2(dx, dz);
+          z.rot = Math.atan2(dx, dz);
         }
       }
       continue;
@@ -1492,7 +1505,7 @@ function updateZombies(dt) {
       if (d < minDist) { minDist = d; target = p; }
     }
     // Zombie-vs-zombie targeting: skeletons hunt all non-skeleton zombies, buff/normal zombies hunt skeletons
-    const huntTypes = { skeleton: ['buff', 'normal', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard'], buff: ['skeleton'], normal: ['skeleton'] };
+    const huntTypes = { skeleton: ['buff', 'normal', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard'], buffSkeleton: ['buff', 'normal', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard'], buff: ['skeleton', 'buffSkeleton'], normal: ['skeleton', 'buffSkeleton'] };
     const huntList = huntTypes[z.type];
     if (huntList) {
       for (const oz of zombies) {
@@ -1507,9 +1520,9 @@ function updateZombies(dt) {
       const d = Math.hypot(oz.x - z.x, oz.z - z.z);
       if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
     }
-    // If zombie has a hunt target — skeletons always prefer zombie targets over players
+    // If zombie has a hunt target — skeletons and buff skeletons always prefer zombie targets over players
     if (zombieTarget) {
-      if (z.type === 'skeleton' || zombieTargetDist < minDist) {
+      if (z.type === 'skeleton' || z.type === 'buffSkeleton' || zombieTargetDist < minDist) {
         target = null;
         minDist = zombieTargetDist;
       }
@@ -1569,15 +1582,29 @@ function updateZombies(dt) {
     }
 
     // Creepy zombies stop at 2.5 units so player can see their face
-    const stopDist = z.type === 'creepy' ? 2.5 : 0;
+    // When attacking a zombie target, stop at 1.2 units to avoid overlap
+    const zombieStopDist = zombieTarget ? 1.2 : 0;
+    const stopDist = Math.max(z.type === 'creepy' ? 2.5 : 0, zombieStopDist);
     if (dist > stopDist + 0.01) {
       z.x += (dx / dist) * z.speed * dt;
       z.z += (dz / dist) * z.speed * dt;
       z.walkPhase += dt * z.speed * 2;
       z.rot = Math.atan2(dx, dz);
     } else {
-      // Still face the player even when stopped
+      // Still face the target even when stopped
       z.rot = Math.atan2(dx, dz);
+    }
+    // Zombie-vs-zombie separation — push apart from nearby zombies to prevent overlap
+    for (const oz of zombies) {
+      if (oz === z || oz.dying || oz.reviving) continue;
+      const sdx = z.x - oz.x, sdz = z.z - oz.z;
+      const sd = Math.hypot(sdx, sdz);
+      const minSep = 1.0;
+      if (sd > 0.001 && sd < minSep) {
+        const push = (minSep - sd) * 0.5;
+        z.x += (sdx / sd) * push;
+        z.z += (sdz / sd) * push;
+      }
     }
     // Obstacle collision — zombies can't walk through blocks
     for (const obs of OBSTACLES) {
@@ -1755,31 +1782,48 @@ function updateZombies(dt) {
       }
     } else {
       // Non-boss zombie attacks — different per type
-      if (z.type === 'skeleton') {
+      if (z.type === 'skeleton' || z.type === 'buffSkeleton') {
         // SKELETON — ranged bone throw every 3s from distance, plus weak melee
-        // Can attack other zombies as well as players
+        // BUFF SKELETON — same but 2x damage, heavier slam, small AoE
+        const isBuffSkel = z.type === 'buffSkeleton';
         const attackingZombie = !target && zombieTarget;
         z.specialAttackTimer -= dt;
         if (z.specialAttackTimer <= 0 && dist < 20 && dist > attackRange) {
-          z.specialAttackTimer = 3 + Math.random() * 2;
+          z.specialAttackTimer = isBuffSkel ? 4 + Math.random() * 2 : 3 + Math.random() * 2;
+          const rangedDmg = isBuffSkel ? z.damage : z.damage * 0.5;
           if (attackingZombie) {
-            zombieTarget.health -= z.damage * 0.5;
+            zombieTarget.health -= rangedDmg;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
-            target.health -= z.damage * 0.5;
+            target.health -= rangedDmg;
             if (target.health <= 0) downPlayer(target);
           }
           z.rangedEffect = 1;
-          z.attackTimer = 1.0;
+          z.attackTimer = isBuffSkel ? 1.2 : 1.0;
         }
         if (dist < attackRange && z.attackTimer <= 0) {
-          z.attackTimer = CONFIG.zombieAttackCooldown * 1.2;
+          z.attackTimer = isBuffSkel ? CONFIG.zombieAttackCooldown * 2 : CONFIG.zombieAttackCooldown * 1.2;
           if (attackingZombie) {
-            zombieTarget.health -= z.damage * 0.6;
+            zombieTarget.health -= z.damage;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
-            target.health -= z.damage * 0.6;
+            target.health -= z.damage;
             if (target.health <= 0) downPlayer(target);
+          }
+          z.attacking = 1;
+          // Buff skeleton slam AoE
+          if (isBuffSkel) {
+            z.slamEffect = 1;
+            for (const p of Object.values(players)) {
+              if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
+              const pd = Math.hypot(p.x - z.x, p.z - z.z);
+              if (pd < attackRange * 2) { p.health -= z.damage * 0.8; if (p.health <= 0) downPlayer(p); }
+            }
+            for (const oz of zombies) {
+              if (oz === z || oz.dying || oz.reviving || oz.isBoss || oz.friendly) continue;
+              const od = Math.hypot(oz.x - z.x, oz.z - z.z);
+              if (od < attackRange * 2) { oz.health -= z.damage * 0.8; if (oz.health <= 0 && !oz.dying) killZombie(oz, null); }
+            }
           }
         }
       } else if (z.type === 'buff') {
@@ -1966,13 +2010,14 @@ function updateZombies(dt) {
           }
         }
       }
-      // Generic: if attacking a zombie target (Iron Golem) and no player target, deal damage
+      // Generic: if attacking a zombie target (friendly zombie) and no player target, deal damage
       if (!target && zombieTarget && z.attackTimer <= 0 && dist < attackRange) {
         z.attackTimer = CONFIG.zombieAttackCooldown;
         zombieTarget.health -= z.damage;
         if (zombieTarget.health <= 0 && !zombieTarget.dying) {
+          const wasFriendly = zombieTarget.friendly;
           killZombie(zombieTarget, null);
-          broadcastKillFeed(anyKidFriendly() ? 'The Iron Golem fell! :(' : 'Iron Golem destroyed!');
+          if (wasFriendly) broadcastKillFeed(anyKidFriendly() ? 'A zombie buddy fell! :(' : 'A friendly zombie was destroyed!');
         }
         z.attacking = 1;
       }
@@ -2025,23 +2070,26 @@ function applyPowerUp(p, type) {
       broadcastKillFeed(kid ? `${p.name} used a Lightning Rod! Zap zap!` : `${p.name} used LIGHTNING ROD — struck ${struck} zombies for 300 damage each!`);
       break;
     case 'necroSkull':
-      // Spawn 1 Iron Golem ally that follows player and attacks all zombies
-      const buffHealth = CONFIG.zombieHealth * 3; // 1 buff zombie health
-      const buffDamage = CONFIG.zombieDamage * 2; // 1 buff zombie damage
-      zombies.push({
-        id: nextZombieId++, x: p.x + 1, z: p.z + 1, type: 'ironGolem',
-        health: buffHealth * 5, maxHealth: buffHealth * 5,
-        speed: CONFIG.playerSpeed * 0.9,
-        damage: buffDamage * 5, attackRange: CONFIG.zombieAttackRange * 1.5,
-        attackTimer: 0, walkPhase: 0,
-        isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
-        rot: 0, attacking: 0,
-        friendly: true, friendlyTimer: 120, // lasts 2 minutes
-        owner: p.id,
-        slamEffect: 0,
-      });
+      // Spawn 3 friendly zombie allies that follow player and attack all zombies
+      const allyHealth = CONFIG.zombieHealth * 5;
+      const allyDamage = CONFIG.zombieDamage * 3;
+      for (let ai = 0; ai < 3; ai++) {
+        const aAngle = (ai / 3) * Math.PI * 2;
+        zombies.push({
+          id: nextZombieId++, x: p.x + Math.cos(aAngle) * 2, z: p.z + Math.sin(aAngle) * 2, type: 'normal',
+          health: allyHealth, maxHealth: allyHealth,
+          speed: CONFIG.playerSpeed * 0.9,
+          damage: allyDamage, attackRange: CONFIG.zombieAttackRange * 1.2,
+          attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+          isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+          rot: 0, attacking: 0,
+          friendly: true, friendlyTimer: 120, // lasts 2 minutes
+          owner: p.id,
+          slamEffect: 0,
+        });
+      }
       p.necroSkullEffect = 1;
-      broadcastKillFeed(kid ? `${p.name} summoned an Iron Golem! Smash!` : `${p.name} used NECROMANCER'S SKULL — Iron Golem summoned for 120s! (HP: ${buffHealth*5}, DMG: ${buffDamage*5})`);
+      broadcastKillFeed(kid ? `${p.name} summoned 3 zombie buddies! Go team!` : `${p.name} used NECROMANCER'S SKULL — 3 friendly zombies summoned for 120s! (HP: ${allyHealth}, DMG: ${allyDamage} each)`);
       break;
   }
 }
@@ -2052,9 +2100,10 @@ function updateGoldPickups(dt) {
   for (let i = powerUpPickups.length - 1; i >= 0; i--) {
     const pu = powerUpPickups[i];
     for (const p of Object.values(players)) {
-      if (p.dead || p.downed || p.spawnerMode) continue;
+      if (p.dead || p.spawnerMode) continue;
       const dx = p.x - pu.x, dz = p.z - pu.z;
-      if (Math.hypot(dx, dz) < CONFIG.goldPickupRadius) {
+      const dist = Math.hypot(dx, dz);
+      if (dist < 2.0) {
         applyPowerUp(p, pu.type);
         powerUpPickups.splice(i, 1);
         break;
@@ -2300,7 +2349,7 @@ function gameLoop() {
         if (pp.necroSkullEffect) pp.necroSkullEffect = 0;
       }
       const base = {
-        id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type === 'skeletonBoss' ? 'k' : z.type[0],
+        id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type === 'skeletonBoss' ? 'k' : z.type === 'buffSkeleton' ? 'x' : z.type[0],
         boss: z.isBoss ? 1 : 0, cb: z.isCreepyBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
         la: ll.armL ? 1 : 0, ra: ll.armR ? 1 : 0, ll: ll.legL ? 1 : 0, rl: ll.legR ? 1 : 0,
         rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,

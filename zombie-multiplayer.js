@@ -723,6 +723,7 @@ class ZombieMultiplayerClient {
         if (e.code === 'Digit9') this.socket.emit('spawnEgg', 'creepy');
         if (e.code === 'Comma') this.socket.emit('spawnEgg', 'buff');
         if (e.code === 'Period') this.socket.emit('spawnEgg', 'spitter');
+        if (e.code === 'Equal') this.socket.emit('spawnEgg', 'buffSkeleton');
       }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
@@ -1260,6 +1261,35 @@ class ZombieMultiplayerClient {
     return group;
   }
 
+  createBuffSkeletonMesh() {
+    const group = new THREE.Group();
+    const scale = 1.5; // bigger than skeleton
+    const boneMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffffff : 0xcccccc});
+    const darkMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88aaff : 0x3a3a3a});
+    const redEyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xff4444 : 0xff0000});
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.55*scale,0.55*scale,0.55*scale), boneMat);
+    head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12*scale,0.12*scale,0.06*scale), redEyeMat);
+    eyeL.position.set(-0.12*scale,1.82*scale,0.28*scale); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.12*scale; group.add(eyeR);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.85*scale,0.3*scale), darkMat);
+    torso.position.y = 1.15*scale; torso.castShadow = true; group.add(torso);
+    // Spiked shoulder pads
+    const shoulderGeo = new THREE.ConeGeometry(0.15*scale, 0.3*scale, 4);
+    const shoulderL = new THREE.Mesh(shoulderGeo, boneMat);
+    shoulderL.position.set(-0.35*scale, 1.7*scale, 0); shoulderL.rotation.z = -0.5; group.add(shoulderL);
+    const shoulderR = new THREE.Mesh(shoulderGeo, boneMat);
+    shoulderR.position.set(0.35*scale, 1.7*scale, 0); shoulderR.rotation.z = 0.5; group.add(shoulderR);
+    const armGeo = new THREE.BoxGeometry(0.18*scale,0.85*scale,0.18*scale);
+    const armL = new THREE.Mesh(armGeo, boneMat); armL.position.set(-0.4*scale,1.3*scale,0.3*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(armGeo, boneMat); armR.position.set(0.4*scale,1.3*scale,0.3*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    const legGeo = new THREE.BoxGeometry(0.16*scale,0.9*scale,0.16*scale);
+    const legL = new THREE.Mesh(legGeo, boneMat); legL.position.set(-0.15*scale,0.45*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, boneMat); legR.position.set(0.15*scale,0.45*scale,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, isBuffSkeleton: true };
+    return group;
+  }
+
   createGuardMesh() {
     return this.createBuffZombieMesh();
   }
@@ -1740,6 +1770,7 @@ class ZombieMultiplayerClient {
     if (isBoss) return this.createZombieMesh(true, revivePhase);
     if (type === 'buff') return this.createBuffZombieMesh();
     if (type === 'skeleton') return this.createSkeletonMesh();
+    if (type === 'buffSkeleton') return this.createBuffSkeletonMesh();
     if (type === 'guard') return this.createGuardMesh();
     if (type === 'creepy') return this.createCreepyZombieMesh(creepyRevive);
     if (type === 'necromancer') return this.createNecromancerMesh();
@@ -1807,7 +1838,7 @@ class ZombieMultiplayerClient {
 
   // ─── Scene sync ───
   // Map short type char to full type name
-  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer', p: 'spitter', i: 'ironGolem' };
+  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer', p: 'spitter', i: 'ironGolem', x: 'buffSkeleton' };
 
   updateScene(state, dt) {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
@@ -1846,7 +1877,7 @@ class ZombieMultiplayerClient {
         mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
-        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'ironGolem' ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3)))));
+        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'ironGolem' ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' || TYPE_MAP[z.t] === 'buffSkeleton' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3)))));
         const hb = this.createHealthBar(hbY);
         mesh.add(hb);
         mesh.userData.healthBar = hb;
@@ -3728,6 +3759,10 @@ class ZombieMultiplayerClient {
       html += `<div class="shop-item" data-action="spawnEgg" data-key="spitter" style="border-color:#2a4a1a;">
         <span>🤢 Spitter Egg<br><span style="font-size:10px;color:#666;">Ranged acid spit attack</span></span>
         <span style="font-size:10px;color:#666;">[.]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="buffSkeleton" style="border-color:#1a1a1a;">
+        <span>🦴 Buff Skeleton Egg<br><span style="font-size:10px;color:#666;">Heavy skeleton with slam AoE</span></span>
+        <span style="font-size:10px;color:#666;">[=]</span>
       </div>`;
     }
     html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle <kbd>L</kbd>Sniper · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
