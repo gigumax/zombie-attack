@@ -1638,15 +1638,21 @@ function gameLoop() {
 
     updateZombies(dt);
 
-    // Creepy zone spawning — independent of waves
+    // Creepy zone spawning — only when a player is in the creepy world
     if (!escapeMode && !skeletonWorld) {
-      creepyZoneTimer -= dt;
-      if (creepyZoneTimer <= 0) {
-        creepyZoneTimer = CREEPY_ZONE.spawnInterval;
-        const creepyCount = zombies.filter(z => z.fromCreepyZone && !z.dying).length;
-        if (creepyCount < CREEPY_ZONE.maxZombies) {
-          spawnCreepyZoneZombie();
+      const someoneInCreepy = Object.values(players).some(p => !p.dead && p.currentWorld === 'creepy');
+      if (someoneInCreepy) {
+        creepyZoneTimer -= dt;
+        if (creepyZoneTimer <= 0) {
+          creepyZoneTimer = CREEPY_ZONE.spawnInterval;
+          const creepyCount = zombies.filter(z => z.fromCreepyZone && !z.dying).length;
+          if (creepyCount < CREEPY_ZONE.maxZombies) {
+            spawnCreepyZoneZombie();
+          }
         }
+      } else {
+        // Clear creepy zombies when no one is in the creepy world
+        zombies = zombies.filter(z => !z.fromCreepyZone);
       }
     }
 
