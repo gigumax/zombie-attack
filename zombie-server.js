@@ -1668,8 +1668,8 @@ function updateZombies(dt) {
           z.jumping = true;
           z.jumpPhase = 'windup'; // windup -> air -> land
           z.jumpTimer = 0.6; // windup duration
-          z.jumpTargetX = target.x;
-          z.jumpTargetZ = target.z;
+          z.jumpTargetX = chaseTarget.x;
+          z.jumpTargetZ = chaseTarget.z;
           z.jumpStartX = z.x;
           z.jumpStartZ = z.z;
           z.attackTimer = 3.0;
@@ -1697,8 +1697,13 @@ function updateZombies(dt) {
           } else {
             // RANGED — shoot projectile at target (instant hit, long range)
             if (dist < 30) {
-              target.health -= z.damage * 0.4;
-              if (target.health <= 0) downPlayer(target);
+              if (target) {
+                target.health -= z.damage * 0.4;
+                if (target.health <= 0) downPlayer(target);
+              } else if (zombieTarget) {
+                zombieTarget.health -= z.damage * 0.4;
+                if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+              }
               z.rangedEffect = 1; // visual flag
               z.attackTimer = 1.0;
               broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS THROWS A BALL!' : 'BOSS HURLS A PROJECTILE!');
@@ -1730,6 +1735,15 @@ function updateZombies(dt) {
             if (pd < 3.0) {
               p.health -= 200;
               if (p.health <= 0) downPlayer(p);
+            }
+          }
+          // Squash friendly zombies near the landing spot too
+          for (const oz of zombies) {
+            if (oz === z || oz.dying || oz.reviving || !oz.friendly) continue;
+            const od = Math.hypot(oz.x - z.jumpTargetX, oz.z - z.jumpTargetZ);
+            if (od < 3.0) {
+              oz.health -= 200;
+              if (oz.health <= 0 && !oz.dying) killZombie(oz, null);
             }
           }
           checkBossKillEscape();
@@ -1771,6 +1785,20 @@ function updateZombies(dt) {
               }
             }
           }
+          // Crack also hits friendly zombies standing on the line
+          for (const oz of zombies) {
+            if (oz === z || oz.dying || oz.reviving || !oz.friendly) continue;
+            const ox = oz.x - z.x, ozz = oz.z - z.z;
+            const ot = ox * z.crackDx + ozz * z.crackDz;
+            if (ot > 0 && ot < z.crackLength) {
+              const opX = ox - ot * z.crackDx;
+              const opZ = ozz - ot * z.crackDz;
+              if (Math.hypot(opX, opZ) < z.crackWidth) {
+                oz.health -= z.damage * 0.7;
+                if (oz.health <= 0 && !oz.dying) killZombie(oz, null);
+              }
+            }
+          }
           z.crackAttack = false;
           z.attackTimer = 1.5;
           checkBossKillEscape();
@@ -1792,6 +1820,16 @@ function updateZombies(dt) {
             z.charging = false;
           }
         }
+        // Charge also plows through friendly zombies
+        for (const oz of zombies) {
+          if (oz === z || oz.dying || oz.reviving || !oz.friendly) continue;
+          const od = Math.hypot(oz.x - z.x, oz.z - z.z);
+          if (od < attackRange) {
+            oz.health -= z.damage;
+            if (oz.health <= 0 && !oz.dying) killZombie(oz, null);
+            z.charging = false;
+          }
+        }
         if (z.chargeTimer <= 0) z.charging = false;
         checkBossKillEscape();
         if (escapeMode) return;
@@ -1803,12 +1841,17 @@ function updateZombies(dt) {
       // Normal boss melee attack when in range
       if (dist < attackRange && z.attackTimer <= 0 && !z.charging) {
         z.attackTimer = z.attackCooldown || 0.7;
-        target.health -= z.damage;
-        if (target.health <= 0) {
-          target.health = 0;
-          target.dead = true;
-          checkBossKillEscape();
-          if (escapeMode) return;
+        if (target) {
+          target.health -= z.damage;
+          if (target.health <= 0) {
+            target.health = 0;
+            target.dead = true;
+            checkBossKillEscape();
+            if (escapeMode) return;
+          }
+        } else if (zombieTarget) {
+          zombieTarget.health -= z.damage;
+          if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
         }
       }
     } else {
