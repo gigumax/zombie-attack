@@ -813,7 +813,7 @@ function handleShoot(playerId) {
     const dir = getLookDir(p);
     let closestHit = null, closestDist = meleeRange;
     for (const z of zombies) {
-      if (z.dying || z.reviving) continue;
+      if (z.dying || z.reviving || z.friendly) continue;
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
@@ -855,7 +855,7 @@ function handleShoot(playerId) {
     let closestPlayerHit = null;
     let piercedZombies = [];
     for (const z of zombies) {
-      if (z.dying || z.reviving) continue;
+      if (z.dying || z.reviving || z.friendly) continue;
       const hit = rayHitZombie(p, dir, z, closestDist);
       if (hit && hit.dist < closestDist) {
         if (isPiercing) {
@@ -1161,7 +1161,7 @@ function useItem(playerId, itemKey) {
     // Damage ALL zombies on the map
     let killed = 0;
     for (const z of zombies) {
-      if (z.dying || z.reviving) continue;
+      if (z.dying || z.reviving || z.friendly) continue;
       if (z.isBoss) {
         z.health -= 5000;
         if (z.health <= 0 && !z.reviving) {
@@ -1194,7 +1194,7 @@ function processPendingEffects(p, dt) {
         // Explode — AoE damage to zombies
         const radius = 8;
         for (const z of zombies) {
-          if (z.dying || z.reviving) continue;
+          if (z.dying || z.reviving || z.friendly) continue;
           const d = Math.hypot(z.x - eff.x, z.z - eff.z);
           if (d < radius) {
             const dmg = z.isBoss ? 2000 : 300;
@@ -1211,14 +1211,14 @@ function processPendingEffects(p, dt) {
       // Check collision with zombies
       let hit = false;
       for (const z of zombies) {
-        if (z.dying || z.reviving) continue;
+        if (z.dying || z.reviving || z.friendly) continue;
         if (Math.hypot(z.x - eff.x, z.z - eff.z) < 2) { hit = true; break; }
       }
       if (hit || eff.dist >= eff.maxDist) {
         // Explode
         const radius = 10;
         for (const z of zombies) {
-          if (z.dying || z.reviving) continue;
+          if (z.dying || z.reviving || z.friendly) continue;
           const d = Math.hypot(z.x - eff.x, z.z - eff.z);
           if (d < radius) {
             const dmg = z.isBoss ? 3000 : 500;
@@ -2070,7 +2070,7 @@ function applyPowerUp(p, type) {
       break;
     case 'lightningRod':
       // Strike 5 nearest zombies with lightning
-      const aliveZs = zombies.filter(z => !z.dying);
+      const aliveZs = zombies.filter(z => !z.dying && !z.friendly);
       aliveZs.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
       let struck = 0;
       for (const z of aliveZs) {
