@@ -681,6 +681,12 @@ class ZombieMultiplayerClient {
     window.addEventListener('keydown', e => {
       const k = e.key.toLowerCase();
       this.keys[k] = true;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        this.shiftHeld = this.shiftHeld || {};
+        this.shiftHeld[e.code] = true;
+        // Both shifts held — super speed!
+        this.keys['super'] = !!(this.shiftHeld.ShiftLeft && this.shiftHeld.ShiftRight);
+      }
       if (!this.connected) return;
       if (k === 'r' && this.playing) this.socket.emit('reload');
       if ((k === 'p' || e.code === 'Escape') && this.playing) {
@@ -750,6 +756,10 @@ class ZombieMultiplayerClient {
 
     window.addEventListener('keyup', e => {
       this.keys[e.key.toLowerCase()] = false;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        if (this.shiftHeld) this.shiftHeld[e.code] = false;
+        this.keys['super'] = !!(this.shiftHeld && this.shiftHeld.ShiftLeft && this.shiftHeld.ShiftRight);
+      }
       this.sendInput();
     });
 

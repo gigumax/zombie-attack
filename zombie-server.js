@@ -1297,7 +1297,9 @@ function updatePlayer(p, dt) {
   // Check if player is in water
   const inWater = isInWater(p.x, p.z);
   const speedMult = inWater ? 0.45 : 1.0;
-  const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed) * speedMult * (1 + (p.permaSpeed || 0));
+  const speed = (p.keys['super'] && !p.escapeMode ? CONFIG.playerSpeed * 10
+    : p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed
+    : CONFIG.playerSpeed) * speedMult * (1 + (p.permaSpeed || 0));
   let mx = 0, mz = 0;
   if (p.keys['w']) mz -= 1;
   if (p.keys['s']) mz += 1;
@@ -2642,7 +2644,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || p.dead || p.paused) return;
     // Validate keys — only accept known keys, ignore extras
-    const validKeys = ['w','a','s','d',' ','shift'];
+    const validKeys = ['w','a','s','d',' ','shift','super'];
     const cleanKeys = {};
     if (data.keys) {
       for (const k of validKeys) {
