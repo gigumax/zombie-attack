@@ -1511,6 +1511,26 @@ class ZombieMultiplayerClient {
     return this.createZombieMesh();
   }
 
+  // ─── Mesh disposal helper ───
+  disposeMesh(mesh) {
+    if (!mesh) return;
+    mesh.traverse(c => {
+      if (c.userData && c.userData.healthBar) {
+        const hb = c.userData.healthBar;
+        if (hb.material) {
+          if (hb.material.map) hb.material.map.dispose();
+          hb.material.dispose();
+        }
+      }
+      if (c.geometry && !c.userData.sharedGeo) c.geometry.dispose();
+      if (c.material && !c.userData.sharedGeo) {
+        if (c.material.map) c.material.map.dispose();
+        if (Array.isArray(c.material)) c.material.forEach(mat => mat.dispose());
+        else c.material.dispose();
+      }
+    });
+  }
+
   // ─── Health bar helper ───
   createHealthBar(yOffset = 2.2) {
     const canvas = document.createElement('canvas');
@@ -1567,16 +1587,19 @@ class ZombieMultiplayerClient {
       // Recreate boss mesh if revive phase changed
       if (mesh && z.boss && mesh.userData.revivePhase !== (z.rv || 0)) {
         this.scene.remove(mesh);
+        this.disposeMesh(mesh);
         mesh = null;
       }
       // Recreate creepy boss mesh if revive phase changed
       if (mesh && z.cb && mesh.userData.revivePhase !== (z.rv || 0)) {
         this.scene.remove(mesh);
+        this.disposeMesh(mesh);
         mesh = null;
       }
       // Recreate creepy zombie mesh if creepy revive count changed
       if (mesh && TYPE_MAP[z.t] === 'creepy' && !z.cb && mesh.userData.creepyRevive !== (z.crv || 0)) {
         this.scene.remove(mesh);
+        this.disposeMesh(mesh);
         mesh = null;
       }
       if (!mesh) {
@@ -1874,16 +1897,7 @@ class ZombieMultiplayerClient {
       if (!seenZombieIds.has(parseInt(id))) {
         const m = this.zombieMeshes[id];
         this.scene.remove(m);
-        // Skip disposing shared cached geometries/materials (e.g. buff zombies)
-        if (!m.userData.sharedGeo) {
-          m.traverse(c => {
-            if (c.geometry) c.geometry.dispose();
-            if (c.material) {
-              if (Array.isArray(c.material)) c.material.forEach(mat => mat.dispose());
-              else c.material.dispose();
-            }
-          });
-        }
+        this.disposeMesh(m);
         delete this.zombieMeshes[id];
         delete this.prevPositions.zombies[id];
       }
