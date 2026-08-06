@@ -300,6 +300,24 @@ class ZombieMultiplayerClient {
       }
     });
 
+    this.socket.on('worldChange', (world) => {
+      this.currentWorld = world;
+      if (world === 'creepy') {
+        this.creepyZoneGroup.visible = true;
+        this.scene.background = new THREE.Color(0x0a0010);
+        this.scene.fog = new THREE.Fog(0x0a0010, 15, 50);
+      } else if (world === 'skeleton') {
+        this.creepyZoneGroup.visible = false;
+        this.scene.background = new THREE.Color(0x1a0a0a);
+        this.scene.fog = new THREE.Fog(0x1a0a0a, 20, 60);
+      } else {
+        // main / water / default — grasslands
+        this.creepyZoneGroup.visible = false;
+        this.scene.background = new THREE.Color(0x1a1a2e);
+        this.scene.fog = new THREE.Fog(0x1a1a2e, 30, 80);
+      }
+    });
+
     this.socket.on('disconnect', () => {
       this.connected = false;
     });
@@ -391,7 +409,9 @@ class ZombieMultiplayerClient {
     this.scene.add(shore);
     this.waterMesh = water;
 
-    // Creepy zombie zone — dark wasteland area with dead trees and gravestones
+    // Creepy zombie zone — dark wasteland area (separate world, hidden by default)
+    this.creepyZoneGroup = new THREE.Group();
+    this.creepyZoneGroup.visible = false;
     const czX = 35, czZ = 35, czR = 22;
     // Dark corrupted ground
     const czGeo = new THREE.CircleGeometry(czR, 32);
@@ -399,14 +419,14 @@ class ZombieMultiplayerClient {
     const czGround = new THREE.Mesh(czGeo, czMat);
     czGround.rotation.x = -Math.PI / 2;
     czGround.position.set(czX, 0.012, czZ);
-    this.scene.add(czGround);
+    this.creepyZoneGroup.add(czGround);
     // Dark ring border
     const czRingGeo = new THREE.RingGeometry(czR - 0.5, czR, 32);
     const czRingMat = new THREE.MeshBasicMaterial({ color: 0x660066, transparent: true, opacity: 0.5 });
     const czRing = new THREE.Mesh(czRingGeo, czRingMat);
     czRing.rotation.x = -Math.PI / 2;
     czRing.position.set(czX, 0.013, czZ);
-    this.scene.add(czRing);
+    this.creepyZoneGroup.add(czRing);
     // Dead trees — dark bare trunks
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x1a1a0a, emissive: 0x0a0a00, emissiveIntensity: 0.15 });
     for (let i = 0; i < 12; i++) {
@@ -419,14 +439,14 @@ class ZombieMultiplayerClient {
       trunk.position.set(tx, treeH / 2, tz);
       trunk.rotation.z = (Math.random() - 0.5) * 0.3;
       trunk.castShadow = true;
-      this.scene.add(trunk);
+      this.creepyZoneGroup.add(trunk);
       // A few bare branches
       for (let b = 0; b < 3; b++) {
         const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.08, 1 + Math.random(), 3), trunkMat);
         branch.position.set(tx, treeH - 0.5 + b * 0.4, tz);
         branch.rotation.z = (Math.random() - 0.5) * 1.5;
         branch.rotation.x = (Math.random() - 0.5) * 1.5;
-        this.scene.add(branch);
+        this.creepyZoneGroup.add(branch);
       }
     }
     // Gravestones
@@ -441,7 +461,7 @@ class ZombieMultiplayerClient {
       stone.position.set(sx, stoneH / 2, sz);
       stone.rotation.y = Math.random() * Math.PI * 2;
       stone.castShadow = true;
-      this.scene.add(stone);
+      this.creepyZoneGroup.add(stone);
     }
     // Glowing purple fog particles
     const fogMat = new THREE.MeshBasicMaterial({ color: 0x660066, transparent: true, opacity: 0.15 });
@@ -452,8 +472,11 @@ class ZombieMultiplayerClient {
       const fz = czZ + Math.sin(angle) * dist;
       const fog = new THREE.Mesh(new THREE.SphereGeometry(2 + Math.random() * 2, 6, 6), fogMat);
       fog.position.set(fx, 0.5 + Math.random() * 2, fz);
-      this.scene.add(fog);
+      this.creepyZoneGroup.add(fog);
     }
+    this.scene.add(this.creepyZoneGroup);
+    // Store grasslands objects for toggling
+    this.grasslandsGroup = new THREE.Group();
 
     const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a });
     const wallH = 6;
@@ -616,7 +639,7 @@ class ZombieMultiplayerClient {
         this.socket.emit('togglePause');
         e.preventDefault();
       }
-      if (e.code === 'KeyB' && this.playing) { this.socket.emit('toggleShop'); e.preventDefault(); }
+      if (e.code === 'Tab' && this.playing) { this.socket.emit('toggleShop'); e.preventDefault(); }
       if (e.code === 'F4' && this.playing) { this.socket.emit('toggleFriendlyFire'); e.preventDefault(); }
       if (e.code === 'KeyG' && this.playing) this.socket.emit('toggleAutoFire');
       if (e.code === 'Digit2' && this.playing) this.socket.emit('switchGun', 'knife');
@@ -634,7 +657,7 @@ class ZombieMultiplayerClient {
         this.thirdPerson = !this.thirdPerson;
         e.preventDefault();
       }
-      if (e.code === 'Tab' && this.playing) {
+      if (e.code === 'KeyB' && this.playing) {
         this.toggleWorldMap();
         e.preventDefault();
       }
@@ -850,11 +873,11 @@ class ZombieMultiplayerClient {
       card.addEventListener('click', () => {
         const world = card.dataset.world;
         if (world === 'main') {
-          this.socket.emit('teleport', { x: 0, z: 0 });
+          this.socket.emit('travelToWorld', 'main');
         } else if (world === 'creepy') {
-          this.socket.emit('teleport', { x: 35, z: 35 });
+          this.socket.emit('travelToWorld', 'creepy');
         } else if (world === 'water') {
-          this.socket.emit('teleport', { x: -35, z: -35 });
+          this.socket.emit('travelToWorld', 'water');
         } else if (world === 'skeleton') {
           this.socket.emit('travelToWorld', 'skeleton');
         }

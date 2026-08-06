@@ -1865,6 +1865,24 @@ io.on('connection', (socket) => {
     if (!p || p.dead) return;
     if (data === 'skeleton') {
       startSkeletonWorld();
+    } else if (data === 'main') {
+      // Return to grasslands center
+      p.x = 0; p.z = 0; p.y = CONFIG.playerHeight;
+      p.vx = 0; p.vy = 0; p.vz = 0;
+      p.currentWorld = 'main';
+      io.emit('worldChange', 'main');
+    } else if (data === 'creepy') {
+      // Teleport to creepy zone
+      p.x = 35; p.z = 35; p.y = CONFIG.playerHeight;
+      p.vx = 0; p.vy = 0; p.vz = 0;
+      p.currentWorld = 'creepy';
+      io.emit('worldChange', 'creepy');
+    } else if (data === 'water') {
+      // Teleport to water lake
+      p.x = -35; p.z = -35; p.y = CONFIG.playerHeight;
+      p.vx = 0; p.vy = 0; p.vz = 0;
+      p.currentWorld = 'water';
+      io.emit('worldChange', 'water');
     }
   });
   socket.on('buyGun', (gun) => {
