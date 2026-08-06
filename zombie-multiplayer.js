@@ -183,6 +183,30 @@ class ZombieMultiplayerClient {
       // PvP indicator
       const pvpEl = document.getElementById('pvp-indicator');
       if (pvpEl) pvpEl.style.display = state.friendlyFire ? 'block' : 'none';
+      // Day/night cycle — update scene background and fog
+      if (state.tod !== undefined && this.currentWorld !== 'creepy' && this.currentWorld !== 'skeleton') {
+        const tod = state.tod;
+        // Interpolate sky color: dawn(0) -> day(0.25) -> dusk(0.5) -> night(0.75) -> dawn(1)
+        let skyColor, fogColor, fogNear, fogFar;
+        if (tod < 0.15 || tod > 0.85) {
+          // Dawn — warm orange
+          skyColor = 0x2a1a0a; fogColor = 0x2a1a0a; fogNear = 25; fogFar = 70;
+        } else if (tod < 0.35) {
+          // Day — dark blue (default)
+          skyColor = 0x1a1a2e; fogColor = 0x1a1a2e; fogNear = 30; fogFar = 80;
+        } else if (tod < 0.6) {
+          // Dusk — dark purple
+          skyColor = 0x1a0a1a; fogColor = 0x1a0a1a; fogNear = 22; fogFar = 60;
+        } else {
+          // Night — very dark
+          skyColor = 0x05050a; fogColor = 0x05050a; fogNear = 18; fogFar = 50;
+        }
+        this.scene.background = new THREE.Color(skyColor);
+        this.scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
+        // Night indicator
+        const nightEl = document.getElementById('night-indicator');
+        if (nightEl) nightEl.style.display = state.night ? 'block' : 'none';
+      }
       // Show/hide pause overlay — keep mouse locked during pause
       const pauseEl = document.getElementById('pause-overlay');
       const isPaused = !!(this.myPlayer && this.myPlayer.pau);
@@ -698,6 +722,7 @@ class ZombieMultiplayerClient {
         if (e.code === 'Digit8') this.socket.emit('spawnEgg', 'skeleton');
         if (e.code === 'Digit9') this.socket.emit('spawnEgg', 'creepy');
         if (e.code === 'Comma') this.socket.emit('spawnEgg', 'buff');
+        if (e.code === 'Period') this.socket.emit('spawnEgg', 'spitter');
       }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
@@ -718,6 +743,8 @@ class ZombieMultiplayerClient {
         e.preventDefault();
       }
       if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && this.playing) this.socket.emit('escapeInteract');
+      // Revive downed teammate
+      if (e.code === 'KeyR' && this.playing) this.socket.emit('reviveTeammate');
       if (k === ' ') e.preventDefault();
       this.sendInput();
     });
@@ -1307,6 +1334,42 @@ class ZombieMultiplayerClient {
     return group;
   }
 
+  createSpitterMesh() {
+    const group = new THREE.Group();
+    const scale = 1.0;
+    if (!this._spitterCache) {
+      this._spitterCache = {
+        headGeo: new THREE.BoxGeometry(0.5*scale,0.5*scale,0.5*scale),
+        eyeGeo: new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale),
+        torsoGeo: new THREE.BoxGeometry(0.65*scale,0.85*scale,0.5*scale),
+        armGeo: new THREE.BoxGeometry(0.2*scale,0.6*scale,0.2*scale),
+        legGeo: new THREE.BoxGeometry(0.25*scale,0.75*scale,0.25*scale),
+        sacGeo: new THREE.SphereGeometry(0.2*scale, 6, 6),
+        bodyMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x66aa44 : 0x2a4a1a}),
+        headMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88cc55 : 0x3a5a2a}),
+        sacMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xaaff44 : 0x88ff00, transparent: true, opacity: 0.7}),
+        eyeMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xffff00 : 0xccff00}),
+      };
+    }
+    const c = this._spitterCache;
+    const head = new THREE.Mesh(c.headGeo, c.headMat);
+    head.position.y = 1.7*scale; head.castShadow = true; group.add(head);
+    const eyeL = new THREE.Mesh(c.eyeGeo, c.eyeMat);
+    eyeL.position.set(-0.12*scale,1.75*scale,0.26*scale); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.12*scale; group.add(eyeR);
+    const torso = new THREE.Mesh(c.torsoGeo, c.bodyMat);
+    torso.position.y = 1.0*scale; torso.castShadow = true; group.add(torso);
+    // Glowing acid sac on back
+    const sac = new THREE.Mesh(c.sacGeo, c.sacMat);
+    sac.position.set(0, 1.2*scale, -0.3*scale); group.add(sac);
+    const armL = new THREE.Mesh(c.armGeo, c.bodyMat); armL.position.set(-0.4*scale,1.2*scale,0.2*scale); armL.rotation.x = -Math.PI/3; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(c.armGeo, c.bodyMat); armR.position.set(0.4*scale,1.2*scale,0.2*scale); armR.rotation.x = -Math.PI/3; armR.castShadow = true; group.add(armR);
+    const legL = new THREE.Mesh(c.legGeo, c.bodyMat); legL.position.set(-0.15*scale,0.375*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(c.legGeo, c.bodyMat); legR.position.set(0.15*scale,0.375*scale,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, sac, isSpitter: true, sharedGeo: true };
+    return group;
+  }
+
   createCreepyZombieMesh(reviveCount = 0) {
     if (this.kidFriendly) return this.createZombieMesh();
     const group = new THREE.Group();
@@ -1630,6 +1693,7 @@ class ZombieMultiplayerClient {
     if (type === 'creepy') return this.createCreepyZombieMesh(creepyRevive);
     if (type === 'necromancer') return this.createNecromancerMesh();
     if (type === 'exploder') return this.createExploderMesh();
+    if (type === 'spitter') return this.createSpitterMesh();
     return this.createZombieMesh();
   }
 
@@ -1691,7 +1755,7 @@ class ZombieMultiplayerClient {
 
   // ─── Scene sync ───
   // Map short type char to full type name
-  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer' };
+  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer', p: 'spitter' };
 
   updateScene(state, dt) {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
@@ -1730,7 +1794,7 @@ class ZombieMultiplayerClient {
         mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
-        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' ? 2.5 : 2.3))));
+        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3))));
         const hb = this.createHealthBar(hbY);
         mesh.add(hb);
         mesh.userData.healthBar = hb;
@@ -1792,6 +1856,23 @@ class ZombieMultiplayerClient {
       if (z.exp) {
         this.spawnExplosionEffect(z.x, z.z);
       }
+      // Spitter acid spit projectiles
+      if (z.spit && z.spit.length > 0) {
+        for (const sp of z.spit) {
+          this.spawnAcidSpitEffect(sp[0], sp[1], sp[2]);
+        }
+      }
+      // Enrage visual — red pulse
+      if (z.eng) {
+        const t = performance.now() / 200;
+        const pulse = Math.sin(t) * 0.3 + 0.5;
+        mesh.traverse(child => {
+          if (child.material && child.material.emissive !== undefined) {
+            child.material.emissive.setRGB(pulse * 0.5, 0, 0);
+            child.material.emissiveIntensity = pulse;
+          }
+        });
+      }
       // Creepy zombie invisibility — hide mesh when invisible
       if (z.inv) {
         mesh.visible = false;
@@ -1800,6 +1881,21 @@ class ZombieMultiplayerClient {
       }
       if (z.crk) {
         this.spawnCrackEffect(z.x, z.z, z.cdx, z.cdz, z.clen);
+      }
+      // Lightning hit effect
+      if (z.lit) {
+        this.spawnLightningEffect(z.x, z.z);
+      }
+      // Friendly zombie — green aura
+      if (z.fr) {
+        const t = performance.now() / 300;
+        const pulse = Math.sin(t) * 0.3 + 0.5;
+        mesh.traverse(child => {
+          if (child.material && child.material.emissive !== undefined) {
+            child.material.emissive.setRGB(0, pulse * 0.5, 0);
+            child.material.emissiveIntensity = pulse * 0.5;
+          }
+        });
       }
       // Boss reviving — pulse and shake (red in normal, blue in kid mode)
       if (z.rvv) {
@@ -2060,6 +2156,59 @@ class ZombieMultiplayerClient {
       if (!seenGoldIds.has(parseInt(id))) {
         this.scene.remove(this.goldMeshes[id]);
         delete this.goldMeshes[id];
+      }
+    }
+
+    // Update power-up pickups — state.powerups is [id, type, x, z] arrays
+    const seenPuIds = new Set();
+    const puArr = state.powerups || [];
+    const puColors = {
+      maxHealth: 0xff3366, speedBoots: 0x33ff66, reloadGlove: 0x3366ff,
+      goldenBullet: 0xffaa00, lightningRod: 0x66ffff, necroSkull: 0xaa66ff,
+    };
+    const puIcons = {
+      maxHealth: '+HP', speedBoots: 'SPD', reloadGlove: 'RLD',
+      goldenBullet: 'GBL', lightningRod: 'LTG', necroSkull: 'SKL',
+    };
+    if (!this.powerUpMeshes) this.powerUpMeshes = {};
+    for (const pu of puArr) {
+      const pid = pu[0], ptype = pu[1], px = pu[2], pz = pu[3];
+      seenPuIds.add(pid);
+      let mesh = this.powerUpMeshes[pid];
+      if (!mesh) {
+        mesh = new THREE.Group();
+        const color = puColors[ptype] || 0xffffff;
+        // Floating orb
+        const orbMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 });
+        const orb = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), orbMat);
+        orb.position.y = 0.8;
+        mesh.add(orb);
+        // Glow halo
+        const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25 });
+        const glow = new THREE.Mesh(new THREE.SphereGeometry(0.6, 8, 8), glowMat);
+        glow.position.y = 0.8;
+        mesh.add(glow);
+        // Base ring
+        const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+        const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.5, 16), ringMat);
+        ring.rotation.x = -Math.PI / 2;
+        ring.position.y = 0.05;
+        mesh.add(ring);
+        mesh.userData.orb = orb;
+        mesh.userData.glow = glow;
+        this.scene.add(mesh);
+        this.powerUpMeshes[pid] = mesh;
+      }
+      mesh.position.set(px, 0, pz);
+      const orb = mesh.userData.orb;
+      if (orb) orb.position.y = 0.8 + Math.sin(now / 200 + pid) * 0.15;
+      if (mesh.userData.glow) mesh.userData.glow.position.y = orb.position.y;
+      if (mesh.children[2]) mesh.children[2].rotation.z += 0.02;
+    }
+    for (const id of Object.keys(this.powerUpMeshes)) {
+      if (!seenPuIds.has(parseInt(id))) {
+        this.scene.remove(this.powerUpMeshes[id]);
+        delete this.powerUpMeshes[id];
       }
     }
 
@@ -2746,6 +2895,46 @@ class ZombieMultiplayerClient {
     }
   }
 
+  spawnAcidSpitEffect(x, y, z) {
+    const spitMat = new THREE.MeshBasicMaterial({ color: this.kidFriendly ? 0xaaff44 : 0x88ff00, transparent: true, opacity: 0.9 });
+    const spit = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 6), spitMat);
+    spit.position.set(x, y, z);
+    this.scene.add(spit);
+    this.bullets.push({ mesh: spit, life: 0.3, maxLife: 0.3, isParticle: false });
+    // Small trail glow
+    const glowMat = new THREE.MeshBasicMaterial({ color: this.kidFriendly ? 0xccff88 : 0xaaff00, transparent: true, opacity: 0.3 });
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.25, 6, 6), glowMat);
+    glow.position.set(x, y, z);
+    this.scene.add(glow);
+    this.bullets.push({ mesh: glow, life: 0.2, maxLife: 0.2, isParticle: false });
+  }
+
+  spawnLightningEffect(x, z) {
+    const boltMat = new THREE.MeshBasicMaterial({ color: 0x66ffff, transparent: true, opacity: 0.9 });
+    // Vertical bolt
+    const bolt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 10, 0.1), boltMat);
+    bolt.position.set(x, 5, z);
+    this.scene.add(bolt);
+    this.bullets.push({ mesh: bolt, life: 0.3, maxLife: 0.3, isParticle: false });
+    // Impact ring
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x66ffff, transparent: true, opacity: 0.7, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.8, 16), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.1, z);
+    this.scene.add(ring);
+    this.bullets.push({ mesh: ring, life: 0.4, maxLife: 0.4, isShockwave: true });
+    // Sparks
+    for (let i = 0; i < 6; i++) {
+      const spark = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), boltMat);
+      spark.position.set(x, 1.5, z);
+      const vx = (Math.random() - 0.5) * 8;
+      const vy = 3 + Math.random() * 5;
+      const vz = (Math.random() - 0.5) * 8;
+      this.scene.add(spark);
+      this.bullets.push({ mesh: spark, life: 0.5, maxLife: 0.5, isParticle: true, vx, vy, vz, gravity: true });
+    }
+  }
+
   spawnCrackEffect(x, z, dx, dz, length) {
     const len = length || 30;
     // Main crack line — dark jagged line on ground
@@ -3269,6 +3458,37 @@ class ZombieMultiplayerClient {
     }
     this._lastHealth = p.h;
 
+    // Downed overlay
+    const downedEl = document.getElementById('downed-overlay');
+    if (downedEl) {
+      if (p.dwn) {
+        downedEl.style.display = 'block';
+        const timerEl = document.getElementById('downed-timer');
+        if (timerEl) timerEl.textContent = `Revive in: ${p.dwt}s — A teammate must press [R] near you`;
+      } else {
+        downedEl.style.display = 'none';
+      }
+    }
+    // Golden bullets indicator
+    const gbEl = document.getElementById('golden-bullets');
+    if (gbEl) {
+      gbEl.style.display = p.gb > 0 ? 'block' : 'none';
+      if (p.gb > 0) gbEl.textContent = `GOLDEN BULLETS: ${p.gb} — 3x DMG!`;
+    }
+
+    // Show downed teammate indicator + revive hint
+    if (this.serverState && this.serverState.players) {
+      let canRevive = false;
+      for (const other of this.serverState.players) {
+        if (other.id === this.myId || !other.dwn) continue;
+        // Show revive hint if close enough
+        const d = Math.hypot(other.x - p.x, other.z - p.z);
+        if (d < 2.5) canRevive = true;
+      }
+      const reviveHint = document.getElementById('revive-hint');
+      if (reviveHint) reviveHint.style.display = canRevive ? 'block' : 'none';
+    }
+
     // Inventory bar
     const invBar = document.getElementById('inventory-bar');
     const wpnBar = document.getElementById('weapon-bar');
@@ -3434,6 +3654,10 @@ class ZombieMultiplayerClient {
       html += `<div class="shop-item" data-action="spawnEgg" data-key="exploder" style="border-color:#8a0a0a;">
         <span>💣 Exploder Egg<br><span style="font-size:10px;color:#666;">Explodes on contact</span></span>
         <span style="font-size:10px;color:#666;">[click]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="spitter" style="border-color:#2a4a1a;">
+        <span>🤢 Spitter Egg<br><span style="font-size:10px;color:#666;">Ranged acid spit attack</span></span>
+        <span style="font-size:10px;color:#666;">[.]</span>
       </div>`;
     }
     html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle <kbd>L</kbd>Sniper · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;

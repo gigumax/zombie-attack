@@ -147,6 +147,7 @@ const OBSTACLES = [
 let players = {};
 let zombies = [];
 let goldPickups = [];
+let powerUpPickups = []; // rare drops from zombies: {id, type, x, z}
 let chests = [];
 let particles = [];
 let nextZombieId = 1;
@@ -167,6 +168,26 @@ let doorOpen = false;
 let keyDropped = false;
 let keyPos = null;
 let killFeed = [];
+
+// ─── Day/Night cycle ───
+let timeOfDay = 0.3; // 0=dawn, 0.25=day, 0.5=dusk, 0.75=night, 1=dawn again
+const DAY_NIGHT_DURATION = 120; // seconds for full cycle
+let isNight = false;
+
+// ─── Difficulty scaling ───
+function getDifficultyMultiplier() {
+  // Every 5 waves: +20% speed, +15% health, +10% damage
+  const tier = Math.floor((wave - 1) / 5);
+  return {
+    speed: 1 + tier * 0.20,
+    health: 1 + tier * 0.15,
+    damage: 1 + tier * 0.10,
+    enrage: tier >= 2, // enrage mode at wave 10+
+  };
+}
+
+// ─── No-damage wave tracking ───
+let waveDamageTaken = {}; // playerId -> damage taken this wave
 let weaponPickups = []; // {id, gun, x, z} — weapons to find after escaping cell
 let postEscapeBoss = false; // boss fight after escaping cell
 let skeletonWorld = false; // skeleton world unlocked after killing post-escape boss
@@ -206,6 +227,7 @@ function createPlayer(id) {
     shopOpen: false, onGround: true,
     keys: {},
     dead: false,
+    downed: false, downedTimer: 0,
     escapeMode: false, escapeStep: null, hasKey: false,
     preEscapeGun: null, preEscapeOwned: null,
     muzzleFlash: 0, gunRecoil: 0,
@@ -230,10 +252,11 @@ function anyKidFriendly() {
 function spawnZombie() {
   let type = 'normal';
   const r = Math.random();
-  if (wave >= 3 && r < 0.20) type = 'buff';
-  else if (wave >= 5 && r < 0.28) type = 'necromancer';
-  else if (wave >= 4 && r < 0.38) type = 'exploder';
-  else if (wave >= 3 && r < 0.58) type = 'creepy'; // 20% chance for creepy in grasslands
+  if (wave >= 3 && r < 0.18) type = 'buff';
+  else if (wave >= 5 && r < 0.26) type = 'necromancer';
+  else if (wave >= 4 && r < 0.36) type = 'exploder';
+  else if (wave >= 6 && r < 0.46) type = 'spitter';
+  else if (wave >= 3 && r < 0.66) type = 'creepy'; // 20% chance for creepy in grasslands
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
@@ -250,12 +273,19 @@ function spawnZombie() {
   else if (type === 'necromancer') { health *= 1.5; damage *= 0.8; attackRange *= 1.0; }
   else if (type === 'exploder') { health *= 0.8; damage *= 2.5; attackRange *= 1.5; }
   else if (type === 'creepy') { health *= 2; damage *= 1.8; attackRange *= 1.5; }
+  else if (type === 'spitter') { health *= 0.9; damage *= 1.0; attackRange *= 5.0; } // ranged zombie
+
+  // Apply difficulty scaling
+  const diff = getDifficultyMultiplier();
+  health = Math.round(health * diff.health);
+  damage = Math.round(damage * diff.damage);
 
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : speed,
+    speed: (type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : type === 'spitter' ? speed * 0.9 : speed) * diff.speed,
     damage, attackRange, attackTimer: 0,
+    enrage: diff.enrage ? 1 : 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
     lostLimbs: {}, limbDamage: {},
@@ -322,6 +352,15 @@ function spawnEgg(playerId, eggType) {
       speed: CONFIG.zombieSpeed * 1.3, damage: CONFIG.zombieDamage * 2.5, attackRange: CONFIG.zombieAttackRange * 1.5,
       attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+    });
+  } else if (eggType === 'spitter') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'spitter',
+      health: CONFIG.zombieHealth * 0.9, maxHealth: CONFIG.zombieHealth * 0.9,
+      speed: CONFIG.zombieSpeed * 0.9, damage: CONFIG.zombieDamage * 1.0, attackRange: CONFIG.zombieAttackRange * 5,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 2 + Math.random() * 2,
     });
   }
 }
@@ -430,6 +469,26 @@ function killZombie(zombie, killerId, dirX, dirZ) {
 
   // Kill feed
   const kid = anyKidFriendly();
+
+  // Rare power-up drop — 5% chance for normal zombies, 15% for special types, 100% for boss
+  let dropChance = 0.05;
+  if (zombie.isBoss || zombie.type === 'skeletonBoss') dropChance = 1.0;
+  else if (['buff', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard'].includes(zombie.type)) dropChance = 0.15;
+  if (Math.random() < dropChance) {
+    const dropTypes = ['maxHealth', 'speedBoots', 'reloadGlove', 'goldenBullet', 'lightningRod', 'necroSkull'];
+    // Weighted: permanent upgrades more common, special items rarer
+    const weights = [3, 3, 3, 3, 1, 1];
+    let totalW = weights.reduce((a, b) => a + b, 0);
+    let roll = Math.random() * totalW;
+    let dropType = dropTypes[0];
+    for (let i = 0; i < dropTypes.length; i++) {
+      roll -= weights[i];
+      if (roll <= 0) { dropType = dropTypes[i]; break; }
+    }
+    // Boss always drops lightning rod or necro skull
+    if (zombie.isBoss) dropType = Math.random() < 0.5 ? 'lightningRod' : 'necroSkull';
+    powerUpPickups.push({ id: nextGoldId++, type: dropType, x: zombie.x, z: zombie.z });
+  }
   let msg = '';
   if (zombie.type === 'skeletonBoss') msg = kid ? `MUTANT SKELETON BOSS TAGGED! +${score}` : `MUTANT SKELETON BOSS DESTROYED! +${score}`;
   else if (zombie.isBoss) msg = kid ? `BIG BOSS TAGGED! +${score}` : `BOSS ELIMINATED! +${score}`;
@@ -488,14 +547,30 @@ function endWave() {
   bossSpawned = false;
   const clearedWave = wave;
   wave++;
+  // No-damage wave medal check
+  let noDamagePlayers = [];
   // Bonus for all players
   for (const p of Object.values(players)) {
     p.health = Math.min(getGunStat(p, 'maxHealth'), p.health + 25);
     p.reserveAmmo += getGunStat(p, 'magSize') * 2;
     p.gold += 30 + clearedWave * 10;
     p.wave = wave;
+    // Reset downed state for new wave
+    p.downed = false;
+    p.downedTimer = 0;
+    p.downedThisWave = false;
+    // Check no-damage medal
+    if (!(waveDamageTaken[p.id] > 0)) {
+      noDamagePlayers.push(p.name);
+      p.gold += 50;
+      p.score = (p.score || 0) + 100;
+    }
   }
+  waveDamageTaken = {}; // reset for next wave
   io.emit('waveAnnounce', `WAVE ${clearedWave} CLEARED! +25 HP`);
+  if (noDamagePlayers.length > 0) {
+    broadcastKillFeed(anyKidFriendly() ? `${noDamagePlayers.join(', ')} got a No-Tag Medal! +100 pts` : `NO-DAMAGE WAVE: ${noDamagePlayers.join(', ')} took zero damage! +100 pts +50 gold`);
+  }
   // Spawn chests every 2 waves — one per player, at center of map
   if (clearedWave % 2 === 0) {
     const numPlayers = Object.keys(players).length;
@@ -713,11 +788,13 @@ function handleShoot(playerId) {
   if (!p || p.dead || p.paused || p.reloading || p.fireTimer > 0) return;
 
   const gun = GUNS[p.currentGun];
+  const goldenMult = p.goldenBullets > 0 ? 3 : 1;
+  if (p.goldenBullets > 0) p.goldenBullets--;
   if (gun.melee) {
     p.fireTimer = getGunStat(p, 'fireRate');
     p.gunRecoil = 0.12;
     p.muzzleFlash = 0.5; // visual feedback for knife swing
-    const damage = getGunStat(p, 'damage');
+    const damage = getGunStat(p, 'damage') * goldenMult;
     const meleeRange = gun.meleeRange || 3.0;
     // Direction from yaw/pitch
     const dir = getLookDir(p);
@@ -754,7 +831,7 @@ function handleShoot(playerId) {
   p.gunRecoil = 0.08;
   p.muzzleFlash = 1;
 
-  const damage = getGunStat(p, 'damage');
+  const damage = getGunStat(p, 'damage') * goldenMult;
   const pellets = getGunStat(p, 'pellets');
   const spread = getGunStat(p, 'spread');
   const isPiercing = GUNS[p.currentGun] && GUNS[p.currentGun].pierce;
@@ -871,19 +948,34 @@ function rayHitPlayer(p, dir, target, maxDist) {
 }
 
 function damagePlayer(target, attackerId, damage) {
-  if (!target || target.dead || target.paused || target.spawnerMode) return;
+  if (!target || target.dead || target.downed || target.paused || target.spawnerMode) return;
   target.health -= damage;
   if (target.health <= 0) {
-    target.health = 0;
-    target.dead = true;
     const attacker = players[attackerId];
     const attackerName = attacker ? attacker.name : 'Unknown';
-    broadcastKillFeed(anyKidFriendly() ? `${attackerName} tagged ${target.name}!` : `${attackerName} killed ${target.name} [PvP]`);
-    if (attacker) {
+    downPlayer(target, attackerName);
+    if (target.dead && attacker) {
+      broadcastKillFeed(anyKidFriendly() ? `${attackerName} tagged ${target.name}!` : `${attackerName} killed ${target.name} [PvP]`);
       attacker.kills = (attacker.kills || 0) + 1;
       attacker.score = (attacker.score || 0) + 50;
     }
   }
+}
+
+function downPlayer(p, attackerName) {
+  if (!p || p.dead || p.downed || p.spawnerMode) return;
+  // Single-player or already downed before this wave = instant death
+  const playerCount = Object.values(players).filter(pp => !pp.spawnerMode).length;
+  if (playerCount <= 1 || p.downedThisWave) {
+    p.health = 0;
+    p.dead = true;
+    return;
+  }
+  p.health = 0;
+  p.downed = true;
+  p.downedTimer = 15; // 15 seconds to revive
+  p.downedThisWave = true;
+  broadcastKillFeed(anyKidFriendly() ? `${p.name} needs help! Go save them!` : `${p.name} is DOWNED — revive them within 15s!`);
 }
 
 function getLookDir(p, spread = 0) {
@@ -969,7 +1061,7 @@ function startReload(playerId) {
   if (p.reloading) return;
   if (p.ammo >= getGunStat(p, 'magSize')) return;
   p.reloading = true;
-  p.reloadTimer = getGunStat(p, 'reloadTime');
+  p.reloadTimer = getGunStat(p, 'reloadTime') * (1 - (p.permaReload || 0));
 }
 
 function finishReload(playerId) {
@@ -1138,7 +1230,7 @@ function updatePlayer(p, dt) {
   // Check if player is in water
   const inWater = isInWater(p.x, p.z);
   const speedMult = inWater ? 0.45 : 1.0;
-  const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed) * speedMult;
+  const speed = (p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed : CONFIG.playerSpeed) * speedMult * (1 + (p.permaSpeed || 0));
   let mx = 0, mz = 0;
   if (p.keys['w']) mz -= 1;
   if (p.keys['s']) mz += 1;
@@ -1340,15 +1432,50 @@ function updateZombies(dt) {
 
   for (const z of zombies) {
     if (z.dying || z.reviving) continue; // skip dead/reviving zombies
+    // Friendly zombie timer
+    if (z.friendly) {
+      z.friendlyTimer -= dt;
+      if (z.friendlyTimer <= 0) {
+        z.dying = true;
+        z.deathTimer = 3;
+        z.dead = true;
+        z.friendly = false;
+        continue;
+      }
+    }
     let target = null, minDist = Infinity;
     let zombieTarget = null, zombieTargetDist = Infinity;
+    // Friendly zombies target enemy zombies, not players
+    if (z.friendly) {
+      for (const oz of zombies) {
+        if (oz === z || oz.dying || oz.reviving || oz.friendly) continue;
+        const d = Math.hypot(oz.x - z.x, oz.z - z.z);
+        if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
+      }
+      if (!zombieTarget) continue; // no enemies to fight, skip
+      const dx = zombieTarget.x - z.x, dz = zombieTarget.z - z.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 0.01) {
+        z.x += (dx / dist) * z.speed * dt;
+        z.z += (dz / dist) * z.speed * dt;
+      }
+      z.walkPhase += dt * z.speed * 3;
+      z.r = Math.atan2(dx, dz);
+      if (dist < CONFIG.zombieAttackRange && z.attackTimer <= 0) {
+        z.attackTimer = CONFIG.zombieAttackCooldown;
+        zombieTarget.health -= z.damage;
+        if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+        z.attacking = 1;
+      }
+      continue;
+    }
     for (const p of Object.values(players)) {
       if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
     // Zombie-vs-zombie targeting: skeletons hunt buff zombies, buff/normal zombies hunt skeletons
-    const huntTypes = { skeleton: ['buff'], buff: ['skeleton'], normal: ['skeleton'] };
+    const huntTypes = { skeleton: ['buff', 'normal'], buff: ['skeleton'], normal: ['skeleton'] };
     const huntList = huntTypes[z.type];
     if (huntList) {
       for (const oz of zombies) {
@@ -1357,10 +1484,12 @@ function updateZombies(dt) {
         if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
       }
     }
-    // If zombie has a hunt target and it's closer than the player target, prefer it
-    if (zombieTarget && zombieTargetDist < minDist) {
-      target = null;
-      minDist = zombieTargetDist;
+    // If zombie has a hunt target — skeletons always prefer zombie targets over players
+    if (zombieTarget) {
+      if (z.type === 'skeleton' || zombieTargetDist < minDist) {
+        target = null;
+        minDist = zombieTargetDist;
+      }
     }
     if (!target && !zombieTarget) {
       // No target (e.g. all players in creative mode) — wander randomly
@@ -1488,7 +1617,7 @@ function updateZombies(dt) {
             // RANGED — shoot projectile at target (instant hit, long range)
             if (dist < 30) {
               target.health -= z.damage * 0.4;
-              if (target.health <= 0) { target.health = 0; target.dead = true; }
+              if (target.health <= 0) downPlayer(target);
               z.rangedEffect = 1; // visual flag
               z.attackTimer = 1.0;
               broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS THROWS A BALL!' : 'BOSS HURLS A PROJECTILE!');
@@ -1519,7 +1648,7 @@ function updateZombies(dt) {
             const pd = Math.hypot(p.x - z.jumpTargetX, p.z - z.jumpTargetZ);
             if (pd < 3.0) {
               p.health -= 200;
-              if (p.health <= 0) { p.health = 0; p.dead = true; }
+              if (p.health <= 0) downPlayer(p);
             }
           }
           checkBossKillEscape();
@@ -1557,7 +1686,7 @@ function updateZombies(dt) {
               const perpDist = Math.hypot(perpX, perpZ);
               if (perpDist < z.crackWidth) {
                 p.health -= z.damage * 0.7;
-                if (p.health <= 0) { p.health = 0; p.dead = true; }
+                if (p.health <= 0) downPlayer(p);
               }
             }
           }
@@ -1578,7 +1707,7 @@ function updateZombies(dt) {
           const pd = Math.hypot(p.x - z.x, p.z - z.z);
           if (pd < attackRange) {
             p.health -= z.damage;
-            if (p.health <= 0) { p.health = 0; p.dead = true; }
+            if (p.health <= 0) downPlayer(p);
             z.charging = false;
           }
         }
@@ -1615,7 +1744,7 @@ function updateZombies(dt) {
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
             target.health -= z.damage * 0.5;
-            if (target.health <= 0) { target.health = 0; target.dead = true; }
+            if (target.health <= 0) downPlayer(target);
           }
           z.rangedEffect = 1;
           z.attackTimer = 1.0;
@@ -1627,7 +1756,7 @@ function updateZombies(dt) {
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
             target.health -= z.damage * 0.6;
-            if (target.health <= 0) { target.health = 0; target.dead = true; }
+            if (target.health <= 0) downPlayer(target);
           }
         }
       } else if (z.type === 'buff') {
@@ -1640,7 +1769,7 @@ function updateZombies(dt) {
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < attackRange * 1.3) {
               p.health -= z.damage * 1.5;
-              if (p.health <= 0) { p.health = 0; p.dead = true; }
+              if (p.health <= 0) downPlayer(p);
             }
           }
           // Also damage zombie target (skeleton)
@@ -1660,7 +1789,7 @@ function updateZombies(dt) {
           const kdx = (target.x - z.x) / dist, kdz = (target.z - z.z) / dist;
           target.x += kdx * 3;
           target.z += kdz * 3;
-          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          if (target.health <= 0) downPlayer(target);
           z.slamEffect = 1;
         }
       } else if (z.type === 'creepy') {
@@ -1685,7 +1814,7 @@ function updateZombies(dt) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.3;
           z.invisible = 0; // reveal when attacking
           target.health -= z.damage;
-          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          if (target.health <= 0) downPlayer(target);
           z.slamEffect = 1;
           z.attacking = 1; // visual: mouth open + head shake
           // Go back invisible after attack cooldown
@@ -1722,7 +1851,7 @@ function updateZombies(dt) {
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
           target.health -= z.damage;
-          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          if (target.health <= 0) downPlayer(target);
           z.attacking = 1;
         }
       } else if (z.type === 'exploder') {
@@ -1738,7 +1867,7 @@ function updateZombies(dt) {
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < explodeRadius) {
               p.health -= z.damage;
-              if (p.health <= 0) { p.health = 0; p.dead = true; }
+              if (p.health <= 0) downPlayer(p);
             }
           }
           // AoE damage to nearby zombies too
@@ -1753,6 +1882,39 @@ function updateZombies(dt) {
           z.slamEffect = 1;
           // Kill self
           if (!z.dying) killZombie(z, null);
+        }
+      } else if (z.type === 'spitter') {
+        // SPITTER — ranged acid spit attack, keeps distance
+        // Try to stay at range — back away if too close
+        if (dist < attackRange * 0.6 && dist > 0.01) {
+          z.x -= (dx / dist) * z.speed * dt;
+          z.z -= (dz / dist) * z.speed * dt;
+        } else if (dist > attackRange * 0.9 && dist > 0.01) {
+          // Approach if too far
+          z.x += (dx / dist) * z.speed * 0.5 * dt;
+          z.z += (dz / dist) * z.speed * 0.5 * dt;
+        }
+        z.specialAttackTimer -= dt;
+        if (z.specialAttackTimer <= 0 && dist < attackRange) {
+          z.specialAttackTimer = 3 + Math.random() * 2;
+          z.rangedEffect = 1; // visual spit effect
+          z.attacking = 1;
+          // Spawn acid projectile
+          if (!z.acidSpits) z.acidSpits = [];
+          const spitDx = dx / dist;
+          const spitDz = dz / dist;
+          z.acidSpits.push({
+            x: z.x, y: 1.5, z: z.z,
+            vx: spitDx * 12, vz: spitDz * 12,
+            life: 2.0, damage: z.damage,
+          });
+        }
+        // Weak melee if player gets close
+        if (dist < CONFIG.zombieAttackRange && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 2;
+          target.health -= z.damage * 0.5;
+          if (target.health <= 0) downPlayer(target);
+          z.attacking = 1;
         }
       } else {
         // NORMAL — lunge attack: quick burst toward player, bite
@@ -1776,15 +1938,15 @@ function updateZombies(dt) {
             const newDist = Math.hypot(target.x - z.x, target.z - z.z);
             if (newDist < attackRange) {
               target.health -= z.damage;
-              if (target.health <= 0) { target.health = 0; target.dead = true; }
+              if (target.health <= 0) downPlayer(target);
             }
           }
         }
       }
       // Check all dead (only when targeting a player, not a zombie)
       if (target && target.dead) {
-        const allDead = Object.values(players).every(p => p.dead);
-        if (allDead && !escapeMode) {
+        const allGone = Object.values(players).every(p => p.dead || p.downed);
+        if (allGone && !escapeMode) {
           io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
         }
       }
@@ -1792,8 +1954,82 @@ function updateZombies(dt) {
   }
 }
 
+// ─── Power-up drops ───
+function applyPowerUp(p, type) {
+  const kid = anyKidFriendly();
+  switch (type) {
+    case 'maxHealth':
+      p.upgrades.health = (p.upgrades.health || 0) + 1;
+      p.maxHealth = getGunStat(p, 'maxHealth');
+      p.health = p.maxHealth;
+      broadcastKillFeed(kid ? `${p.name} got a Health Boost! Max HP increased!` : `${p.name} picked up MAX HEALTH+ — permanently +25 max HP!`);
+      break;
+    case 'speedBoots':
+      p.permaSpeed = (p.permaSpeed || 0) + 0.1;
+      broadcastKillFeed(kid ? `${p.name} got Speed Boots! Zoom zoom!` : `${p.name} picked up SPEED BOOTS — permanently +10% move speed!`);
+      break;
+    case 'reloadGlove':
+      p.permaReload = (p.permaReload || 0) + 0.2;
+      broadcastKillFeed(kid ? `${p.name} got a Reload Glove! Faster reloading!` : `${p.name} picked up RELOAD GLOVE — permanently -20% reload time!`);
+      break;
+    case 'goldenBullet':
+      p.goldenBullets = (p.goldenBullets || 0) + 10;
+      broadcastKillFeed(kid ? `${p.name} got Golden Bullets! Super powerful!` : `${p.name} picked up GOLDEN BULLETS — next 10 shots deal 3x damage!`);
+      break;
+    case 'lightningRod':
+      // Strike 5 nearest zombies with lightning
+      const aliveZs = zombies.filter(z => !z.dying);
+      aliveZs.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+      let struck = 0;
+      for (const z of aliveZs) {
+        if (struck >= 5) break;
+        z.health -= 300;
+        z.lightningHit = 1;
+        if (z.health <= 0 && !z.dying) killZombie(z, p);
+        struck++;
+      }
+      p.lightningEffect = 1;
+      broadcastKillFeed(kid ? `${p.name} used a Lightning Rod! Zap zap!` : `${p.name} used LIGHTNING ROD — struck ${struck} zombies for 300 damage each!`);
+      break;
+    case 'necroSkull':
+      // Revive 3 nearest dead zombies as friendly allies
+      const deadZs = zombies.filter(z => z.dying && !z.isBoss);
+      deadZs.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+      let revived = 0;
+      for (const z of deadZs) {
+        if (revived >= 3) break;
+        z.dying = false;
+        z.dead = false;
+        z.health = z.maxHealth * 0.5;
+        z.canRevive = false;
+        z.corpseVx = 0;
+        z.corpseVz = 0;
+        z.friendly = true; // friendly zombie — fights for player
+        z.friendlyTimer = 30; // lasts 30 seconds
+        z.attackTimer = 1;
+        revived++;
+      }
+      p.necroSkullEffect = 1;
+      broadcastKillFeed(kid ? `${p.name} used a Magic Skull! Friendly zombies!` : `${p.name} used NECROMANCER'S SKULL — revived ${revived} zombies as allies for 30s!`);
+      break;
+  }
+}
+
 // ─── Gold pickups ───
 function updateGoldPickups(dt) {
+  // Power-up pickups
+  for (let i = powerUpPickups.length - 1; i >= 0; i--) {
+    const pu = powerUpPickups[i];
+    for (const p of Object.values(players)) {
+      if (p.dead || p.downed || p.spawnerMode) continue;
+      const dx = p.x - pu.x, dz = p.z - pu.z;
+      if (Math.hypot(dx, dz) < CONFIG.goldPickupRadius) {
+        applyPowerUp(p, pu.type);
+        powerUpPickups.splice(i, 1);
+        break;
+      }
+    }
+  }
   for (let i = goldPickups.length - 1; i >= 0; i--) {
     const g = goldPickups[i];
     for (const p of Object.values(players)) {
@@ -1904,7 +2140,70 @@ function gameLoop() {
       checkEscapeWin();
     }
 
+    // Track player health before zombie updates for no-damage wave
+    const healthBefore = {};
+    for (const p of Object.values(players)) {
+      if (!p.spawnerMode) healthBefore[p.id] = p.health;
+    }
+
     updateZombies(dt);
+
+    // Track damage taken during zombie updates
+    for (const p of Object.values(players)) {
+      if (p.spawnerMode || healthBefore[p.id] === undefined) continue;
+      const dmg = healthBefore[p.id] - p.health;
+      if (dmg > 0) waveDamageTaken[p.id] = (waveDamageTaken[p.id] || 0) + dmg;
+    }
+
+    // Update acid spit projectiles from spitter zombies
+    for (const z of zombies) {
+      if (!z.acidSpits || z.acidSpits.length === 0) continue;
+      for (let i = z.acidSpits.length - 1; i >= 0; i--) {
+        const sp = z.acidSpits[i];
+        sp.x += sp.vx * dt;
+        sp.z += sp.vz * dt;
+        sp.life -= dt;
+        sp.y = 1.5 + Math.sin((2.0 - sp.life) * 8) * 0.3; // arc
+        // Check player hit
+        let hit = false;
+        for (const p of Object.values(players)) {
+          if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
+          const pd = Math.hypot(p.x - sp.x, p.z - sp.z);
+          if (pd < 0.8) {
+            p.health -= sp.damage;
+            if (p.health <= 0) downPlayer(p);
+            hit = true;
+            break;
+          }
+        }
+        if (hit || sp.life <= 0) {
+          z.acidSpits.splice(i, 1);
+        }
+      }
+    }
+
+    // Day/night cycle
+    timeOfDay += dt / DAY_NIGHT_DURATION;
+    if (timeOfDay >= 1) timeOfDay -= 1;
+    const wasNight = isNight;
+    isNight = timeOfDay >= 0.5 && timeOfDay < 0.95;
+    if (isNight && !wasNight) {
+      broadcastKillFeed(anyKidFriendly() ? 'It\'s getting dark! Zombies are excited!' : 'NIGHT FALLS — zombies grow stronger!');
+    } else if (!isNight && wasNight) {
+      broadcastKillFeed(anyKidFriendly() ? 'The sun is back! Yay!' : 'DAWN BREAKS — zombies weaken');
+    }
+
+    // Update downed players
+    for (const p of Object.values(players)) {
+      if (p.downed && !p.dead) {
+        p.downedTimer -= dt;
+        if (p.downedTimer <= 0) {
+          p.downed = false;
+          p.dead = true;
+          broadcastKillFeed(anyKidFriendly() ? `${p.name} wasn't saved in time...` : `${p.name} bled out — no one revived them in time!`);
+        }
+      }
+    }
 
     // Creepy zone spawning — only when a player is in the creepy world
     if (!escapeMode && !skeletonWorld) {
@@ -1924,10 +2223,11 @@ function gameLoop() {
       }
     }
 
-    // Check if all players dead (non-escape)
+    // Check if all players dead or downed (non-escape)
     if (!escapeMode) {
-      const allDead = Object.values(players).every(p => p.dead);
-      if (allDead) {
+      const allDead = Object.values(players).every(p => p.dead || (p.downed && p.downedTimer <= 0));
+      const allGone = Object.values(players).every(p => p.dead || p.downed);
+      if (allGone) {
         io.emit('gameOver', { wave, score: Object.values(players).reduce((s,p)=>s+p.score,0) });
       }
     }
@@ -1943,13 +2243,16 @@ function gameLoop() {
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
-      dead: p.dead ? 1 : 0, em: p.escapeMode ? 1 : 0, es: p.escapeStep,
+      dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
       hk: p.hasKey ? 1 : 0, gr: +p.gunRecoil.toFixed(2), mf: +p.muzzleFlash.toFixed(2),
       tr: p.shootTracers.length > 0 ? p.shootTracers : undefined,
       emo: p.emoji || '😀',
       col: p.colors || null,
       pau: p.paused ? 1 : 0,
       sp: p.spawnerMode ? 1 : 0,
+      gb: p.goldenBullets || 0,
+      leff: p.lightningEffect ? 1 : 0,
+      neff: p.necroSkullEffect ? 1 : 0,
       it: p.items, icd: +p.itemCooldown.toFixed(2),
       eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
         if (e.type === 'grenade') return { t:'g', x:+e.x.toFixed(2), z:+e.z.toFixed(2), tm:+e.timer.toFixed(2) };
@@ -1960,6 +2263,11 @@ function gameLoop() {
     })),
     zombies: zombies.map(z => {
       const ll = z.lostLimbs || {};
+      // Reset one-shot player effects
+      for (const pp of Object.values(players)) {
+        if (pp.lightningEffect) pp.lightningEffect = 0;
+        if (pp.necroSkullEffect) pp.necroSkullEffect = 0;
+      }
       const base = {
         id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type === 'skeletonBoss' ? 'k' : z.type[0],
         boss: z.isBoss ? 1 : 0, cb: z.isCreepyBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
@@ -1975,6 +2283,10 @@ function gameLoop() {
         jtx: +(z.jumpTargetX || 0).toFixed(2), jtz: +(z.jumpTargetZ || 0).toFixed(2),
         inv: z.invisible ? 1 : 0,
         exp: z.exploding ? 1 : 0,
+        eng: z.enrage ? 1 : 0,
+        fr: z.friendly ? 1 : 0,
+        lit: z.lightningHit ? 1 : 0,
+        spit: z.acidSpits && z.acidSpits.length > 0 ? z.acidSpits.map(s => [+s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2)]) : undefined,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;
@@ -1983,15 +2295,18 @@ function gameLoop() {
       if (z.attacking) z.attacking = 0;
       if (z.waterDamage) z.waterDamage = 0;
       if (z.exploding) z.exploding = 0;
+      if (z.lightningHit) z.lightningHit = 0;
       if (z.dying) {
         return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
       }
       return { ...base, hp: Math.ceil(z.health), mhp: z.maxHealth, dy: 0, dt: 0 };
     }),
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
+    powerups: powerUpPickups.map(pu => [pu.id, pu.type, +pu.x.toFixed(2), +pu.z.toFixed(2)]),
     chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
+    tod: +timeOfDay.toFixed(3), night: isNight ? 1 : 0,
     zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone).length + zombiesToSpawn,
     water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
     creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
@@ -2030,6 +2345,7 @@ io.on('connection', (socket) => {
     waveBreakTimer = 3;
     zombies = [];
     goldPickups = [];
+    powerUpPickups = [];
     escapeMode = false;
   }
 
@@ -2140,6 +2456,25 @@ io.on('connection', (socket) => {
     p.y = CONFIG.playerHeight;
     p.vx = 0; p.vy = 0; p.vz = 0;
   });
+  socket.on('reviveTeammate', () => {
+    const reviver = players[socket.id];
+    if (!reviver || reviver.dead || reviver.downed || reviver.paused) return;
+    // Find nearest downed player within revive range
+    for (const downed of Object.values(players)) {
+      if (downed.id === reviver.id || !downed.downed || downed.dead) continue;
+      const d = Math.hypot(downed.x - reviver.x, downed.z - reviver.z);
+      if (d < 2.0) {
+        downed.downed = false;
+        downed.downedTimer = 0;
+        downed.health = Math.max(30, getGunStat(downed, 'maxHealth') * 0.5);
+        downed.dead = false;
+        broadcastKillFeed(anyKidFriendly() ? `${reviver.name} saved ${downed.name}!` : `${reviver.name} revived ${downed.name}!`);
+        reviver.score = (reviver.score || 0) + 75;
+        reviver.gold += 25;
+        break;
+      }
+    }
+  });
   socket.on('travelToWorld', (data) => {
     const p = players[socket.id];
     if (!p || p.dead) return;
@@ -2240,6 +2575,9 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p) return;
     p.dead = false;
+    p.downed = false;
+    p.downedTimer = 0;
+    p.downedThisWave = false;
     p.health = getGunStat(p, 'maxHealth');
     p.x = 0; p.y = CONFIG.playerHeight; p.z = 0;
     p.vx = 0; p.vy = 0; p.vz = 0;
@@ -2258,6 +2596,7 @@ io.on('connection', (socket) => {
       gameStarted = false;
       zombies = [];
       goldPickups = [];
+      powerUpPickups = [];
       chests = [];
       postEscapeBoss = false;
       skeletonWorld = false;

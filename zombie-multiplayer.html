@@ -242,6 +242,13 @@
   <div id="crosshair" style="display:none;"></div>
   <div id="damage-overlay"></div>
   <div id="pvp-indicator" style="position:fixed;top:60px;right:20px;z-index:10;display:none;font-size:12px;font-weight:700;padding:4px 10px;border-radius:6px;background:rgba(0,0,0,0.6);color:#e74c3c;border:1px solid rgba(231,76,60,0.4);">PvP ON</div>
+  <div id="night-indicator" style="position:fixed;top:60px;right:20px;z-index:10;display:none;font-size:12px;font-weight:700;padding:4px 10px;border-radius:6px;background:rgba(0,0,0,0.6);color:#9b59b6;border:1px solid rgba(155,89,182,0.4);">NIGHT — Zombies Stronger</div>
+  <div id="downed-overlay" style="position:fixed;bottom:0;left:0;width:100%;z-index:15;display:none;text-align:center;padding:20px;background:linear-gradient(transparent,rgba(180,0,0,0.3));pointer-events:none;">
+    <div style="font-size:28px;font-weight:900;color:#e74c3c;text-shadow:0 0 15px rgba(231,76,60,0.8);">YOU ARE DOWNED!</div>
+    <div id="downed-timer" style="font-size:18px;color:#fff;margin-top:5px;">Revive in: 15s — A teammate must press [R] near you</div>
+  </div>
+  <div id="golden-bullets" style="position:fixed;top:90px;right:20px;z-index:10;display:none;font-size:14px;font-weight:900;padding:6px 14px;border-radius:8px;background:rgba(0,0,0,0.7);color:#ffaa00;border:2px solid rgba(255,170,0,0.5);text-shadow:0 0 8px rgba(255,170,0,0.5);">GOLDEN BULLETS: 10 — 3x DMG!</div>
+  <div id="revive-hint" style="position:fixed;bottom:120px;left:50%;transform:translateX(-50%);z-index:10;display:none;font-size:16px;font-weight:700;padding:8px 20px;border-radius:8px;background:rgba(0,0,0,0.7);color:#2ecc71;border:2px solid rgba(46,204,113,0.5);">Press [R] to revive teammate!</div>
 
   <div id="spawner-indicator" style="position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:10;display:none;font-size:14px;font-weight:900;padding:6px 16px;border-radius:8px;background:rgba(0,0,0,0.7);color:#2ecc71;border:2px solid rgba(46,204,113,0.5);text-shadow:0 0 8px rgba(46,204,113,0.4);">CREATIVE MODE — INVINCIBLE · [/] OFF · [7]Zombie [8]Skeleton [9]Creepy</div>
 
@@ -442,6 +449,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=47"></script>
+  <script src="zombie-multiplayer.js?v=49"></script>
 </body>
 </html>
