@@ -148,6 +148,7 @@ let killFeed = [];
 let weaponPickups = []; // {id, gun, x, z} — weapons to find after escaping cell
 let postEscapeBoss = false; // boss fight after escaping cell
 let skeletonWorld = false; // skeleton world unlocked after killing post-escape boss
+let skeletonUnlocked = false; // becomes true after escaping + defeating post-escape boss
 
 function getGunStat(player, stat) {
   const gun = GUNS[player.currentGun];
@@ -556,6 +557,7 @@ function endEscape() {
 
 function startSkeletonWorld() {
   skeletonWorld = true;
+  skeletonUnlocked = true;
   zombies = [];
   bossPending = false;
   bossSpawned = false;
@@ -1724,6 +1726,7 @@ function gameLoop() {
     water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
     creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
     skeletonWorld,
+    skeletonUnlocked,
   };
   io.emit('state', state);
   } catch(e) {
@@ -1870,6 +1873,7 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || p.dead) return;
     if (data === 'skeleton') {
+      if (!skeletonUnlocked) return;
       startSkeletonWorld();
     } else if (data === 'main') {
       // Return to grasslands center

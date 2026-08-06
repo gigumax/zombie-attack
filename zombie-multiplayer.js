@@ -169,6 +169,11 @@ class ZombieMultiplayerClient {
       }
       this.serverState = state;
       this.myPlayer = state.players.find(p => p.id === this.myId);
+      // Update skeleton world lock
+      const skelLock = document.getElementById('skeleton-lock');
+      if (skelLock) {
+        skelLock.style.display = state.skeletonUnlocked ? 'none' : 'flex';
+      }
       // PvP indicator
       const pvpEl = document.getElementById('pvp-indicator');
       if (pvpEl) pvpEl.style.display = state.friendlyFire ? 'block' : 'none';
