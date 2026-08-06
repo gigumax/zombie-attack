@@ -231,6 +231,9 @@ function spawnZombie() {
   let type = 'normal';
   const r = Math.random();
   if (wave >= 3 && r < 0.35) type = 'buff';
+  else if (wave >= 5 && r < 0.45) type = 'necromancer';
+  else if (wave >= 4 && r < 0.60) type = 'exploder';
+  else if (wave >= 3 && r < 0.90) type = 'creepy'; // 30% chance for creepy in grasslands
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
@@ -244,16 +247,20 @@ function spawnZombie() {
 
   if (type === 'buff') { health *= 3; damage *= 2; attackRange *= 1.3; }
   else if (type === 'skeleton') { health *= 0.6; damage *= 1.2; attackRange *= 1.2; }
+  else if (type === 'necromancer') { health *= 1.5; damage *= 0.8; attackRange *= 1.0; }
+  else if (type === 'exploder') { health *= 0.8; damage *= 2.5; attackRange *= 1.5; }
+  else if (type === 'creepy') { health *= 2; damage *= 1.8; attackRange *= 1.5; }
 
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : speed,
+    speed: type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : type === 'creepy' ? speed * 3.0 : type === 'exploder' ? speed * 1.3 : type === 'necromancer' ? speed * 0.8 : speed,
     damage, attackRange, attackTimer: 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
     lostLimbs: {}, limbDamage: {},
     specialAttackTimer: 2 + Math.random() * 2,
+    invisible: type === 'creepy' ? 1 : 0, // creepy zombies start invisible in grasslands
   });
 }
 
@@ -297,6 +304,24 @@ function spawnEgg(playerId, eggType) {
       attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
       specialAttackTimer: 2 + Math.random() * 2,
+      invisible: 1,
+    });
+  } else if (eggType === 'necromancer') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'necromancer',
+      health: CONFIG.zombieHealth * 1.5, maxHealth: CONFIG.zombieHealth * 1.5,
+      speed: CONFIG.zombieSpeed * 0.8, damage: CONFIG.zombieDamage * 0.8, attackRange: CONFIG.zombieAttackRange,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 5 + Math.random() * 3,
+    });
+  } else if (eggType === 'exploder') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'exploder',
+      health: CONFIG.zombieHealth * 0.8, maxHealth: CONFIG.zombieHealth * 0.8,
+      speed: CONFIG.zombieSpeed * 1.3, damage: CONFIG.zombieDamage * 2.5, attackRange: CONFIG.zombieAttackRange * 1.5,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
     });
   }
 }
@@ -1635,10 +1660,12 @@ function updateZombies(dt) {
           z.slamEffect = 1;
         }
       } else if (z.type === 'creepy') {
-        // CREEPY — shadow dash: teleports behind player and slashes
+        // CREEPY — invisible until it attacks, then shadow dash + slash
         z.specialAttackTimer -= dt;
         if (z.specialAttackTimer <= 0 && dist > attackRange && dist < 15) {
           z.specialAttackTimer = 4 + Math.random() * 3;
+          // Reveal when teleporting
+          z.invisible = 0;
           // Teleport behind player
           const pdir = Math.atan2(target.x - z.x, target.z - z.z);
           target.yaw = target.yaw || 0;
@@ -1652,10 +1679,73 @@ function updateZombies(dt) {
         }
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.3;
+          z.invisible = 0; // reveal when attacking
           target.health -= z.damage;
           if (target.health <= 0) { target.health = 0; target.dead = true; }
           z.slamEffect = 1;
           z.attacking = 1; // visual: mouth open + head shake
+          // Go back invisible after attack cooldown
+          z.specialAttackTimer = 4 + Math.random() * 3;
+        }
+        // Go back invisible after not attacking for a while
+        if (!z.invisible && z.attackTimer > 2 && z.specialAttackTimer > 3) {
+          z.invisible = 1;
+        }
+      } else if (z.type === 'necromancer') {
+        // NECROMANCER — revives nearby dead zombies periodically, weak melee
+        z.specialAttackTimer -= dt;
+        if (z.specialAttackTimer <= 0) {
+          z.specialAttackTimer = 8 + Math.random() * 4;
+          // Find nearby dying zombies and revive them
+          let revived = 0;
+          for (const dz of zombies) {
+            if (revived >= 2) break;
+            if (!dz.dying || dz.isBoss) continue;
+            const d = Math.hypot(dz.x - z.x, dz.z - z.z);
+            if (d < 10) {
+              dz.dying = false;
+              dz.dead = false;
+              dz.health = dz.maxHealth * 0.5;
+              dz.canRevive = false;
+              z.rangedEffect = 1; // visual: revive glow
+              revived++;
+            }
+          }
+        }
+        if (dist < attackRange && z.attackTimer <= 0) {
+          z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
+          target.health -= z.damage;
+          if (target.health <= 0) { target.health = 0; target.dead = true; }
+          z.attacking = 1;
+        }
+      } else if (z.type === 'exploder') {
+        // EXPLODER — rushes player, explodes on contact or death
+        if (dist < attackRange && z.attackTimer <= 0) {
+          // Explode!
+          z.attackTimer = 999; // prevent re-attack
+          z.exploding = 1;
+          // AoE damage to all nearby players
+          const explodeRadius = attackRange * 2;
+          for (const p of Object.values(players)) {
+            if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
+            const pd = Math.hypot(p.x - z.x, p.z - z.z);
+            if (pd < explodeRadius) {
+              p.health -= z.damage;
+              if (p.health <= 0) { p.health = 0; p.dead = true; }
+            }
+          }
+          // AoE damage to nearby zombies too
+          for (const oz of zombies) {
+            if (oz === z || oz.dying) continue;
+            const od = Math.hypot(oz.x - z.x, oz.z - z.z);
+            if (od < explodeRadius) {
+              oz.health -= z.damage * 0.5;
+              if (oz.health <= 0 && !oz.dying) killZombie(oz, null);
+            }
+          }
+          z.slamEffect = 1;
+          // Kill self
+          if (!z.dying) killZombie(z, null);
         }
       } else {
         // NORMAL — lunge attack: quick burst toward player, bite
@@ -1876,6 +1966,8 @@ function gameLoop() {
         wdmg: z.waterDamage ? 1 : 0,
         jmp: z.jumping ? 1 : 0, jp: z.jumpPhase || '', jtm: +((z.jumpTimer || 0)).toFixed(2),
         jtx: +(z.jumpTargetX || 0).toFixed(2), jtz: +(z.jumpTargetZ || 0).toFixed(2),
+        inv: z.invisible ? 1 : 0,
+        exp: z.exploding ? 1 : 0,
       };
       // Reset one-shot effect flags
       if (z.slamEffect) z.slamEffect = 0;
@@ -1883,6 +1975,7 @@ function gameLoop() {
       if (z.crackEffect) z.crackEffect = 0;
       if (z.attacking) z.attacking = 0;
       if (z.waterDamage) z.waterDamage = 0;
+      if (z.exploding) z.exploding = 0;
       if (z.dying) {
         return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
       }

@@ -1237,6 +1237,69 @@ class ZombieMultiplayerClient {
     return this.createBuffZombieMesh();
   }
 
+  createNecromancerMesh() {
+    const group = new THREE.Group();
+    const scale = 1.1;
+    const robeMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x6644aa : 0x2a0a3a});
+    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88dd88 : 0x4a6a4a});
+    const glowMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x88ff88 : 0x00ff44});
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5*scale,0.5*scale,0.5*scale), skinMat);
+    head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
+    // Glowing eyes
+    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x44ff44 : 0x00ff00});
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale), eyeMat);
+    eyeL.position.set(-0.12*scale,1.85*scale,0.26*scale); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.12*scale; group.add(eyeR);
+    // Hood/robe — large dark torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7*scale,1.0*scale,0.5*scale), robeMat);
+    torso.position.y = 1.1*scale; torso.castShadow = true; group.add(torso);
+    // Glowing orb in chest
+    const orb = new THREE.Mesh(new THREE.BoxGeometry(0.15*scale,0.15*scale,0.15*scale), glowMat);
+    orb.position.set(0, 1.2*scale, 0.26*scale); group.add(orb);
+    // Arms reaching forward
+    const armGeo = new THREE.BoxGeometry(0.2*scale,0.7*scale,0.2*scale);
+    const armL = new THREE.Mesh(armGeo, robeMat); armL.position.set(-0.4*scale,1.3*scale,0.3*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(armGeo, robeMat); armR.position.set(0.4*scale,1.3*scale,0.3*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    // Legs
+    const legGeo = new THREE.BoxGeometry(0.25*scale,0.85*scale,0.25*scale);
+    const legL = new THREE.Mesh(legGeo, robeMat); legL.position.set(-0.15*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, robeMat); legR.position.set(0.15*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, isNecromancer: true };
+    return group;
+  }
+
+  createExploderMesh() {
+    const group = new THREE.Group();
+    const scale = 1.0;
+    const bodyMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xff6644 : 0x8a0a0a});
+    const headMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffaa44 : 0x4a0a0a});
+    const fuseMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xffff00 : 0xff3300});
+    // Round-ish bloated body
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6*scale,0.5*scale,0.5*scale), headMat);
+    head.position.y = 1.7*scale; head.castShadow = true; group.add(head);
+    // Glowing red eyes
+    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xff8800 : 0xff0000});
+    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12*scale,0.12*scale,0.06*scale), eyeMat);
+    eyeL.position.set(-0.13*scale,1.75*scale,0.27*scale); group.add(eyeL);
+    const eyeR = eyeL.clone(); eyeR.position.x = 0.13*scale; group.add(eyeR);
+    // Big bloated torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8*scale,0.9*scale,0.7*scale), bodyMat);
+    torso.position.y = 1.0*scale; torso.castShadow = true; group.add(torso);
+    // Glowing fuse on top of head
+    const fuse = new THREE.Mesh(new THREE.BoxGeometry(0.08*scale,0.25*scale,0.08*scale), fuseMat);
+    fuse.position.set(0, 2.1*scale, 0); group.add(fuse);
+    // Short stubby arms
+    const armGeo = new THREE.BoxGeometry(0.25*scale,0.45*scale,0.25*scale);
+    const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(-0.5*scale,1.2*scale,0.2*scale); armL.rotation.x = -Math.PI/3; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(0.5*scale,1.2*scale,0.2*scale); armR.rotation.x = -Math.PI/3; armR.castShadow = true; group.add(armR);
+    // Short stubby legs
+    const legGeo = new THREE.BoxGeometry(0.3*scale,0.55*scale,0.3*scale);
+    const legL = new THREE.Mesh(legGeo, bodyMat); legL.position.set(-0.18*scale,0.275*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(legGeo, bodyMat); legR.position.set(0.18*scale,0.275*scale,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, fuse, isExploder: true };
+    return group;
+  }
+
   createCreepyZombieMesh(reviveCount = 0) {
     if (this.kidFriendly) return this.createZombieMesh();
     const group = new THREE.Group();
@@ -1508,6 +1571,8 @@ class ZombieMultiplayerClient {
     if (type === 'skeleton') return this.createSkeletonMesh();
     if (type === 'guard') return this.createGuardMesh();
     if (type === 'creepy') return this.createCreepyZombieMesh(creepyRevive);
+    if (type === 'necromancer') return this.createNecromancerMesh();
+    if (type === 'exploder') return this.createExploderMesh();
     return this.createZombieMesh();
   }
 
@@ -1569,7 +1634,7 @@ class ZombieMultiplayerClient {
 
   // ─── Scene sync ───
   // Map short type char to full type name
-  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss' };
+  static TYPE_MAP = { n: 'normal', b: 'buff', s: 'skeleton', g: 'guard', c: 'creepy', k: 'skeletonBoss', e: 'exploder', m: 'necromancer' };
 
   updateScene(state, dt) {
     const TYPE_MAP = ZombieMultiplayerClient.TYPE_MAP;
@@ -1608,7 +1673,7 @@ class ZombieMultiplayerClient {
         mesh = this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
-        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : 2.3)));
+        const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' ? 2.5 : 2.3))));
         const hb = this.createHealthBar(hbY);
         mesh.add(hb);
         mesh.userData.healthBar = hb;
@@ -1665,6 +1730,16 @@ class ZombieMultiplayerClient {
       }
       if (z.rng) {
         this.spawnRangedEffect(z.x, 3.0, z.z, z.r || 0);
+      }
+      // Exploder explosion effect
+      if (z.exp) {
+        this.spawnExplosionEffect(z.x, z.z);
+      }
+      // Creepy zombie invisibility — hide mesh when invisible
+      if (z.inv) {
+        mesh.visible = false;
+      } else {
+        mesh.visible = true;
       }
       if (z.crk) {
         this.spawnCrackEffect(z.x, z.z, z.cdx, z.cdz, z.clen);
@@ -2586,6 +2661,34 @@ class ZombieMultiplayerClient {
     this.bullets.push({ mesh: ring, life: 0.6, maxLife: 0.6, isShockwave: true });
   }
 
+  spawnExplosionEffect(x, z) {
+    // Large expanding fireball ring
+    const expColor = this.kidFriendly ? 0xff8844 : 0xff3300;
+    const ringMat = new THREE.MeshBasicMaterial({ color: expColor, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 1.0, 20), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(x, 0.1, z);
+    this.scene.add(ring);
+    this.bullets.push({ mesh: ring, life: 0.5, maxLife: 0.5, isShockwave: true });
+    // Particle debris
+    for (let i = 0; i < 12; i++) {
+      const debris = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.12, 0.12),
+        new THREE.MeshBasicMaterial({ color: this.kidFriendly ? 0xffaa44 : 0xaa2200, transparent: true, opacity: 0.9 })
+      );
+      debris.position.set(x, 1.0, z);
+      const vx = (Math.random() - 0.5) * 10;
+      const vy = 4 + Math.random() * 6;
+      const vz = (Math.random() - 0.5) * 10;
+      this.scene.add(debris);
+      this.bullets.push({ mesh: debris, life: 0.8, maxLife: 0.8, isParticle: true, vx, vy, vz, gravity: true });
+    }
+    if (this.myPlayer) {
+      const d = Math.hypot(x - this.myPlayer.x, z - this.myPlayer.z);
+      if (d < 10) this.cameraShake = Math.max(this.cameraShake, 0.8 * (1 - d / 10));
+    }
+  }
+
   spawnCrackEffect(x, z, dx, dz, length) {
     const len = length || 30;
     // Main crack line — dark jagged line on ground
@@ -3266,6 +3369,14 @@ class ZombieMultiplayerClient {
       html += `<div class="shop-item" data-action="spawnEgg" data-key="buff" style="border-color:#cc6600;">
         <span>💪 Buff Egg<br><span style="font-size:10px;color:#666;">Spawn a buff zombie</span></span>
         <span style="font-size:10px;color:#666;">[,]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="necromancer" style="border-color:#6644aa;">
+        <span>🔮 Necromancer Egg<br><span style="font-size:10px;color:#666;">Revives dead zombies</span></span>
+        <span style="font-size:10px;color:#666;">[click]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="exploder" style="border-color:#8a0a0a;">
+        <span>💣 Exploder Egg<br><span style="font-size:10px;color:#666;">Explodes on contact</span></span>
+        <span style="font-size:10px;color:#666;">[click]</span>
       </div>`;
     }
     html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle <kbd>L</kbd>Sniper · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
