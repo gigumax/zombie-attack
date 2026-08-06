@@ -685,7 +685,7 @@ class ZombieMultiplayerClient {
         this.toggleWorldMap();
         e.preventDefault();
       }
-      if (e.code === 'F5' && this.playing) {
+      if (e.code === 'Slash' && this.playing) {
         this.socket.emit('toggleSpawnerMode');
         e.preventDefault();
       }
@@ -1674,7 +1674,7 @@ class ZombieMultiplayerClient {
           ud.head.rotation.y *= 0.8;
         }
       }
-      // Camera shake when a creepy zombie attacks you
+      // Zombie attacks you
       if (z.atk && this.myPlayer) {
         const d = Math.hypot(z.x - this.myPlayer.x, z.z - this.myPlayer.z);
         if (d < 5) this.cameraShake = 0.4;
@@ -3202,11 +3202,11 @@ class ZombieMultiplayerClient {
         <span>${isSpawner?'FREE':item.price+'g'}</span>
       </div>`;
     }
-    // Spawner mode section
-    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Spawner Mode</div>';
+    // Creative mode section
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Creative Mode</div>';
     html += `<div class="shop-item ${isSpawner?'equipped':''}" style="${isSpawner?'border-color:#2ecc71;':''}">
-      <span>Spawner Mode ${isSpawner?'<span style="color:#2ecc71;font-size:10px;">ACTIVE</span>':'<span style="color:#666;font-size:10px;">OFF</span>'}<br><span style="font-size:10px;color:#666;">Invincible, free purchases, spawn eggs</span></span>
-      <span style="font-size:10px;color:#666;">[F5]</span>
+      <span>Creative Mode ${isSpawner?'<span style="color:#2ecc71;font-size:10px;">ACTIVE</span>':'<span style="color:#666;font-size:10px;">OFF</span>'}<br><span style="font-size:10px;color:#666;">Invincible, free purchases, spawn eggs</span></span>
+      <span style="font-size:10px;color:#666;">[/]</span>
     </div>`;
     if (isSpawner) {
       html += `<div class="shop-item" data-action="spawnEgg" data-key="zombie" style="border-color:#4a7a4a;">
@@ -3222,7 +3222,7 @@ class ZombieMultiplayerClient {
         <span style="font-size:10px;color:#666;">[9]</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>F5</kbd>Spawner</div>`;
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
     el.innerHTML = html;
   }
 
