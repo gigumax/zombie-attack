@@ -314,7 +314,7 @@ function spawnEgg(playerId, eggType) {
   } else if (eggType === 'friendly') {
     zombies.push({
       id: nextZombieId++, x, z, type: 'normal',
-      health: CONFIG.zombieHealth * 5, maxHealth: CONFIG.zombieHealth * 5,
+      health: 75, maxHealth: 75,
       speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.2,
       attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
       isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
@@ -2088,7 +2088,7 @@ function applyPowerUp(p, type) {
       break;
     case 'necroSkull':
       // Spawn 3 friendly zombie allies that follow player and attack all zombies
-      const allyHealth = CONFIG.zombieHealth * 5;
+      const allyHealth = 75;
       const allyDamage = CONFIG.zombieDamage * 3;
       for (let ai = 0; ai < 3; ai++) {
         const aAngle = (ai / 3) * Math.PI * 2;
