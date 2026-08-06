@@ -208,7 +208,6 @@ function spawnZombie() {
   const r = Math.random();
   if (wave >= 4 && r < 0.15) type = 'skeleton';
   else if (wave >= 3 && r < 0.35) type = 'buff';
-  else if (wave >= 2 && r < 0.20 && !anyKidFriendly()) type = 'creepy';
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
@@ -222,12 +221,11 @@ function spawnZombie() {
 
   if (type === 'buff') { health *= 3; damage *= 2; attackRange *= 1.3; }
   else if (type === 'skeleton') { health *= 0.6; damage *= 1.2; attackRange *= 1.2; }
-  else if (type === 'creepy') { health *= 1.5; damage *= 1.8; attackRange *= 1.5; }
 
   zombies.push({
     id: nextZombieId++, x, z, type,
     health, maxHealth: health,
-    speed: type === 'skeleton' ? speed * 1.6 : type === 'creepy' ? speed * 3.0 : type === 'buff' ? speed * 0.75 : speed,
+    speed: type === 'skeleton' ? speed * 1.6 : type === 'buff' ? speed * 0.75 : speed,
     damage, attackRange, attackTimer: 0,
     walkPhase: Math.random() * Math.PI * 2,
     isBoss: false, hasKey: false,
