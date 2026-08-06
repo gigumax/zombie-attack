@@ -702,22 +702,22 @@ function unlockCell(playerId) {
   escapeStep = 'fight';
   for (const pl of Object.values(players)) pl.escapeStep = 'fight';
   for (let i = 0; i < 5; i++) spawnEscapeZombie();
-  // Spawn weapons in map corners for players to find
+  // Walking out of the cell — everyone gets their weapons back immediately
   weaponPickups = [];
-  const corners = [
-    { x:  25, z:  25 }, { x: -25, z:  25 },
-    { x:  25, z: -25 }, { x: -25, z: -25 },
-  ];
-  let cornerIdx = 0;
+  const gunOrder = ['rifle', 'shotgun', 'smg', 'katana', 'pistol', 'knife'];
   for (const pl of Object.values(players)) {
-    const savedGuns = Object.keys(pl.preEscapeOwned || {}).filter(g => g !== 'knife');
-    for (const gunName of savedGuns) {
-      const c = corners[cornerIdx % corners.length];
-      weaponPickups.push({ id: nextGoldId++, gun: gunName, x: c.x + (Math.random()-0.5)*6, z: c.z + (Math.random()-0.5)*6, playerId: pl.id });
-      cornerIdx++;
+    const saved = pl.preEscapeOwned || {};
+    for (const gunName of Object.keys(saved)) pl.ownedGuns[gunName] = true;
+    for (const g of gunOrder) {
+      if (pl.ownedGuns[g]) { pl.currentGun = g; break; }
     }
+    const gun = GUNS[pl.currentGun];
+    pl.ammo = gun.melee ? Infinity : getGunStat(pl, 'magSize');
+    pl.reserveAmmo = gun.melee ? Infinity : getGunStat(pl, 'magSize') * 3;
+    pl.reloading = false;
+    sendPlayerMeta(pl.id);
   }
-  io.emit('escapeUpdate', 'ALERT! The cell is open. 5 zombies are coming in! Find your weapons in the corners — and use the key once more on the cage to free your zombie buddies!');
+  io.emit('escapeUpdate', 'ALERT! The cell is open — you grabbed your weapons back! 5 zombies are coming in! Use the key once more on the cage to free your zombie buddies!');
 }
 
 function unlockCage(playerId) {

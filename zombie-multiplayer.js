@@ -238,7 +238,7 @@ class ZombieMultiplayerClient {
 
     this.socket.on('escapeStart', (data) => {
       const kidText = this.kidFriendly
-        ? 'Oh no! The big boss bumped you into a cozy room! Your toy blaster is gone, but you still have your trusty foam knife. A silly guard is holding the shiny key — bonk them to get it! After you escape, find your toys in the corners of the yard!'
+        ? 'Oh no! The big boss bumped you into a cozy room! Your toy blaster is gone, but you still have your trusty foam knife. A silly guard is holding the shiny key — bonk them to get it! Open the door and you get all your toys back!'
         : data.text;
       document.getElementById('escape-overlay').textContent = kidText;
       document.getElementById('escape-overlay').classList.remove('hidden');
