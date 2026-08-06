@@ -804,7 +804,7 @@ function getLookDir(p, spread = 0) {
 
 function rayHitZombie(p, dir, z, maxDist) {
   // Simple ray-cylinder intersection (zombie at z.x, z.z with radius ~0.6, height ~2.2)
-  const radius = z.isBoss ? 1.5 : z.type === 'buff' ? 0.9 : 0.5;
+  const radius = z.isBoss ? 1.5 : z.type === 'buff' ? 0.9 : z.isCreepyBoss ? 1.2 : 0.4;
   const height = z.isBoss ? 6.6 : z.type === 'buff' ? 2.5 : 2.2;
 
   // Ray: P = origin + t * dir

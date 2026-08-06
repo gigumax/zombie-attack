@@ -2881,7 +2881,7 @@ class ZombieMultiplayerClient {
     }
     // Reuse shared geometries AND materials to reduce GC pressure
     if (!this._holeGeo) this._holeGeo = new THREE.SphereGeometry(0.08, 6, 6);
-    if (!this._ringGeo) this._ringGeo = new THREE.CircleGeometry(0.2, 8);
+    if (!this._ringGeo) this._ringGeo = new THREE.CircleGeometry(0.12, 8);
     if (!this._holeMats) {
       const hc = this.kidFriendly ? 0x3366cc : 0xcc0000;
       const rc = this.kidFriendly ? 0x3366cc : 0xaa0000;
@@ -2906,9 +2906,19 @@ class ZombieMultiplayerClient {
     // If zid is valid, attach to zombie mesh so hole follows the zombie
     if (zid !== undefined && zid >= 0 && this.zombieMeshes[zid]) {
       const zMesh = this.zombieMeshes[zid];
+      // Push hole slightly toward zombie center so it sits on the body surface, not floating in front
+      const zcx = zMesh.position.x, zcz = zMesh.position.z;
+      const pushDx = zcx - x, pushDz = zcz - z;
+      const pushLen = Math.hypot(pushDx, pushDz);
+      const pushAmount = 0.15; // pull hole 0.15 units toward zombie center
+      let adjX = x, adjZ = z;
+      if (pushLen > 0.001) {
+        adjX = x + (pushDx / pushLen) * pushAmount;
+        adjZ = z + (pushDz / pushLen) * pushAmount;
+      }
       // Compute local position manually (inverse Y rotation: localX = dx*cos - dz*sin, localZ = dx*sin + dz*cos)
-      const dx = x - zMesh.position.x;
-      const dz = z - zMesh.position.z;
+      const dx = adjX - zcx;
+      const dz = adjZ - zcz;
       const cosY = Math.cos(zMesh.rotation.y);
       const sinY = Math.sin(zMesh.rotation.y);
       const sc = zMesh.scale.x || 1;
