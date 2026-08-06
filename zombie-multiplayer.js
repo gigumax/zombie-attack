@@ -685,6 +685,16 @@ class ZombieMultiplayerClient {
         this.toggleWorldMap();
         e.preventDefault();
       }
+      if (e.code === 'F5' && this.playing) {
+        this.socket.emit('toggleSpawnerMode');
+        e.preventDefault();
+      }
+      // Spawn eggs — only in spawner mode
+      if (this.myPlayer && this.myPlayer.sp && this.playing) {
+        if (e.code === 'Digit7') this.socket.emit('spawnEgg', 'zombie');
+        if (e.code === 'Digit8') this.socket.emit('spawnEgg', 'skeleton');
+        if (e.code === 'Digit9') this.socket.emit('spawnEgg', 'creepy');
+      }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
       if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
@@ -2028,8 +2038,9 @@ class ZombieMultiplayerClient {
           const rT = performance.now() / 1000 - ud.reloadStart;
           const rPhase = Math.min(rT * 3, Math.PI);
           const dip = Math.sin(rPhase) * 0.2;
-          ud.gunGroup.position.set(0.45, 1.25 - dip, 0.1);
+          ud.gunGroup.position.set(-0.45, 1.25 - dip, 0.1);
           ud.gunGroup.rotation.x = -0.15 - dip * 0.8; // dip down for reload
+          ud.gunGroup.rotation.y = Math.PI; // keep barrel flipped
           ud.gunGroup.rotation.z = dip * 0.3; // tilt gun
           if (ud.armR) ud.armR.rotation.x = -1.2 - dip;
           if (ud.armL) {
@@ -2046,8 +2057,9 @@ class ZombieMultiplayerClient {
         } else {
           ud.reloadStart = 0;
           // Idle / walking — gun held forward and up
-          ud.gunGroup.position.set(0.45, 1.25, 0.1);
+          ud.gunGroup.position.set(-0.45, 1.25, 0.1);
           ud.gunGroup.rotation.x = -0.15; // barrel forward, slight upward aim
+          ud.gunGroup.rotation.y = Math.PI; // keep barrel flipped
           // Right arm holds gun
           if (ud.armR) ud.armR.rotation.x = -1.2;
           // Left arm: two-handed weapons hold barrel, pistol swings free
@@ -2360,9 +2372,12 @@ class ZombieMultiplayerClient {
     const handL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.16), handMat);
     handL.position.set(0, -0.03, -0.3); gunGroup.add(handL);
     gunGroup.userData = { handL };
-    // Position gun in right hand, pointing forward (barrel along -z) and slightly upward
-    gunGroup.position.set(0.45, 1.25, 0.1);
+    // Position gun so it appears on right side after mesh rotation.y = yaw + PI
+    // Gun is at local x=-0.45 (becomes world x=+0.45 after 180° rotation)
+    // Gun group rotated PI around Y so barrel points local +z (becomes world -z = look direction)
+    gunGroup.position.set(-0.45, 1.25, 0.1);
     gunGroup.rotation.x = -0.15; // slight upward aim
+    gunGroup.rotation.y = Math.PI; // flip so barrel points +z in local (forward after mesh rotation)
     group.add(gunGroup);
     const legGeo = new THREE.BoxGeometry(0.22, 0.75, 0.22);
     const legL = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color: col.pants})); legL.position.set(-0.15, 0.375, 0); legL.castShadow = true; group.add(legL);
@@ -3183,7 +3198,28 @@ class ZombieMultiplayerClient {
         <span>${item.price}g</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir</div>`;
+    // Spawner mode section
+    const isSpawner = p.sp === 1;
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Spawner Mode</div>';
+    html += `<div class="shop-item ${isSpawner?'equipped':''}" style="${isSpawner?'border-color:#2ecc71;':''}">
+      <span>Spawner Mode ${isSpawner?'<span style="color:#2ecc71;font-size:10px;">ACTIVE</span>':'<span style="color:#666;font-size:10px;">OFF</span>'}<br><span style="font-size:10px;color:#666;">Invincible, free purchases, spawn eggs</span></span>
+      <span style="font-size:10px;color:#666;">[F5]</span>
+    </div>`;
+    if (isSpawner) {
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="zombie" style="border-color:#4a7a4a;">
+        <span>🧟 Zombie Egg<br><span style="font-size:10px;color:#666;">Spawn a normal zombie</span></span>
+        <span style="font-size:10px;color:#666;">[7]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="skeleton" style="border-color:#aaaaaa;">
+        <span>💀 Skeleton Egg<br><span style="font-size:10px;color:#666;">Spawn a skeleton</span></span>
+        <span style="font-size:10px;color:#666;">[8]</span>
+      </div>`;
+      html += `<div class="shop-item" data-action="spawnEgg" data-key="creepy" style="border-color:#884488;">
+        <span>👹 Creepy Egg<br><span style="font-size:10px;color:#666;">Spawn a creepy zombie</span></span>
+        <span style="font-size:10px;color:#666;">[9]</span>
+      </div>`;
+    }
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>F5</kbd>Spawner</div>`;
     el.innerHTML = html;
   }
 

@@ -217,6 +217,7 @@ function createPlayer(id) {
     pendingEffects: [],
     paused: false,
     ready: false,
+    spawnerMode: false,
   };
 }
 
@@ -254,6 +255,42 @@ function spawnZombie() {
     lostLimbs: {}, limbDamage: {},
     specialAttackTimer: 2 + Math.random() * 2,
   });
+}
+
+function spawnEgg(playerId, eggType) {
+  const p = players[playerId];
+  if (!p || p.dead || !p.spawnerMode) return;
+  const x = p.x + Math.cos(p.yaw) * 3;
+  const z = p.z - Math.sin(p.yaw) * 3;
+  if (eggType === 'zombie') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'normal',
+      health: CONFIG.zombieHealth, maxHealth: CONFIG.zombieHealth,
+      speed: CONFIG.zombieSpeed, damage: CONFIG.zombieDamage, attackRange: CONFIG.zombieAttackRange,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 2 + Math.random() * 2,
+    });
+  } else if (eggType === 'skeleton') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'skeleton',
+      health: CONFIG.zombieHealth * 0.6, maxHealth: CONFIG.zombieHealth * 0.6,
+      speed: CONFIG.zombieSpeed * 1.6, damage: CONFIG.zombieDamage * 1.2, attackRange: CONFIG.zombieAttackRange * 1.2,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 3 + Math.random() * 2,
+    });
+  } else if (eggType === 'creepy') {
+    zombies.push({
+      id: nextZombieId++, x, z, type: 'creepy',
+      health: CONFIG.zombieHealth * 2, maxHealth: CONFIG.zombieHealth * 2,
+      speed: CONFIG.zombieSpeed * 3.0, damage: CONFIG.zombieDamage * 1.8, attackRange: CONFIG.zombieAttackRange * 1.5,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      specialAttackTimer: 2 + Math.random() * 2,
+      fromCreepyZone: true,
+    });
+  }
 }
 
 function spawnBoss() {
@@ -773,7 +810,7 @@ function rayHitPlayer(p, dir, target, maxDist) {
 }
 
 function damagePlayer(target, attackerId, damage) {
-  if (!target || target.dead || target.paused) return;
+  if (!target || target.dead || target.paused || target.spawnerMode) return;
   target.health -= damage;
   if (target.health <= 0) {
     target.health = 0;
@@ -894,8 +931,9 @@ function switchGun(playerId, gunName) {
 
 function buyGun(playerId, gunName) {
   const p = players[playerId];
-  if (!p || p.dead || p.ownedGuns[gunName] || p.gold < GUNS[gunName].price) return;
-  p.gold -= GUNS[gunName].price;
+  if (!p || p.dead || p.ownedGuns[gunName]) return;
+  if (!p.spawnerMode && p.gold < GUNS[gunName].price) return;
+  if (!p.spawnerMode) p.gold -= GUNS[gunName].price;
   p.ownedGuns[gunName] = true;
   switchGun(playerId, gunName);
 }
@@ -907,8 +945,8 @@ function buyUpgrade(playerId, key) {
   const lvl = p.upgrades[key];
   if (lvl >= up.maxLevel) return;
   const price = up.price * (lvl + 1);
-  if (p.gold < price) return;
-  p.gold -= price;
+  if (!p.spawnerMode && p.gold < price) return;
+  if (!p.spawnerMode) p.gold -= price;
   p.upgrades[key]++;
   if (key === 'health') p.health += 25;
   if (key === 'magSize') p.ammo = getGunStat(p, 'magSize');
@@ -920,8 +958,8 @@ function buyItem(playerId, itemKey) {
   const item = ITEMS[itemKey];
   if (!item) return;
   if (p.items[itemKey] >= item.maxStack) return;
-  if (p.gold < item.price) return;
-  p.gold -= item.price;
+  if (!p.spawnerMode && p.gold < item.price) return;
+  if (!p.spawnerMode) p.gold -= item.price;
   p.items[itemKey]++;
   sendPlayerMeta(playerId);
 }
@@ -1233,14 +1271,14 @@ function updateZombies(dt) {
 
   // Find nearest alive player for each zombie
   // Skip zombie AI entirely if all players are paused or not ready
-  const allPaused = Object.values(players).every(p => p.paused || p.dead || !p.ready);
+  const allPaused = Object.values(players).every(p => p.paused || p.dead || !p.ready || p.spawnerMode);
   if (allPaused) return;
 
   for (const z of zombies) {
     if (z.dying || z.reviving) continue; // skip dead/reviving zombies
     let target = null, minDist = Infinity;
     for (const p of Object.values(players)) {
-      if (p.dead || p.paused || !p.ready) continue;
+      if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
@@ -1381,7 +1419,7 @@ function updateZombies(dt) {
           z.slamEffect = 1;
           // Deal 200 damage to any player near the landing spot (within 3 units)
           for (const p of Object.values(players)) {
-            if (p.dead || p.paused || !p.ready) continue;
+            if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             const pd = Math.hypot(p.x - z.jumpTargetX, p.z - z.jumpTargetZ);
             if (pd < 3.0) {
               p.health -= 200;
@@ -1405,7 +1443,7 @@ function updateZombies(dt) {
           // Crack appears — damage any player standing on the line
           z.crackEffect = 1; // visual flag for client
           for (const p of Object.values(players)) {
-            if (p.dead || p.paused || !p.ready) continue;
+            if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             // Project player position onto crack line
             const px = p.x - z.x, pz = p.z - z.z;
             const t = px * z.crackDx + pz * z.crackDz; // projection along crack direction
@@ -1432,7 +1470,7 @@ function updateZombies(dt) {
         z.z += z.chargeDz * chargeSpeed * dt;
         // Check collision with any player
         for (const p of Object.values(players)) {
-          if (p.dead || p.paused || !p.ready) continue;
+          if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
           const pd = Math.hypot(p.x - z.x, p.z - z.z);
           if (pd < attackRange) {
             p.health -= z.damage;
@@ -1486,7 +1524,7 @@ function updateZombies(dt) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 2;
           // AoE damage to all nearby players
           for (const p of Object.values(players)) {
-            if (p.dead || p.paused || !p.ready) continue;
+            if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < attackRange * 1.3) {
               p.health -= z.damage * 1.5;
@@ -1715,6 +1753,7 @@ function gameLoop() {
       emo: p.emoji || '😀',
       col: p.colors || null,
       pau: p.paused ? 1 : 0,
+      sp: p.spawnerMode ? 1 : 0,
       it: p.items, icd: +p.itemCooldown.toFixed(2),
       eff: p.pendingEffects.length > 0 ? p.pendingEffects.map(e => {
         if (e.type === 'grenade') return { t:'g', x:+e.x.toFixed(2), z:+e.z.toFixed(2), tm:+e.timer.toFixed(2) };
@@ -1963,6 +2002,30 @@ io.on('connection', (socket) => {
     const gun = GUNS[p.currentGun];
     if (!gun || gun.melee) return;
     p.autoFire = !p.autoFire;
+  });
+  socket.on('toggleSpawnerMode', () => {
+    const p = players[socket.id];
+    if (!p || p.dead) return;
+    p.spawnerMode = !p.spawnerMode;
+    if (p.spawnerMode) {
+      p.health = p.maxHealth;
+      p.gold = 99999;
+      // Give all guns
+      for (const [key] of Object.entries(GUNS)) p.ownedGuns[key] = true;
+      // Max all upgrades
+      p.upgrades = { damage: 5, fireRate: 5, magSize: 5, health: 5 };
+      p.ammo = getGunStat(p, 'magSize');
+      p.reserveAmmo = 99999;
+      broadcastKillFeed(`${p.name} entered SPAWNER MODE — invincible, free purchases, spawn eggs!`);
+    } else {
+      p.gold = 0;
+      broadcastKillFeed(`${p.name} left spawner mode`);
+    }
+    sendPlayerMeta(socket.id);
+  });
+  socket.on('spawnEgg', (eggType) => {
+    if (typeof eggType !== 'string') return;
+    spawnEgg(socket.id, eggType);
   });
   socket.on('escapeInteract', () => {
     const p = players[socket.id];
