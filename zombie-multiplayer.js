@@ -1240,63 +1240,70 @@ class ZombieMultiplayerClient {
   createNecromancerMesh() {
     const group = new THREE.Group();
     const scale = 1.1;
-    const robeMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x6644aa : 0x2a0a3a});
-    const skinMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88dd88 : 0x4a6a4a});
-    const glowMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x88ff88 : 0x00ff44});
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5*scale,0.5*scale,0.5*scale), skinMat);
+    if (!this._necroCache) {
+      this._necroCache = {
+        headGeo: new THREE.BoxGeometry(0.5*scale,0.5*scale,0.5*scale),
+        eyeGeo: new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale),
+        torsoGeo: new THREE.BoxGeometry(0.7*scale,1.0*scale,0.5*scale),
+        orbGeo: new THREE.BoxGeometry(0.15*scale,0.15*scale,0.15*scale),
+        armGeo: new THREE.BoxGeometry(0.2*scale,0.7*scale,0.2*scale),
+        legGeo: new THREE.BoxGeometry(0.25*scale,0.85*scale,0.25*scale),
+        robeMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x6644aa : 0x2a0a3a}),
+        skinMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0x88dd88 : 0x4a6a4a}),
+        glowMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x88ff88 : 0x00ff44}),
+        eyeMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x44ff44 : 0x00ff00}),
+      };
+    }
+    const c = this._necroCache;
+    const head = new THREE.Mesh(c.headGeo, c.skinMat);
     head.position.y = 1.8*scale; head.castShadow = true; group.add(head);
-    // Glowing eyes
-    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0x44ff44 : 0x00ff00});
-    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.1*scale,0.1*scale,0.05*scale), eyeMat);
+    const eyeL = new THREE.Mesh(c.eyeGeo, c.eyeMat);
     eyeL.position.set(-0.12*scale,1.85*scale,0.26*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.12*scale; group.add(eyeR);
-    // Hood/robe — large dark torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7*scale,1.0*scale,0.5*scale), robeMat);
+    const torso = new THREE.Mesh(c.torsoGeo, c.robeMat);
     torso.position.y = 1.1*scale; torso.castShadow = true; group.add(torso);
-    // Glowing orb in chest
-    const orb = new THREE.Mesh(new THREE.BoxGeometry(0.15*scale,0.15*scale,0.15*scale), glowMat);
+    const orb = new THREE.Mesh(c.orbGeo, c.glowMat);
     orb.position.set(0, 1.2*scale, 0.26*scale); group.add(orb);
-    // Arms reaching forward
-    const armGeo = new THREE.BoxGeometry(0.2*scale,0.7*scale,0.2*scale);
-    const armL = new THREE.Mesh(armGeo, robeMat); armL.position.set(-0.4*scale,1.3*scale,0.3*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
-    const armR = new THREE.Mesh(armGeo, robeMat); armR.position.set(0.4*scale,1.3*scale,0.3*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
-    // Legs
-    const legGeo = new THREE.BoxGeometry(0.25*scale,0.85*scale,0.25*scale);
-    const legL = new THREE.Mesh(legGeo, robeMat); legL.position.set(-0.15*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
-    const legR = new THREE.Mesh(legGeo, robeMat); legR.position.set(0.15*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
-    group.userData = { armL, armR, legL, legR, head, isNecromancer: true };
+    const armL = new THREE.Mesh(c.armGeo, c.robeMat); armL.position.set(-0.4*scale,1.3*scale,0.3*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(c.armGeo, c.robeMat); armR.position.set(0.4*scale,1.3*scale,0.3*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    const legL = new THREE.Mesh(c.legGeo, c.robeMat); legL.position.set(-0.15*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(c.legGeo, c.robeMat); legR.position.set(0.15*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, isNecromancer: true, sharedGeo: true };
     return group;
   }
 
   createExploderMesh() {
     const group = new THREE.Group();
     const scale = 1.0;
-    const bodyMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xff6644 : 0x8a0a0a});
-    const headMat = new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffaa44 : 0x4a0a0a});
-    const fuseMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xffff00 : 0xff3300});
-    // Round-ish bloated body
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6*scale,0.5*scale,0.5*scale), headMat);
+    if (!this._exploderCache) {
+      this._exploderCache = {
+        headGeo: new THREE.BoxGeometry(0.6*scale,0.5*scale,0.5*scale),
+        eyeGeo: new THREE.BoxGeometry(0.12*scale,0.12*scale,0.06*scale),
+        torsoGeo: new THREE.BoxGeometry(0.8*scale,0.9*scale,0.7*scale),
+        fuseGeo: new THREE.BoxGeometry(0.08*scale,0.25*scale,0.08*scale),
+        armGeo: new THREE.BoxGeometry(0.25*scale,0.45*scale,0.25*scale),
+        legGeo: new THREE.BoxGeometry(0.3*scale,0.55*scale,0.3*scale),
+        bodyMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xff6644 : 0x8a0a0a}),
+        headMat: new THREE.MeshLambertMaterial({color: this.kidFriendly ? 0xffaa44 : 0x4a0a0a}),
+        fuseMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xffff00 : 0xff3300}),
+        eyeMat: new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xff8800 : 0xff0000}),
+      };
+    }
+    const c = this._exploderCache;
+    const head = new THREE.Mesh(c.headGeo, c.headMat);
     head.position.y = 1.7*scale; head.castShadow = true; group.add(head);
-    // Glowing red eyes
-    const eyeMat = new THREE.MeshBasicMaterial({color: this.kidFriendly ? 0xff8800 : 0xff0000});
-    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.12*scale,0.12*scale,0.06*scale), eyeMat);
+    const eyeL = new THREE.Mesh(c.eyeGeo, c.eyeMat);
     eyeL.position.set(-0.13*scale,1.75*scale,0.27*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.13*scale; group.add(eyeR);
-    // Big bloated torso
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.8*scale,0.9*scale,0.7*scale), bodyMat);
+    const torso = new THREE.Mesh(c.torsoGeo, c.bodyMat);
     torso.position.y = 1.0*scale; torso.castShadow = true; group.add(torso);
-    // Glowing fuse on top of head
-    const fuse = new THREE.Mesh(new THREE.BoxGeometry(0.08*scale,0.25*scale,0.08*scale), fuseMat);
+    const fuse = new THREE.Mesh(c.fuseGeo, c.fuseMat);
     fuse.position.set(0, 2.1*scale, 0); group.add(fuse);
-    // Short stubby arms
-    const armGeo = new THREE.BoxGeometry(0.25*scale,0.45*scale,0.25*scale);
-    const armL = new THREE.Mesh(armGeo, bodyMat); armL.position.set(-0.5*scale,1.2*scale,0.2*scale); armL.rotation.x = -Math.PI/3; armL.castShadow = true; group.add(armL);
-    const armR = new THREE.Mesh(armGeo, bodyMat); armR.position.set(0.5*scale,1.2*scale,0.2*scale); armR.rotation.x = -Math.PI/3; armR.castShadow = true; group.add(armR);
-    // Short stubby legs
-    const legGeo = new THREE.BoxGeometry(0.3*scale,0.55*scale,0.3*scale);
-    const legL = new THREE.Mesh(legGeo, bodyMat); legL.position.set(-0.18*scale,0.275*scale,0); legL.castShadow = true; group.add(legL);
-    const legR = new THREE.Mesh(legGeo, bodyMat); legR.position.set(0.18*scale,0.275*scale,0); legR.castShadow = true; group.add(legR);
-    group.userData = { armL, armR, legL, legR, head, fuse, isExploder: true };
+    const armL = new THREE.Mesh(c.armGeo, c.bodyMat); armL.position.set(-0.5*scale,1.2*scale,0.2*scale); armL.rotation.x = -Math.PI/3; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(c.armGeo, c.bodyMat); armR.position.set(0.5*scale,1.2*scale,0.2*scale); armR.rotation.x = -Math.PI/3; armR.castShadow = true; group.add(armR);
+    const legL = new THREE.Mesh(c.legGeo, c.bodyMat); legL.position.set(-0.18*scale,0.275*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(c.legGeo, c.bodyMat); legR.position.set(0.18*scale,0.275*scale,0); legR.castShadow = true; group.add(legR);
+    group.userData = { armL, armR, legL, legR, head, fuse, isExploder: true, sharedGeo: true };
     return group;
   }
 
@@ -1304,126 +1311,150 @@ class ZombieMultiplayerClient {
     if (this.kidFriendly) return this.createZombieMesh();
     const group = new THREE.Group();
     const scale = 1.25 + reviveCount * 0.2;
-    // Much darker, sickly skin with red emissive glow
-    const darkness = Math.max(0, 0x020202 - reviveCount * 0x010101);
-    const skinMat = new THREE.MeshLambertMaterial({color: darkness, emissive: 0x330000, emissiveIntensity: 0.6 + reviveCount * 0.2});
-    const darkMat = new THREE.MeshLambertMaterial({color: Math.max(0, 0x010101 - reviveCount * 0x010101), emissive: 0x110000, emissiveIntensity: 0.3});
-    // Oversized, hunched head — tilted forward more
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.6*scale,0.8*scale,0.6*scale), skinMat);
+
+    // Cache shared geometries/materials for reviveCount=0 (most common)
+    if (!this._creepyCache) {
+      this._creepyCache = {
+        headGeo: new THREE.BoxGeometry(0.6, 0.8, 0.6),
+        eyeGeo: new THREE.BoxGeometry(0.18, 0.18, 0.1),
+        glowGeo: new THREE.SphereGeometry(0.16, 6, 6),
+        fangGeo: new THREE.ConeGeometry(0.04, 0.15, 3),
+        jawGeo: new THREE.BoxGeometry(0.42, 0.18, 0.35),
+        torsoGeo: new THREE.BoxGeometry(0.45, 0.9, 0.32),
+        ribGeo: new THREE.BoxGeometry(0.35, 0.05, 0.05),
+        armGeo: new THREE.BoxGeometry(0.12, 1.0, 0.12),
+        clawGeo: new THREE.ConeGeometry(0.03, 0.28, 3),
+        legGeo: new THREE.BoxGeometry(0.15, 0.85, 0.15),
+        spikeGeo: new THREE.ConeGeometry(0.07, 0.35, 4),
+        veinGeo: new THREE.BoxGeometry(0.025, 0.35, 0.025),
+        tendrilGeo: new THREE.CylinderGeometry(0.02, 0.05, 0.5, 4),
+        boneGeo: new THREE.CylinderGeometry(0.04, 0.06, 0.3, 4),
+        dripGeo: new THREE.SphereGeometry(0.045, 4, 4),
+        oozeGeo: new THREE.BoxGeometry(0.06, 0.15, 0.04),
+        skinMat: new THREE.MeshLambertMaterial({color: 0x020202, emissive: 0x330000, emissiveIntensity: 0.6}),
+        darkMat: new THREE.MeshLambertMaterial({color: 0x010101, emissive: 0x110000, emissiveIntensity: 0.3}),
+        eyeMat: new THREE.MeshBasicMaterial({color: 0xff0000}),
+        glowMat: new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.5}),
+        fangMat: new THREE.MeshBasicMaterial({color: 0xddccaa}),
+        jawMat: new THREE.MeshLambertMaterial({color: 0x020202, emissive: 0x220000, emissiveIntensity: 0.6}),
+        ribMat: new THREE.MeshBasicMaterial({color: 0xaaaa88}),
+        clawMat: new THREE.MeshBasicMaterial({color: 0x0a0a0a}),
+        bloodMat: new THREE.MeshBasicMaterial({color: 0x880000}),
+        spikeMat: new THREE.MeshBasicMaterial({color: 0x2a0a0a}),
+        veinMat: new THREE.MeshBasicMaterial({color: 0xaa0000, transparent: true, opacity: 0.7}),
+        tendrilMat: new THREE.MeshLambertMaterial({color: 0x050000, emissive: 0x330000, emissiveIntensity: 0.5}),
+        oozeMat: new THREE.MeshBasicMaterial({color: 0x000000, transparent: true, opacity: 0.8}),
+        boneMat: new THREE.MeshBasicMaterial({color: 0xccccaa}),
+      };
+    }
+    const c = this._creepyCache;
+    const useCache = reviveCount === 0;
+    // For revived creepy zombies, adjust materials but still use cached geometries
+    const skinMat = useCache ? c.skinMat : new THREE.MeshLambertMaterial({color: 0x020202, emissive: 0x330000, emissiveIntensity: 0.6 + reviveCount * 0.2});
+    const darkMat = useCache ? c.darkMat : new THREE.MeshLambertMaterial({color: 0x010101, emissive: 0x110000, emissiveIntensity: 0.3});
+    const spikeMat = useCache ? c.spikeMat : new THREE.MeshBasicMaterial({color: 0x660000});
+    const glowMat = useCache ? c.glowMat : new THREE.MeshBasicMaterial({color: 0xff0000, transparent: true, opacity: 0.5 + reviveCount * 0.15});
+
+    // Oversized, hunched head
+    const head = new THREE.Mesh(useCache ? c.headGeo : new THREE.BoxGeometry(0.6*scale,0.8*scale,0.6*scale), skinMat);
     head.position.y = 1.9*scale; head.castShadow = true; head.rotation.x = 0.4; group.add(head);
     const headBottom = 1.9*scale - 0.4*scale;
-    // Glowing red eyes — piercing, with halos
-    const eyeColor = 0xff0000;
-    const eyeMat = new THREE.MeshBasicMaterial({color: eyeColor});
-    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.18*scale,0.18*scale,0.1*scale), eyeMat);
+    // Glowing red eyes
+    const eyeL = new THREE.Mesh(useCache ? c.eyeGeo : new THREE.BoxGeometry(0.18*scale,0.18*scale,0.1*scale), c.eyeMat);
     eyeL.position.set(-0.14*scale,1.98*scale,0.31*scale); group.add(eyeL);
     const eyeR = eyeL.clone(); eyeR.position.x = 0.14*scale; group.add(eyeR);
-    // Bigger glowing red eye halos
-    const glowMat = new THREE.MeshBasicMaterial({color: eyeColor, transparent:true, opacity:0.5 + reviveCount * 0.15});
-    const glowL = new THREE.Mesh(new THREE.SphereGeometry(0.16*scale, 6, 6), glowMat);
+    // Eye halos
+    const glowL = new THREE.Mesh(useCache ? c.glowGeo : new THREE.SphereGeometry(0.16*scale, 6, 6), glowMat);
     glowL.position.set(-0.14*scale,1.98*scale,0.32*scale); group.add(glowL);
     const glowR = glowL.clone(); glowR.position.x = 0.14*scale; group.add(glowR);
-    // Jagged fangs — upper fangs hanging from head bottom, more of them
-    const fangMat = new THREE.MeshBasicMaterial({color:0xddccaa});
-    for (let i = -3; i <= 3; i++) {
-      const fang = new THREE.Mesh(new THREE.ConeGeometry(0.04*scale, 0.15*scale, 3), fangMat);
-      fang.position.set(i * 0.055*scale, headBottom - 0.07*scale, 0.28*scale); fang.rotation.x = Math.PI; group.add(fang);
+    // Jagged fangs — reduced to 5 upper + 5 lower
+    for (let i = -2; i <= 2; i++) {
+      const fang = new THREE.Mesh(useCache ? c.fangGeo : new THREE.ConeGeometry(0.04*scale, 0.15*scale, 3), c.fangMat);
+      fang.position.set(i * 0.07*scale, headBottom - 0.07*scale, 0.28*scale); fang.rotation.x = Math.PI; group.add(fang);
     }
-    // Lower jaw with bottom fangs — positions RELATIVE to jawGroup pivot
-    const jawMat = new THREE.MeshLambertMaterial({color:0x020202, emissive:0x220000, emissiveIntensity:0.6});
+    // Lower jaw with fangs
     const jawGroup = new THREE.Group();
     jawGroup.position.set(0, headBottom, 0.27*scale);
-    const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.42*scale, 0.18*scale, 0.35*scale), jawMat);
+    const jaw = new THREE.Mesh(useCache ? c.jawGeo : new THREE.BoxGeometry(0.42*scale, 0.18*scale, 0.35*scale), c.jawMat);
     jaw.position.set(0, -0.12*scale, 0.0); jawGroup.add(jaw);
-    for (let i = -3; i <= 3; i++) {
-      const fang = new THREE.Mesh(new THREE.ConeGeometry(0.04*scale, 0.15*scale, 3), fangMat);
-      fang.position.set(i * 0.055*scale, -0.22*scale, 0.03*scale); jawGroup.add(fang);
+    for (let i = -2; i <= 2; i++) {
+      const fang = new THREE.Mesh(useCache ? c.fangGeo : new THREE.ConeGeometry(0.04*scale, 0.15*scale, 3), c.fangMat);
+      fang.position.set(i * 0.07*scale, -0.22*scale, 0.03*scale); jawGroup.add(fang);
     }
     group.add(jawGroup);
-    // Hunched torso — leaning forward more, thinner
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.45*scale,0.9*scale,0.32*scale), darkMat);
+    // Hunched torso
+    const torso = new THREE.Mesh(useCache ? c.torsoGeo : new THREE.BoxGeometry(0.45*scale,0.9*scale,0.32*scale), darkMat);
     torso.position.y = 1.15*scale; torso.rotation.x = 0.3; torso.castShadow = true; group.add(torso);
-    // Exposed ribs — bone-like plates on chest
-    const ribMat = new THREE.MeshBasicMaterial({color: 0xaaaa88});
-    for (let i = 0; i < 4; i++) {
-      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.35*scale, 0.05*scale, 0.05*scale), ribMat);
-      rib.position.set(0, 1.4*scale - i*0.15*scale, 0.2*scale);
+    // Exposed ribs — 3 instead of 4
+    for (let i = 0; i < 3; i++) {
+      const rib = new THREE.Mesh(useCache ? c.ribGeo : new THREE.BoxGeometry(0.35*scale, 0.05*scale, 0.05*scale), c.ribMat);
+      rib.position.set(0, 1.4*scale - i*0.18*scale, 0.2*scale);
       group.add(rib);
     }
-    // Long thin arms reaching forward — longer and thinner, clawed
-    const armGeo = new THREE.BoxGeometry(0.12*scale,1.0*scale,0.12*scale);
-    const armL = new THREE.Mesh(armGeo, skinMat); armL.position.set(-0.35*scale,1.3*scale,0.5*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
-    const armR = new THREE.Mesh(armGeo, skinMat); armR.position.set(0.35*scale,1.3*scale,0.5*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
-    // Longer, sharper claws — more of them
-    const clawMat = new THREE.MeshBasicMaterial({color:0x0a0a0a});
+    // Long thin arms
+    const armL = new THREE.Mesh(useCache ? c.armGeo : new THREE.BoxGeometry(0.12*scale,1.0*scale,0.12*scale), skinMat); armL.position.set(-0.35*scale,1.3*scale,0.5*scale); armL.rotation.x = -Math.PI/2; armL.castShadow = true; group.add(armL);
+    const armR = new THREE.Mesh(useCache ? c.armGeo : new THREE.BoxGeometry(0.12*scale,1.0*scale,0.12*scale), skinMat); armR.position.set(0.35*scale,1.3*scale,0.5*scale); armR.rotation.x = -Math.PI/2; armR.castShadow = true; group.add(armR);
+    // Claws — 3 per hand instead of 5
     for (const armX of [-0.35, 0.35]) {
-      for (let c = -2; c <= 2; c++) {
-        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.03*scale, 0.28*scale, 3), clawMat);
-        claw.position.set(armX*scale + c*0.04*scale, 1.3*scale, 0.95*scale);
+      for (let cl = -1; cl <= 1; cl++) {
+        const claw = new THREE.Mesh(useCache ? c.clawGeo : new THREE.ConeGeometry(0.03*scale, 0.28*scale, 3), c.clawMat);
+        claw.position.set(armX*scale + cl*0.05*scale, 1.3*scale, 0.95*scale);
         claw.rotation.x = -Math.PI/2;
         group.add(claw);
       }
     }
-    // Thin, twisted legs
-    const legGeo = new THREE.BoxGeometry(0.15*scale,0.85*scale,0.15*scale);
-    const legL = new THREE.Mesh(legGeo, skinMat); legL.position.set(-0.12*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
-    const legR = new THREE.Mesh(legGeo, skinMat); legR.position.set(0.12*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
-    // Lots of blood drips — from jaw, body, arms
-    const bloodMat = new THREE.MeshBasicMaterial({color:0x880000});
-    for (let i = 0; i < 12; i++) {
-      const drip = new THREE.Mesh(new THREE.SphereGeometry(0.045*scale, 4, 4), bloodMat);
+    // Thin legs
+    const legL = new THREE.Mesh(useCache ? c.legGeo : new THREE.BoxGeometry(0.15*scale,0.85*scale,0.15*scale), skinMat); legL.position.set(-0.12*scale,0.425*scale,0); legL.castShadow = true; group.add(legL);
+    const legR = new THREE.Mesh(useCache ? c.legGeo : new THREE.BoxGeometry(0.15*scale,0.85*scale,0.15*scale), skinMat); legR.position.set(0.12*scale,0.425*scale,0); legR.castShadow = true; group.add(legR);
+    // Blood drips — reduced to 6 body + 3 jaw
+    for (let i = 0; i < 6; i++) {
+      const drip = new THREE.Mesh(useCache ? c.dripGeo : new THREE.SphereGeometry(0.045*scale, 4, 4), c.bloodMat);
       drip.position.set((Math.random()-0.5)*0.45*scale, 0.7*scale + Math.random()*0.6*scale, 0.2*scale + Math.random()*0.15*scale);
       group.add(drip);
     }
-    // Blood drips from jaw area — more
-    for (let i = 0; i < 6; i++) {
-      const drip = new THREE.Mesh(new THREE.SphereGeometry(0.04*scale, 4, 4), bloodMat);
+    for (let i = 0; i < 3; i++) {
+      const drip = new THREE.Mesh(useCache ? c.dripGeo : new THREE.SphereGeometry(0.04*scale, 4, 4), c.bloodMat);
       drip.position.set((Math.random()-0.5)*0.35*scale, headBottom - 0.25*scale - Math.random()*0.2*scale, 0.27*scale);
       group.add(drip);
     }
-    // More spikes on back — darker, more with revivals
-    const spikeMat = new THREE.MeshBasicMaterial({color: reviveCount > 0 ? 0x660000 : 0x2a0a0a});
-    const spikeCount = 8 + reviveCount * 4;
+    // Back spikes — reduced to 5
+    const spikeCount = 5 + reviveCount * 2;
     for (let i = 0; i < spikeCount; i++) {
-      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07*scale, 0.35*scale + reviveCount * 0.05, 4), spikeMat);
-      spike.position.set((Math.random()-0.5)*0.35*scale, 1.6*scale - i*0.12*scale, -0.25*scale);
+      const spike = new THREE.Mesh(useCache ? c.spikeGeo : new THREE.ConeGeometry(0.07*scale, 0.35*scale + reviveCount * 0.05, 4), spikeMat);
+      spike.position.set((Math.random()-0.5)*0.35*scale, 1.6*scale - i*0.16*scale, -0.25*scale);
       spike.rotation.x = -0.4;
       group.add(spike);
     }
-    // Glowing red veins on torso — more
-    const veinMat = new THREE.MeshBasicMaterial({color: 0xaa0000, transparent: true, opacity: 0.7});
-    for (let i = 0; i < 8; i++) {
-      const vein = new THREE.Mesh(new THREE.BoxGeometry(0.025*scale, 0.35*scale, 0.025*scale), veinMat);
+    // Red veins — reduced to 4
+    for (let i = 0; i < 4; i++) {
+      const vein = new THREE.Mesh(useCache ? c.veinGeo : new THREE.BoxGeometry(0.025*scale, 0.35*scale, 0.025*scale), c.veinMat);
       vein.position.set((Math.random()-0.5)*0.38*scale, 1.05*scale + Math.random()*0.35*scale, 0.18*scale);
       group.add(vein);
     }
-    // Antenna-like tendrils from head — more, longer
-    const tendrilMat = new THREE.MeshLambertMaterial({color: 0x050000, emissive: 0x330000, emissiveIntensity: 0.5});
-    for (let i = -2; i <= 2; i += 1) {
-      if (i === 0) continue;
-      const tendril = new THREE.Mesh(new THREE.CylinderGeometry(0.02*scale, 0.05*scale, 0.5*scale, 4), tendrilMat);
-      tendril.position.set(i * 0.12*scale, 2.35*scale, 0);
+    // Tendrils — 2 instead of 4
+    for (let i = -1; i <= 1; i += 2) {
+      const tendril = new THREE.Mesh(useCache ? c.tendrilGeo : new THREE.CylinderGeometry(0.02*scale, 0.05*scale, 0.5*scale, 4), c.tendrilMat);
+      tendril.position.set(i * 0.15*scale, 2.35*scale, 0);
       tendril.rotation.z = i * 0.25;
       group.add(tendril);
     }
-    // Dripping black ooze from eyes
-    const oozeMat = new THREE.MeshBasicMaterial({color: 0x000000, transparent: true, opacity: 0.8});
+    // Black ooze from eyes — 2 per eye instead of 3
     for (const eyeX of [-0.14, 0.14]) {
-      for (let j = 0; j < 3; j++) {
-        const ooze = new THREE.Mesh(new THREE.BoxGeometry(0.06*scale, 0.15*scale + j*0.08*scale, 0.04*scale), oozeMat);
+      for (let j = 0; j < 2; j++) {
+        const ooze = new THREE.Mesh(useCache ? c.oozeGeo : new THREE.BoxGeometry(0.06*scale, 0.15*scale + j*0.1*scale, 0.04*scale), c.oozeMat);
         ooze.position.set(eyeX*scale, 1.85*scale - j*0.12*scale, 0.31*scale);
         group.add(ooze);
       }
     }
-    // Bone fragments sticking out of shoulders
-    const boneMat = new THREE.MeshBasicMaterial({color: 0xccccaa});
+    // Bone fragments on shoulders
     for (const sx of [-0.3, 0.3]) {
-      const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.04*scale, 0.06*scale, 0.3*scale, 4), boneMat);
+      const bone = new THREE.Mesh(useCache ? c.boneGeo : new THREE.CylinderGeometry(0.04*scale, 0.06*scale, 0.3*scale, 4), c.boneMat);
       bone.position.set(sx*scale, 1.55*scale, -0.1*scale);
       bone.rotation.z = sx > 0 ? 0.5 : -0.5;
       group.add(bone);
     }
-    group.userData = { armL, armR, legL, legR, head, jawGroup, isCreepy: true };
+    if (useCache) group.userData.sharedGeo = true;
+    group.userData = { ...group.userData, armL, armR, legL, legR, head, jawGroup, isCreepy: true };
     return group;
   }
 

@@ -230,10 +230,10 @@ function anyKidFriendly() {
 function spawnZombie() {
   let type = 'normal';
   const r = Math.random();
-  if (wave >= 3 && r < 0.35) type = 'buff';
-  else if (wave >= 5 && r < 0.45) type = 'necromancer';
-  else if (wave >= 4 && r < 0.60) type = 'exploder';
-  else if (wave >= 3 && r < 0.90) type = 'creepy'; // 30% chance for creepy in grasslands
+  if (wave >= 3 && r < 0.20) type = 'buff';
+  else if (wave >= 5 && r < 0.28) type = 'necromancer';
+  else if (wave >= 4 && r < 0.38) type = 'exploder';
+  else if (wave >= 3 && r < 0.58) type = 'creepy'; // 20% chance for creepy in grasslands
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
@@ -398,6 +398,7 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   zombie.dying = true;
   zombie.deathTimer = 10;
   zombie.dead = true;
+  zombie.invisible = 0; // reveal creepy zombies on death
   // Launch corpse backward from shooter direction
   const launchSpeed = 12;
   zombie.corpseVx = (dirX || 0) * launchSpeed;
@@ -1296,6 +1297,9 @@ function updateZombies(dt) {
             z.speed *= 1.2;
             z.lostLimbs = {};
             z.limbDamage = {};
+            z.corpseVx = 0;
+            z.corpseVz = 0;
+            z.invisible = 1; // go invisible again on revive
             z.attackTimer = 1.0; // brief delay before attacking
             z.specialAttackTimer = 2 + Math.random();
             broadcastKillFeed(anyKidFriendly() ? `A spooky zombie got back up... creepier! (Round ${z.reviveCount})` : `CREEPY ZOMBIE REVIVED — EVEN CREEPIER! (Phase ${z.reviveCount})`);
@@ -1707,6 +1711,9 @@ function updateZombies(dt) {
               dz.dead = false;
               dz.health = dz.maxHealth * 0.5;
               dz.canRevive = false;
+              dz.corpseVx = 0;
+              dz.corpseVz = 0;
+              dz.invisible = 0;
               z.rangedEffect = 1; // visual: revive glow
               revived++;
             }
