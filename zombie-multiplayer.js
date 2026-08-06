@@ -697,7 +697,7 @@ class ZombieMultiplayerClient {
         if (e.code === 'Digit7') this.socket.emit('spawnEgg', 'zombie');
         if (e.code === 'Digit8') this.socket.emit('spawnEgg', 'skeleton');
         if (e.code === 'Digit9') this.socket.emit('spawnEgg', 'creepy');
-        if (e.code === 'KeyP') this.socket.emit('spawnEgg', 'buff');
+        if (e.code === 'Comma') this.socket.emit('spawnEgg', 'buff');
       }
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
@@ -706,7 +706,7 @@ class ZombieMultiplayerClient {
       if (e.code === 'KeyV' && this.playing) this.socket.emit('buyUpgrade', 'health');
       // Buy item hotkeys
       if (e.code === 'KeyN' && this.playing) this.socket.emit('buyItem', 'grenade');
-      if (e.code === 'Comma' && this.playing) this.socket.emit('buyItem', 'medkit');
+      if (e.code === 'Comma' && this.playing && !(this.myPlayer && this.myPlayer.sp)) this.socket.emit('buyItem', 'medkit');
       if (e.code === 'Period' && this.playing) this.socket.emit('buyItem', 'airstrike');
       // Use item hotkeys
       if (e.code === 'KeyT' && this.playing) this.socket.emit('useItem', 'grenade');
@@ -3265,7 +3265,7 @@ class ZombieMultiplayerClient {
       </div>`;
       html += `<div class="shop-item" data-action="spawnEgg" data-key="buff" style="border-color:#cc6600;">
         <span>💪 Buff Egg<br><span style="font-size:10px;color:#666;">Spawn a buff zombie</span></span>
-        <span style="font-size:10px;color:#666;">[P]</span>
+        <span style="font-size:10px;color:#666;">[,]</span>
       </div>`;
     }
     html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle <kbd>L</kbd>Sniper · <kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
