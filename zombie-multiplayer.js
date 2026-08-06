@@ -2291,8 +2291,8 @@ class ZombieMultiplayerClient {
     const seenPuIds = new Set();
     const puArr = state.powerups || [];
     const puColors = {
-      maxHealth: 0xff2222, speedBoots: 0x33ff66, reloadGlove: 0x3366ff,
-      goldenBullet: 0xffaa00, lightningRod: 0x66ffff, necroSkull: 0xff66cc,
+      maxHealth: 0xffffff, speedBoots: 0x33ff66, reloadGlove: 0x3366ff,
+      goldenBullet: 0xffaa00, lightningRod: 0x66ffff, necroSkull: 0xff3366,
     };
     const puIcons = {
       maxHealth: '+HP', speedBoots: 'SPD', reloadGlove: 'RLD',
