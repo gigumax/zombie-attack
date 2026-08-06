@@ -1319,17 +1319,19 @@ function updateZombies(dt) {
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
-    // Skeletons also target buff zombies
-    if (z.type === 'skeleton') {
+    // Zombie-vs-zombie targeting: skeletons hunt buff zombies, buff/normal zombies hunt skeletons
+    const huntTypes = { skeleton: ['buff'], buff: ['skeleton'], normal: ['skeleton'] };
+    const huntList = huntTypes[z.type];
+    if (huntList) {
       for (const oz of zombies) {
-        if (oz === z || oz.dying || oz.reviving || oz.type !== 'buff') continue;
+        if (oz === z || oz.dying || oz.reviving || !huntList.includes(oz.type)) continue;
         const d = Math.hypot(oz.x - z.x, oz.z - z.z);
         if (d < zombieTargetDist) { zombieTargetDist = d; zombieTarget = oz; }
       }
     }
-    // If skeleton has a zombie target and it's closer than the player target, prefer it
-    if (z.type === 'skeleton' && zombieTarget && zombieTargetDist < minDist) {
-      target = null; // skeleton will chase the buff zombie instead
+    // If zombie has a hunt target and it's closer than the player target, prefer it
+    if (zombieTarget && zombieTargetDist < minDist) {
+      target = null;
       minDist = zombieTargetDist;
     }
     if (!target && !zombieTarget) {
@@ -1613,6 +1615,11 @@ function updateZombies(dt) {
               if (p.health <= 0) { p.health = 0; p.dead = true; }
             }
           }
+          // Also damage zombie target (skeleton)
+          if (zombieTarget && !target) {
+            zombieTarget.health -= z.damage * 1.5;
+            if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+          }
           z.slamEffect = 1;
         }
       } else if (z.type === 'guard') {
@@ -1659,11 +1666,20 @@ function updateZombies(dt) {
             z.x += (dx / dist) * 1.5;
             z.z += (dz / dist) * 1.5;
           }
-          // Check if still in range after lunge
-          const newDist = Math.hypot(target.x - z.x, target.z - z.z);
-          if (newDist < attackRange) {
-            target.health -= z.damage;
-            if (target.health <= 0) { target.health = 0; target.dead = true; }
+          if (zombieTarget && !target) {
+            // Attacking a skeleton
+            const newDist = Math.hypot(zombieTarget.x - z.x, zombieTarget.z - z.z);
+            if (newDist < attackRange) {
+              zombieTarget.health -= z.damage;
+              if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+            }
+          } else {
+            // Check if still in range after lunge
+            const newDist = Math.hypot(target.x - z.x, target.z - z.z);
+            if (newDist < attackRange) {
+              target.health -= z.damage;
+              if (target.health <= 0) { target.health = 0; target.dead = true; }
+            }
           }
         }
       }

@@ -1514,6 +1514,7 @@ class ZombieMultiplayerClient {
   // ─── Mesh disposal helper ───
   disposeMesh(mesh) {
     if (!mesh) return;
+    const isShared = mesh.userData && mesh.userData.sharedGeo;
     mesh.traverse(c => {
       if (c.userData && c.userData.healthBar) {
         const hb = c.userData.healthBar;
@@ -1522,8 +1523,9 @@ class ZombieMultiplayerClient {
           hb.material.dispose();
         }
       }
-      if (c.geometry && !c.userData.sharedGeo) c.geometry.dispose();
-      if (c.material && !c.userData.sharedGeo) {
+      if (isShared) return; // skip disposing shared cached geometries/materials
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) {
         if (c.material.map) c.material.map.dispose();
         if (Array.isArray(c.material)) c.material.forEach(mat => mat.dispose());
         else c.material.dispose();
