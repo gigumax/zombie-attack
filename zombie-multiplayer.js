@@ -865,7 +865,20 @@ class ZombieMultiplayerClient {
       document.querySelectorAll('.color-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           this._faceColor = btn.dataset.color;
+          this._erasing = false;
+          document.getElementById('eraser-btn').style.borderColor = '#555';
         });
+      });
+      // Eraser button
+      document.getElementById('eraser-btn').addEventListener('click', () => {
+        this._erasing = !this._erasing;
+        if (this._erasing) {
+          this._faceColor = '#f5c89a';
+          document.getElementById('eraser-btn').style.borderColor = '#2ecc71';
+        } else {
+          this._faceColor = '#000000';
+          document.getElementById('eraser-btn').style.borderColor = '#555';
+        }
       });
       // Clear button
       document.getElementById('clear-face-btn').addEventListener('click', () => {

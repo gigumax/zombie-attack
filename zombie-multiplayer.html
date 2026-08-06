@@ -325,7 +325,10 @@
             <span style="font-size:11px;color:rgba(255,255,255,0.5);">Size:</span>
             <input id="brush-size" type="range" min="1" max="20" value="4" style="width:80px;accent-color:#2ecc71;">
           </div>
-          <button id="clear-face-btn" style="padding:4px 10px;border-radius:6px;border:1px solid #555;background:#333;color:#fff;font-size:12px;cursor:pointer;">Clear</button>
+          <div style="display:flex;gap:6px;">
+            <button id="eraser-btn" style="padding:4px 10px;border-radius:6px;border:1px solid #555;background:#333;color:#fff;font-size:12px;cursor:pointer;">Eraser</button>
+            <button id="clear-face-btn" style="padding:4px 10px;border-radius:6px;border:1px solid #555;background:#333;color:#fff;font-size:12px;cursor:pointer;">Clear</button>
+          </div>
           <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
             <span style="font-size:11px;color:rgba(255,255,255,0.5);">Or pick emoji:</span>
             <select id="emoji-select" style="font-size:20px;width:50px;height:34px;text-align:center;cursor:pointer;background:#222;color:#fff;border:2px solid #444;border-radius:6px;">
@@ -433,6 +436,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=28"></script>
+  <script src="zombie-multiplayer.js?v=29"></script>
 </body>
 </html>
