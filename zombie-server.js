@@ -458,6 +458,25 @@ function spawnEgg(playerId, eggType) {
     });
   } else if (eggType === 'friendly') {
     spawnFriendlyZombie(playerId, x, z);
+  } else if (eggType === 'friendlySkeleton') {
+    spawnPetSkeleton(playerId, x, z);
+  } else if (eggType === 'friendlyBuff') {
+    if (ownedBuddyCount(playerId) < MAX_BUDDIES_PER_PLAYER) {
+      const buddy = {
+        id: nextZombieId++, x, z, type: 'buff',
+        health: 250, maxHealth: 250,
+        speed: CONFIG.playerSpeed * 0.7, damage: CONFIG.zombieDamage * 4.5, attackRange: CONFIG.zombieAttackRange * 1.4,
+        attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+        isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+        rot: 0, attacking: 0,
+        friendly: true, owner: playerId,
+        name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
+        level: 1, kills: 0, baseDamage: CONFIG.zombieDamage * 4.5, baseMaxHealth: 250,
+        slamEffect: 0,
+      };
+      applyBuddyGear(playerId, buddy);
+      zombies.push(buddy);
+    }
   } else if (eggType === 'skeleton') {
     zombies.push({
       id: nextZombieId++, x, z, type: 'skeleton',
@@ -589,6 +608,17 @@ function killZombie(zombie, killerId, dirX, dirZ) {
       player.gold += downGold;
       broadcastKillFeed(anyKidFriendly() ? `${player.name}: BIG BOSS TAGGED! Getting up... (${zombie.reviveCount + 1}/3)` : `${player.name}: BOSS DOWNED! Reviving... (${zombie.reviveCount + 1}/3)`);
     }
+    return;
+  }
+
+  // Friendly buddies die quietly — no score, gold, drops, keys, or eggs
+  if (zombie.friendly) {
+    zombie.dying = true;
+    zombie.deathTimer = 10;
+    zombie.dead = true;
+    zombie.corpseVx = (dirX || 0) * 12;
+    zombie.corpseVz = (dirZ || 0) * 12;
+    broadcastKillFeed(anyKidFriendly() ? `${zombie.name || 'A buddy'} got bonked... bye bye!` : `${zombie.name || 'A buddy'} was defeated!`);
     return;
   }
 
@@ -739,8 +769,8 @@ function killZombie(zombie, killerId, dirX, dirZ) {
     skeletonUnlocked = true;
     waveActive = false;
     waveBreakTimer = CONFIG.waveBreakTime * 2;
-    io.emit('waveAnnounce', anyKidFriendly() ? 'GRASSLANDS COMPLETED! Yay!' : 'GRASSLANDS COMPLETED!');
-    broadcastKillFeed(anyKidFriendly() ? 'Grasslands completed! Skeleton World is open — press B to travel when you want!' : 'GRASSLANDS COMPLETED — Skeleton World unlocked! Press B and pick it on the world map whenever you\'re ready.');
+    io.emit('waveAnnounce', anyKidFriendly() ? 'SKELETON WORLD UNLOCKED! Yay!' : 'SKELETON WORLD UNLOCKED!');
+    broadcastKillFeed(anyKidFriendly() ? 'The boss is beaten! Skeleton World is open — press B to travel when you want!' : 'SKELETON WORLD UNLOCKED — press B and pick it on the world map whenever you\'re ready.');
     return;
   }
 
@@ -883,6 +913,10 @@ function hatchEggs(p) {
     applyBuddyGear(p.id, buddy);
     zombies.push(buddy);
     hatched.push(shortLabels[type]);
+  }
+  if (hatched.length === 0) {
+    broadcastKillFeed(kid ? `${p.name}'s eggs couldn't hatch — buddy squad is full!` : `${p.name}'s eggs fizzled — buddy squad is full (${MAX_BUDDIES_PER_PLAYER} max)!`);
+    return;
   }
   broadcastKillFeed(kid
     ? `${p.name}'s egg${count > 1 ? 's' : ''} hatched: ${hatched.join(', ')}!`
@@ -2466,9 +2500,7 @@ function updateZombies(dt) {
         z.attackTimer = CONFIG.zombieAttackCooldown;
         zombieTarget.health -= z.damage;
         if (zombieTarget.health <= 0 && !zombieTarget.dying) {
-          const wasFriendly = zombieTarget.friendly;
           killZombie(zombieTarget, null);
-          if (wasFriendly) broadcastKillFeed(anyKidFriendly() ? 'A zombie buddy fell! :(' : 'A friendly zombie was destroyed!');
         }
         z.attacking = 1;
       }
@@ -2901,7 +2933,7 @@ function gameLoop() {
     area: [areaIndex, Math.min(areaWave, AREAS[Math.min(areaIndex, AREAS.length - 1)].waves), AREAS[Math.min(areaIndex, AREAS.length - 1)].waves, AREAS[Math.min(areaIndex, AREAS.length - 1)].name, AREAS[Math.min(areaIndex, AREAS.length - 1)].key],
     cage: cagePos ? [+cagePos.x.toFixed(1), +cagePos.z.toFixed(1), cageOpen ? 1 : 0, Object.values(cagedFriendlies || {}).reduce((s, n) => s + n, 0)] : null,
     tod: +timeOfDay.toFixed(3), night: isNight ? 1 : 0,
-    zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone).length + zombiesToSpawn,
+    zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone && !z.friendly).length + zombiesToSpawn,
     water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
     creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
     skeletonWorld,

@@ -750,9 +750,9 @@ class ZombieMultiplayerClient {
       // Spawn eggs — only in spawner mode
       if (this.myPlayer && this.myPlayer.sp && this.playing) {
         if (e.code === 'Digit7') this.socket.emit('spawnEgg', 'zombie');
-        if (e.code === 'Digit8') this.socket.emit('spawnEgg', 'skeleton');
+        if (e.code === 'Digit8') this.socket.emit('spawnEgg', this.keys['x'] ? 'friendlySkeleton' : 'skeleton');
         if (e.code === 'Digit9') this.socket.emit('spawnEgg', 'creepy');
-        if (e.code === 'Comma') this.socket.emit('spawnEgg', 'buff');
+        if (e.code === 'Comma') this.socket.emit('spawnEgg', this.keys['x'] ? 'friendlyBuff' : 'buff');
         if (e.code === 'Period') this.socket.emit('spawnEgg', 'spitter');
         if (e.code === 'Equal') this.socket.emit('spawnEgg', 'buffSkeleton');
         if (e.code === 'Digit0') this.socket.emit('spawnEgg', 'friendly');
@@ -2253,6 +2253,24 @@ class ZombieMultiplayerClient {
               ud.head.position.y = ud.head.userData.baseY + Math.abs(swing) * 0.05;
             }
             mesh.position.y = Math.abs(swing) * 0.08;
+          } else if (ud.isCreepy) {
+            // Creepy — twitchy, wrong-looking movement
+            const jitter = Math.sin(now / 43 + z.id * 7) * 0.06 + Math.sin(now / 91 + z.id * 3) * 0.08;
+            const spasm = Math.sin(now / 137 + z.id * 13) > 0.94 ? Math.sin(now / 17) * 0.3 : 0;
+            if (ud.head) {
+              ud.head.rotation.z = 0.28 + jitter + spasm; // crooked neck, always twitching
+              ud.head.rotation.y = Math.sin(now / 210 + z.id) * 0.5; // slowly scanning side to side
+            }
+            if (ud.jawGroup) ud.jawGroup.rotation.x = 0.2 + Math.abs(Math.sin(now / 150 + z.id)) * 0.45; // chattering jaw
+            if (ud.legL && ud.legR) {
+              ud.legL.rotation.x = swing * 0.55;
+              ud.legR.rotation.x = -swing * 0.45; // uneven, lurching gait
+            }
+            if (ud.armL && ud.armR) {
+              ud.armL.rotation.x = -Math.PI / 2 + swing * 0.3 + spasm;
+              ud.armR.rotation.x = -Math.PI / 2 - swing * 0.2 - spasm;
+            }
+            mesh.rotation.z = spasm * 0.35; // whole body lurches during spasms
           } else {
             if (ud.legL && ud.legR) {
               ud.legL.rotation.x = swing * 0.4;
@@ -3473,6 +3491,7 @@ class ZombieMultiplayerClient {
     if (type === 'skeleton') mesh = this.createSkeletonMesh();
     else if (type === 'spitter') mesh = this.createSpitterMesh();
     else if (type === 'buff') mesh = this.createBuffZombieMesh();
+    else if (type === 'ironGolem') mesh = this.createIronGolemMesh();
     else return this.createFriendlyZombieMesh();
     // Clone materials so the green friendly aura doesn't tint shared/cached materials
     mesh.traverse(o => { if (o.material) o.material = o.material.clone(); });
@@ -3801,6 +3820,7 @@ class ZombieMultiplayerClient {
     document.getElementById('score-val').textContent = p.s;
     document.getElementById('wave-val').textContent = this.serverState ? this.serverState.wave : 1;
     document.getElementById('gold-val').textContent = p.sp ? '∞' : p.g;
+    this.spawnerMode = !!p.sp;
     const keysEl = document.getElementById('keys-val');
     if (keysEl) keysEl.textContent = '🗝️' + (p.ck || 0);
     const eggEl = document.getElementById('egg-val');
@@ -4080,7 +4100,7 @@ class ZombieMultiplayerClient {
         <span style="font-size:10px;color:#666;">[0]</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>CallBuddies <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP ·<kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>Tab</kbd> Shop <kbd>B</kbd> Map ·<kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>CallBuddies <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP ·<kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
     el.innerHTML = html;
   }
 
