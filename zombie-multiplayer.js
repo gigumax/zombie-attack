@@ -181,9 +181,9 @@ class ZombieMultiplayerClient {
       if (creepyLock) {
         creepyLock.style.display = state.creepyUnlocked ? 'none' : 'flex';
       }
-      // PvP indicator
+      // PvP indicator — shows when YOU have opted into PvP
       const pvpEl = document.getElementById('pvp-indicator');
-      if (pvpEl) pvpEl.style.display = state.friendlyFire ? 'block' : 'none';
+      if (pvpEl) pvpEl.style.display = (this.myPlayer && this.myPlayer.pvp) ? 'block' : 'none';
       // Day/night cycle — update scene background and fog
       if (state.tod !== undefined && this.currentWorld !== 'creepy' && this.currentWorld !== 'skeleton') {
         const tod = state.tod;

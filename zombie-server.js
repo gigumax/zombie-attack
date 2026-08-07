@@ -1031,14 +1031,12 @@ function handleShoot(playerId) {
       const hit = rayHitZombie(p, dir, z, meleeRange);
       if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestHit = { zombie: z, point: hit.point }; }
     }
-    // PvP melee — check for player hits (only if friendly fire is on)
+    // PvP melee — only players who opted into PvP can be hit
     let closestPlayerHit = null;
-    if (friendlyFire) {
-      for (const other of Object.values(players)) {
-        if (other.id === playerId || other.dead || other.paused) continue;
-        const hit = rayHitPlayer(p, dir, other, meleeRange);
-        if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
-      }
+    for (const other of Object.values(players)) {
+      if (other.id === playerId || other.dead || other.paused || !other.pvp) continue;
+      const hit = rayHitPlayer(p, dir, other, meleeRange);
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
     }
     // Knife slash tracer — short line in front of player
     const slashEnd = { x: p.x + dir.x * meleeRange, y: p.y + dir.y * meleeRange, z: p.z + dir.z * meleeRange };
@@ -1079,13 +1077,11 @@ function handleShoot(playerId) {
         }
       }
     }
-    // PvP — check for player hits (only if friendly fire is on)
-    if (friendlyFire) {
-      for (const other of Object.values(players)) {
-        if (other.id === playerId || other.dead || other.paused) continue;
-        const hit = rayHitPlayer(p, dir, other, closestDist);
-        if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
-      }
+    // PvP — only players who opted into PvP can be shot
+    for (const other of Object.values(players)) {
+      if (other.id === playerId || other.dead || other.paused || !other.pvp) continue;
+      const hit = rayHitPlayer(p, dir, other, closestDist);
+      if (hit && hit.dist < closestDist) { closestDist = hit.dist; closestPlayerHit = { player: other, point: hit.point }; closestHit = null; }
     }
     // Tracer endpoint
     const hitSomething = closestHit !== null || closestPlayerHit !== null;
@@ -1176,6 +1172,7 @@ function rayHitPlayer(p, dir, target, maxDist) {
 
 function damagePlayer(target, attackerId, damage) {
   if (!target || target.dead || target.downed || target.paused || target.spawnerMode) return;
+  if (!target.pvp) return; // only PvP opt-in players take player damage
   target.health -= absorbDamage(target, damage);
   if (target.health <= 0) {
     const attacker = players[attackerId];
@@ -2687,7 +2684,7 @@ function gameLoop() {
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0, egg: p.eggWaves || 0,
-      ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '', eggn: p.eggCount || 0,
+      ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '', eggn: p.eggCount || 0, pvp: p.pvp ? 1 : 0,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
@@ -2993,8 +2990,13 @@ io.on('connection', (socket) => {
     p.shopOpen = !p.shopOpen;
   });
   socket.on('toggleFriendlyFire', () => {
-    friendlyFire = !friendlyFire;
-    broadcastKillFeed(friendlyFire ? 'Friendly fire ON — PvP enabled!' : 'Friendly fire OFF — PvE only');
+    // Per-player PvP opt-in: only players who turn it on can be shot/hit
+    const p = players[socket.id];
+    if (!p) return;
+    p.pvp = !p.pvp;
+    broadcastKillFeed(p.pvp
+      ? (anyKidFriendly() ? `${p.name} joined PvP — they can be tagged!` : `${p.name} turned PvP ON — they can now be shot!`)
+      : (anyKidFriendly() ? `${p.name} left PvP — safe again!` : `${p.name} turned PvP OFF — protected again`));
   });
   socket.on('toggleAutoFire', () => {
     const p = players[socket.id];
