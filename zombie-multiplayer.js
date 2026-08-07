@@ -1921,7 +1921,7 @@ class ZombieMultiplayerClient {
         mesh = null;
       }
       if (!mesh) {
-        mesh = z.fr ? (TYPE_MAP[z.t] === 'skeleton' ? this.createSkeletonMesh() : this.createFriendlyZombieMesh())
+        mesh = z.fr ? this.createFriendlyVariantMesh(TYPE_MAP[z.t])
           : this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
@@ -2335,6 +2335,44 @@ class ZombieMultiplayerClient {
         this.scene.remove(m);
         m.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
         delete this.lockedChestMeshes[id];
+      }
+    }
+
+    // Mystery egg pickups — [id, x, z]
+    if (!this.eggMeshes) this.eggMeshes = {};
+    const seenEggIds = new Set();
+    for (const e of (state.eggs || [])) {
+      const eid = e[0];
+      seenEggIds.add(eid);
+      let eggMesh = this.eggMeshes[eid];
+      if (!eggMesh) {
+        eggMesh = new THREE.Group();
+        const shell = new THREE.Mesh(
+          new THREE.SphereGeometry(0.45, 10, 10),
+          new THREE.MeshLambertMaterial({ color: 0xfff4d6, emissive: 0x886644, emissiveIntensity: 0.3 })
+        );
+        shell.scale.y = 1.3; shell.position.y = 0.55; shell.castShadow = true; eggMesh.add(shell);
+        const spotMat = new THREE.MeshBasicMaterial({ color: 0x66cc66 });
+        for (let s = 0; s < 4; s++) {
+          const spot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 6), spotMat);
+          const a = (s / 4) * Math.PI * 2;
+          spot.position.set(Math.cos(a) * 0.38, 0.5 + (s % 2) * 0.25, Math.sin(a) * 0.38);
+          eggMesh.add(spot);
+        }
+        eggMesh.position.set(e[1], 0, e[2]);
+        this.scene.add(eggMesh);
+        this.eggMeshes[eid] = eggMesh;
+      }
+      // Wobble like it's alive
+      eggMesh.rotation.z = Math.sin(now / 150 + eid) * 0.12;
+      eggMesh.position.y = Math.abs(Math.sin(now / 400 + eid)) * 0.15;
+    }
+    for (const id of Object.keys(this.eggMeshes)) {
+      if (!seenEggIds.has(Number(id))) {
+        const m = this.eggMeshes[id];
+        this.scene.remove(m);
+        m.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        delete this.eggMeshes[id];
       }
     }
 
@@ -3371,6 +3409,17 @@ class ZombieMultiplayerClient {
     this.cageGroup = g;
   }
 
+  createFriendlyVariantMesh(type) {
+    let mesh;
+    if (type === 'skeleton') mesh = this.createSkeletonMesh();
+    else if (type === 'spitter') mesh = this.createSpitterMesh();
+    else if (type === 'buff') mesh = this.createBuffZombieMesh();
+    else return this.createFriendlyZombieMesh();
+    // Clone materials so the green friendly aura doesn't tint shared/cached materials
+    mesh.traverse(o => { if (o.material) o.material = o.material.clone(); });
+    return mesh;
+  }
+
   makeBuddyLabel(text) {
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 64;
@@ -3695,6 +3744,8 @@ class ZombieMultiplayerClient {
     document.getElementById('gold-val').textContent = p.sp ? '∞' : p.g;
     const keysEl = document.getElementById('keys-val');
     if (keysEl) keysEl.textContent = '🗝️' + (p.ck || 0);
+    const eggEl = document.getElementById('egg-val');
+    if (eggEl) eggEl.textContent = p.egg ? `🥚 ${p.egg} wave${p.egg > 1 ? 's' : ''}` : '—';
     // Spawner mode indicator
     const spawnerEl = document.getElementById('spawner-indicator');
     if (spawnerEl) spawnerEl.style.display = p.sp ? 'block' : 'none';

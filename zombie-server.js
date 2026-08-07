@@ -150,6 +150,7 @@ let goldPickups = [];
 let powerUpPickups = []; // rare drops from zombies: {id, type, x, z}
 let chests = [];
 let lockedChests = []; // treasure chests — need a Chest Key from a mini-boss
+let eggPickups = []; // mystery eggs — carry 2 waves without going down to hatch a buddy
 const BUDDY_NAMES = ['Chomper', 'Bones', 'Gary', 'Ziggy', 'Munch', 'Grub', 'Rex', 'Blinky', 'Moss', 'Sprout', 'Fang', 'Waffle'];
 let particles = [];
 let nextZombieId = 1;
@@ -592,6 +593,11 @@ function killZombie(zombie, killerId, dirX, dirZ) {
       player.chestKeys = (player.chestKeys || 0) + 1;
       broadcastKillFeed(kid ? `${player.name} found a shiny Chest Key!` : `${player.name} got a CHEST KEY! Find a locked treasure chest and press [Shift]`);
     }
+    // Mystery eggs — special zombies sometimes drop one
+    if (['buff', 'exploder', 'spitter', 'guard', 'creepy', 'necromancer', 'buffSkeleton'].includes(zombie.type) && Math.random() < 0.12) {
+      eggPickups.push({ id: nextGoldId++, x: zombie.x, z: zombie.z });
+      broadcastKillFeed(kid ? 'A Mystery Egg dropped! Ooooh!' : 'A MYSTERY EGG dropped! Grab it and survive 2 waves to hatch it!');
+    }
   }
 
   // Post-escape boss killed → grasslands completed; skeleton world unlocks but you travel when you want
@@ -689,6 +695,56 @@ function endWave() {
   }
   // Keep 2 locked treasure chests hidden on the map
   while (lockedChests.length < 2) spawnLockedChest();
+  // Mystery eggs tick down one wave per clear
+  for (const p of Object.values(players)) {
+    if (!p.eggWaves) continue;
+    p.eggWaves--;
+    if (p.eggWaves <= 0) {
+      p.eggWaves = 0;
+      hatchEgg(p);
+    } else {
+      broadcastKillFeed(anyKidFriendly() ? `${p.name}'s egg is wiggling! One more wave!` : `${p.name}'s Mystery Egg shakes... one more wave until it hatches!`);
+    }
+  }
+}
+
+function hatchEgg(p) {
+  const kid = anyKidFriendly();
+  const types = ['normal', 'skeleton', 'spitter', 'buff'];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const stats = {
+    normal:   { hp: 75,  dmg: CONFIG.zombieDamage * 3,   speed: CONFIG.playerSpeed,       range: CONFIG.zombieAttackRange * 1.2 },
+    skeleton: { hp: 150, dmg: CONFIG.zombieDamage * 3,   speed: CONFIG.playerSpeed,       range: CONFIG.zombieAttackRange * 1.3 },
+    spitter:  { hp: 100, dmg: CONFIG.zombieDamage * 2.5, speed: CONFIG.playerSpeed * 0.9, range: CONFIG.zombieAttackRange * 1.2 },
+    buff:     { hp: 250, dmg: CONFIG.zombieDamage * 4.5, speed: CONFIG.playerSpeed * 0.7, range: CONFIG.zombieAttackRange * 1.4 },
+  }[type];
+  zombies.push({
+    id: nextZombieId++, x: p.x + 1.5, z: p.z + 1.5, type,
+    health: stats.hp, maxHealth: stats.hp,
+    speed: stats.speed, damage: stats.dmg, attackRange: stats.range,
+    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+    rot: 0, attacking: 0, specialAttackTimer: 2,
+    friendly: true, owner: p.id,
+    name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
+    level: 1, kills: 0, baseDamage: stats.dmg, baseMaxHealth: stats.hp,
+    slamEffect: 0,
+  });
+  const label = { normal: 'Zombie Buddy', skeleton: 'Skeleton Buddy', spitter: 'Spitter Buddy — it spits acid at zombies!', buff: 'BUFF Buddy — a tank!' }[type];
+  broadcastKillFeed(kid ? `${p.name}'s egg hatched into a ${label}!` : `${p.name}'s MYSTERY EGG HATCHED — ${label}`);
+}
+
+function creditBuddyKill(z) {
+  // Buddy progression — every 3 kills is a level, up to Lv5
+  z.kills = (z.kills || 0) + 1;
+  const newLv = Math.min(5, 1 + Math.floor(z.kills / 3));
+  if (newLv > (z.level || 1)) {
+    z.level = newLv;
+    z.damage = (z.baseDamage || z.damage) * (1 + 0.3 * (newLv - 1));
+    z.maxHealth = (z.baseMaxHealth || 75) + 30 * (newLv - 1);
+    z.health = z.maxHealth; // full heal on level up
+    broadcastKillFeed(anyKidFriendly() ? `${z.name || 'Buddy'} grew to Level ${newLv}!` : `${z.name || 'Buddy'} LEVELED UP → Lv${newLv}! (+damage +HP)`);
+  }
 }
 
 // ─── Escape sequence ───
@@ -1098,6 +1154,10 @@ function damagePlayer(target, attackerId, damage) {
 
 function downPlayer(p, attackerName) {
   if (!p || p.dead || p.downed || p.spawnerMode) return;
+  if (p.eggWaves) {
+    p.eggWaves = 0;
+    broadcastKillFeed(anyKidFriendly() ? `Oh no! ${p.name}'s egg broke!` : `${p.name} went down — the Mystery Egg SHATTERED!`);
+  }
   // Single-player or already downed before this wave = instant death
   const playerCount = Object.values(players).filter(pp => !pp.spawnerMode).length;
   if (playerCount <= 1 || p.downedThisWave) {
@@ -1634,31 +1694,39 @@ function updateZombies(dt) {
         const dx = zombieTarget.x - z.x, dz = zombieTarget.z - z.z;
         const dist = Math.hypot(dx, dz);
         const golemAttackRange = z.attackRange || CONFIG.zombieAttackRange;
-        if (dist > golemAttackRange && dist > 0.01) {
-          z.x += (dx / dist) * z.speed * dt;
-          z.z += (dz / dist) * z.speed * dt;
-        }
-        z.walkPhase += dt * z.speed * 3;
-        z.rot = Math.atan2(dx, dz);
-        if (dist < golemAttackRange && z.attackTimer <= 0) {
-          z.attackTimer = CONFIG.zombieAttackCooldown * 0.4;
-          zombieTarget.health -= z.damage;
-          if (zombieTarget.type === 'creepy') zombieTarget.invisible = 0; // ally hits reveal creepies
-          if (zombieTarget.health <= 0 && !zombieTarget.dying) {
-            killZombie(zombieTarget, null);
-            // Buddy progression — every 3 kills is a level, up to Lv5
-            z.kills = (z.kills || 0) + 1;
-            const newLv = Math.min(5, 1 + Math.floor(z.kills / 3));
-            if (newLv > (z.level || 1)) {
-              z.level = newLv;
-              z.damage = (z.baseDamage || z.damage) * (1 + 0.3 * (newLv - 1));
-              z.maxHealth = (z.baseMaxHealth || 75) + 30 * (newLv - 1);
-              z.health = z.maxHealth; // full heal on level up
-              broadcastKillFeed(anyKidFriendly() ? `${z.name || 'Buddy'} grew to Level ${newLv}!` : `${z.name || 'Buddy'} LEVELED UP → Lv${newLv}! (+damage +HP)`);
-            }
+        if (z.type === 'spitter') {
+          // Spitter buddy — keeps its distance and lobs acid at enemies
+          if (dist > 7 && dist > 0.01) {
+            z.x += (dx / dist) * z.speed * dt;
+            z.z += (dz / dist) * z.speed * dt;
           }
-          z.attacking = 1;
-          z.slamEffect = 1;
+          z.walkPhase += dt * z.speed * 3;
+          z.rot = Math.atan2(dx, dz);
+          if (dist < 12 && dist > 0.01 && z.attackTimer <= 0) {
+            z.attackTimer = CONFIG.zombieAttackCooldown * 1.2;
+            z.rangedEffect = 1;
+            z.attacking = 1;
+            if (!z.acidSpits) z.acidSpits = [];
+            z.acidSpits.push({ x: z.x, y: 1.5, z: z.z, vx: (dx / dist) * 12, vz: (dz / dist) * 12, life: 2.0, damage: z.damage });
+          }
+        } else {
+          if (dist > golemAttackRange && dist > 0.01) {
+            z.x += (dx / dist) * z.speed * dt;
+            z.z += (dz / dist) * z.speed * dt;
+          }
+          z.walkPhase += dt * z.speed * 3;
+          z.rot = Math.atan2(dx, dz);
+          if (dist < golemAttackRange && z.attackTimer <= 0) {
+            z.attackTimer = CONFIG.zombieAttackCooldown * 0.4;
+            zombieTarget.health -= z.damage;
+            if (zombieTarget.type === 'creepy') zombieTarget.invisible = 0; // ally hits reveal creepies
+            if (zombieTarget.health <= 0 && !zombieTarget.dying) {
+              killZombie(zombieTarget, null);
+              creditBuddyKill(z);
+            }
+            z.attacking = 1;
+            z.slamEffect = 1;
+          }
         }
       } else {
         // No enemies — follow owner player
@@ -2332,6 +2400,19 @@ function updateGoldPickups(dt) {
       }
     }
   }
+  // Mystery egg pickups — one at a time
+  for (let i = eggPickups.length - 1; i >= 0; i--) {
+    const egg = eggPickups[i];
+    for (const p of Object.values(players)) {
+      if (p.dead || p.spawnerMode || p.eggWaves) continue;
+      if (Math.hypot(p.x - egg.x, p.z - egg.z) < 2.0) {
+        p.eggWaves = 2;
+        eggPickups.splice(i, 1);
+        broadcastKillFeed(anyKidFriendly() ? `${p.name} is carrying a Mystery Egg! Keep it safe!` : `${p.name} picked up the MYSTERY EGG — survive 2 waves without going down to hatch it!`);
+        break;
+      }
+    }
+  }
   for (let i = goldPickups.length - 1; i >= 0; i--) {
     const g = goldPickups[i];
     for (const p of Object.values(players)) {
@@ -2467,16 +2548,32 @@ function gameLoop() {
         sp.z += sp.vz * dt;
         sp.life -= dt;
         sp.y = 1.5 + Math.sin((2.0 - sp.life) * 8) * 0.3; // arc
-        // Check player hit
         let hit = false;
-        for (const p of Object.values(players)) {
-          if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
-          const pd = Math.hypot(p.x - sp.x, p.z - sp.z);
-          if (pd < 0.8) {
-            p.health -= sp.damage;
-            if (p.health <= 0) downPlayer(p);
-            hit = true;
-            break;
+        if (z.friendly) {
+          // Friendly spitter acid hits enemy zombies, never players
+          for (const oz of zombies) {
+            if (oz === z || oz.dying || oz.reviving || oz.friendly) continue;
+            if (Math.hypot(oz.x - sp.x, oz.z - sp.z) < 0.9) {
+              oz.health -= sp.damage;
+              if (oz.type === 'creepy') oz.invisible = 0;
+              if (oz.health <= 0 && !oz.dying) {
+                killZombie(oz, null);
+                creditBuddyKill(z);
+              }
+              hit = true;
+              break;
+            }
+          }
+        } else {
+          for (const p of Object.values(players)) {
+            if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
+            const pd = Math.hypot(p.x - sp.x, p.z - sp.z);
+            if (pd < 0.8) {
+              p.health -= sp.damage;
+              if (p.health <= 0) downPlayer(p);
+              hit = true;
+              break;
+            }
           }
         }
         if (hit || sp.life <= 0) {
@@ -2543,7 +2640,7 @@ function gameLoop() {
       name: p.name,
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
-      h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0,
+      h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0, egg: p.eggWaves || 0,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
@@ -2610,6 +2707,7 @@ function gameLoop() {
     powerups: powerUpPickups.map(pu => [pu.id, pu.type, +pu.x.toFixed(2), +pu.z.toFixed(2)]),
     chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
     lockedChests: lockedChests.map(c => [c.id, +c.x.toFixed(1), +c.z.toFixed(1)]),
+    eggs: eggPickups.map(e => [e.id, +e.x.toFixed(1), +e.z.toFixed(1)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
     cage: cagePos ? [+cagePos.x.toFixed(1), +cagePos.z.toFixed(1), cageOpen ? 1 : 0, Object.values(cagedFriendlies || {}).reduce((s, n) => s + n, 0)] : null,
@@ -2656,6 +2754,7 @@ io.on('connection', (socket) => {
     escapeMode = false;
     cagePos = null; cageOpen = false; cagedFriendlies = null;
     lockedChests = [];
+    eggPickups = [];
   }
 
   socket.emit('connected', { id: socket.id, name: players[socket.id].name });
@@ -2925,6 +3024,7 @@ io.on('connection', (socket) => {
       powerUpPickups = [];
       chests = [];
       lockedChests = [];
+      eggPickups = [];
       postEscapeBoss = false;
       skeletonWorld = false;
       cagePos = null; cageOpen = false; cagedFriendlies = null;
