@@ -110,6 +110,7 @@ function spawnCreepyBoss() {
 const GUNS = {
   knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
   katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
+  goldenKatana: { name:'Golden Katana', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:300, pellets:1, spread:0, price:0, melee:true, meleeRange:5.5, chestOnly:true },
   pistol: { name:'Pistol', magSize:20, reloadTime:1.2, fireRate:0.25, damage:34, pellets:1, spread:0.01, price:0 },
   smg:    { name:'SMG', magSize:100, reloadTime:1.8, fireRate:0.08, damage:25, pellets:1, spread:0.03, price:150 },
   shotgun:{ name:'Shotgun', magSize:6, reloadTime:2.5, fireRate:0.6, damage:20, pellets:8, spread:0.12, price:250 },
@@ -148,6 +149,8 @@ let zombies = [];
 let goldPickups = [];
 let powerUpPickups = []; // rare drops from zombies: {id, type, x, z}
 let chests = [];
+let lockedChests = []; // treasure chests — need a Chest Key from a mini-boss
+const BUDDY_NAMES = ['Chomper', 'Bones', 'Gary', 'Ziggy', 'Munch', 'Grub', 'Rex', 'Blinky', 'Moss', 'Sprout', 'Fang', 'Waffle'];
 let particles = [];
 let nextZombieId = 1;
 let nextGoldId = 1;
@@ -307,8 +310,60 @@ function spawnFriendlyZombie(ownerId, x, z) {
     isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
     rot: 0, attacking: 0,
     friendly: true, owner: ownerId,
+    name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
+    level: 1, kills: 0, baseDamage: CONFIG.zombieDamage * 3, baseMaxHealth: 75,
     slamEffect: 0,
   });
+}
+
+function spawnPetSkeleton(ownerId, x, z) {
+  // Treasure chest exclusive — a tougher skeleton buddy
+  zombies.push({
+    id: nextZombieId++, x, z, type: 'skeleton',
+    health: 150, maxHealth: 150,
+    speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.3,
+    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+    isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+    rot: 0, attacking: 0,
+    friendly: true, owner: ownerId,
+    name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
+    level: 1, kills: 0, baseDamage: CONFIG.zombieDamage * 3, baseMaxHealth: 150,
+    slamEffect: 0,
+  });
+}
+
+function spawnLockedChest() {
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 20 + Math.random() * 30;
+  lockedChests.push({ id: nextGoldId++, x: Math.cos(angle) * dist, z: Math.sin(angle) * dist });
+}
+
+function openLockedChest(playerId, chest) {
+  const p = players[playerId];
+  if (!p) return;
+  const kid = anyKidFriendly();
+  p.chestKeys--;
+  const roll = Math.random();
+  let msg;
+  if (roll < 0.25 && !p.ownedGuns.goldenKatana) {
+    p.ownedGuns.goldenKatana = true;
+    p.currentGun = 'goldenKatana';
+    p.ammo = Infinity; p.reserveAmmo = Infinity;
+    sendPlayerMeta(playerId);
+    msg = kid ? `${p.name} found the GOLDEN KATANA!! So shiny!` : `${p.name} opened a treasure chest: THE GOLDEN KATANA!! (300 dmg, press 7)`;
+  } else if (roll < 0.5) {
+    spawnPetSkeleton(playerId, chest.x, chest.z);
+    msg = kid ? `${p.name} found a Pet Skeleton buddy!` : `${p.name} opened a treasure chest: a PET SKELETON joins them!`;
+  } else if (roll < 0.75) {
+    const goldReward = 300 + wave * 20;
+    p.gold += goldReward;
+    msg = kid ? `${p.name} found ${goldReward} gold! Rich!` : `${p.name} opened a treasure chest: +${goldReward} GOLD!`;
+  } else {
+    const orbType = Math.random() < 0.5 ? 'necroSkull' : 'lightningRod';
+    powerUpPickups.push({ id: nextGoldId++, type: orbType, x: chest.x, z: chest.z });
+    msg = kid ? `${p.name} found a special orb in the chest!` : `${p.name} opened a treasure chest: a rare orb popped out!`;
+  }
+  broadcastKillFeed(msg);
 }
 
 function spawnEgg(playerId, eggType) {
@@ -529,6 +584,16 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   else msg = `+${score} ${kid ? 'Zombie tagged' : 'Zombie eliminated'}!`;
   broadcastKillFeed(player ? `${player.name}: ${msg}` : msg);
 
+  // Chest keys — mini-bosses (buff skeleton, necromancer, creepy) drop 20%, bosses always
+  if (player && !zombie.friendly) {
+    const keyChance = (zombie.isBoss || zombie.type === 'skeletonBoss') ? 1.0
+      : (['buffSkeleton', 'necromancer', 'creepy'].includes(zombie.type) ? 0.2 : 0);
+    if (keyChance > 0 && Math.random() < keyChance) {
+      player.chestKeys = (player.chestKeys || 0) + 1;
+      broadcastKillFeed(kid ? `${player.name} found a shiny Chest Key!` : `${player.name} got a CHEST KEY! Find a locked treasure chest and press [Shift]`);
+    }
+  }
+
   // Post-escape boss killed → grasslands completed; skeleton world unlocks but you travel when you want
   if (zombie.isBoss && postEscapeBoss) {
     postEscapeBoss = false;
@@ -622,6 +687,8 @@ function endWave() {
     }
     io.emit('waveAnnounce', `CHESTS SPAWNED! Grab one in the center!`);
   }
+  // Keep 2 locked treasure chests hidden on the map
+  while (lockedChests.length < 2) spawnLockedChest();
 }
 
 // ─── Escape sequence ───
@@ -1152,6 +1219,7 @@ function switchGun(playerId, gunName) {
 function buyGun(playerId, gunName) {
   const p = players[playerId];
   if (!p || p.dead || p.ownedGuns[gunName]) return;
+  if (GUNS[gunName].chestOnly) return; // treasure chest exclusive
   if (!p.spawnerMode && p.gold < GUNS[gunName].price) return;
   if (!p.spawnerMode) p.gold -= GUNS[gunName].price;
   p.ownedGuns[gunName] = true;
@@ -1576,7 +1644,19 @@ function updateZombies(dt) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 0.4;
           zombieTarget.health -= z.damage;
           if (zombieTarget.type === 'creepy') zombieTarget.invisible = 0; // ally hits reveal creepies
-          if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
+          if (zombieTarget.health <= 0 && !zombieTarget.dying) {
+            killZombie(zombieTarget, null);
+            // Buddy progression — every 3 kills is a level, up to Lv5
+            z.kills = (z.kills || 0) + 1;
+            const newLv = Math.min(5, 1 + Math.floor(z.kills / 3));
+            if (newLv > (z.level || 1)) {
+              z.level = newLv;
+              z.damage = (z.baseDamage || z.damage) * (1 + 0.3 * (newLv - 1));
+              z.maxHealth = (z.baseMaxHealth || 75) + 30 * (newLv - 1);
+              z.health = z.maxHealth; // full heal on level up
+              broadcastKillFeed(anyKidFriendly() ? `${z.name || 'Buddy'} grew to Level ${newLv}!` : `${z.name || 'Buddy'} LEVELED UP → Lv${newLv}! (+damage +HP)`);
+            }
+          }
           z.attacking = 1;
           z.slamEffect = 1;
         }
@@ -2339,8 +2419,9 @@ function gameLoop() {
     }
 
     if (!escapeMode) {
-      // Wave management
-      if (!waveActive) {
+      // Wave management — paused while the post-escape story boss is alive,
+      // otherwise a wave-5+ boss can spawn alongside it (double boss bug)
+      if (!waveActive && !postEscapeBoss) {
         waveBreakTimer -= dt;
         if (waveBreakTimer <= 0) startWave();
       } else {
@@ -2462,7 +2543,7 @@ function gameLoop() {
       name: p.name,
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
-      h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold,
+      h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
@@ -2507,6 +2588,8 @@ function gameLoop() {
         exp: z.exploding ? 1 : 0,
         eng: z.enrage ? 1 : 0,
         fr: z.friendly ? 1 : 0,
+        lv: z.friendly ? (z.level || 1) : 0,
+        nm: z.friendly ? z.name : undefined,
         lit: z.lightningHit ? 1 : 0,
         spit: z.acidSpits && z.acidSpits.length > 0 ? z.acidSpits.map(s => [+s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2)]) : undefined,
       };
@@ -2526,6 +2609,7 @@ function gameLoop() {
     gold: goldPickups.map(g => [g.id, +g.x.toFixed(2), +g.z.toFixed(2)]),
     powerups: powerUpPickups.map(pu => [pu.id, pu.type, +pu.x.toFixed(2), +pu.z.toFixed(2)]),
     chests: chests.map(c => [c.id, +c.x.toFixed(2), +c.z.toFixed(2)]),
+    lockedChests: lockedChests.map(c => [c.id, +c.x.toFixed(1), +c.z.toFixed(1)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
     cage: cagePos ? [+cagePos.x.toFixed(1), +cagePos.z.toFixed(1), cageOpen ? 1 : 0, Object.values(cagedFriendlies || {}).reduce((s, n) => s + n, 0)] : null,
@@ -2571,6 +2655,7 @@ io.on('connection', (socket) => {
     powerUpPickups = [];
     escapeMode = false;
     cagePos = null; cageOpen = false; cagedFriendlies = null;
+    lockedChests = [];
   }
 
   socket.emit('connected', { id: socket.id, name: players[socket.id].name });
@@ -2597,6 +2682,8 @@ io.on('connection', (socket) => {
       waveActive = false;
       waveBreakTimer = 3;
       zombies = [];
+      lockedChests = [];
+      spawnLockedChest(); spawnLockedChest();
     }
   });
   socket.on('setEmoji', (val) => {
@@ -2798,6 +2885,17 @@ io.on('connection', (socket) => {
     }
     // Cage stays unlockable after the cell opens (even into the boss fight)
     if (p.hasKey) unlockCage(socket.id);
+    // Locked treasure chests — open with a Chest Key
+    if ((p.chestKeys || 0) > 0 && !p.dead) {
+      for (let i = lockedChests.length - 1; i >= 0; i--) {
+        const c = lockedChests[i];
+        if (Math.hypot(p.x - c.x, p.z - c.z) < 2.5) {
+          lockedChests.splice(i, 1);
+          openLockedChest(socket.id, c);
+          break;
+        }
+      }
+    }
   });
   socket.on('respawn', () => {
     const p = players[socket.id];
@@ -2826,6 +2924,7 @@ io.on('connection', (socket) => {
       goldPickups = [];
       powerUpPickups = [];
       chests = [];
+      lockedChests = [];
       postEscapeBoss = false;
       skeletonWorld = false;
       cagePos = null; cageOpen = false; cagedFriendlies = null;

@@ -13,6 +13,8 @@ const GUNS = {
   smg:    { name:'SMG', magSize:100, reloadTime:1.8, fireRate:0.08, damage:25, pellets:1, spread:0.03, price:150 },
   shotgun:{ name:'Shotgun', magSize:6, reloadTime:2.5, fireRate:0.6, damage:20, pellets:8, spread:0.12, price:250 },
   rifle:  { name:'Rifle', magSize:500, reloadTime:1.0, fireRate:0.06, damage:55, pellets:1, spread:0.005, price:400 },
+  katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
+  goldenKatana: { name:'Golden Katana', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:300, pellets:1, spread:0, price:0, melee:true, meleeRange:5.5, chestOnly:true },
 };
 
 const UPGRADES = {
@@ -652,7 +654,16 @@ class ZombieMultiplayerClient {
     const gunName = this.myPlayer.gun;
     const gun = GUNS[gunName];
     const isMelee = gun && gun.melee;
-    const isKatana = gunName === 'katana';
+    const isKatana = gunName === 'katana' || gunName === 'goldenKatana';
+    if (isKatana) {
+      // Tint the katana model — gold for the treasure-chest version
+      const gold = gunName === 'goldenKatana';
+      const [kh, kg, kb, kt] = this.katanaMesh.children;
+      kh.material.color.setHex(gold ? 0x7a5a00 : 0x1a1a1a);
+      kg.material.color.setHex(gold ? 0xffcc00 : 0x8a7a3a);
+      kb.material.color.setHex(gold ? 0xffd700 : 0xe8e8e8);
+      kt.material.color.setHex(gold ? 0xffe680 : 0xc8c8c8);
+    }
     const twoHanded = gunName === 'rifle' || gunName === 'smg' || gunName === 'shotgun';
     this.gunParts.body.visible = !isMelee;
     this.gunParts.barrel.visible = !isMelee;
@@ -701,6 +712,7 @@ class ZombieMultiplayerClient {
       if (e.code === 'Digit4' && this.playing) this.socket.emit('switchGun', 'smg');
       if (e.code === 'Digit5' && this.playing) this.socket.emit('switchGun', 'shotgun');
       if (e.code === 'Digit6' && this.playing) this.socket.emit('switchGun', 'rifle');
+      if (e.code === 'Digit7' && this.playing && !this.spawnerMode) this.socket.emit('switchGun', 'goldenKatana');
       if (e.code === 'Digit1' && this.playing) this.socket.emit('switchGun', 'pistol');
       // Buy gun hotkeys
       if (e.code === 'KeyF' && this.playing) this.socket.emit('buyGun', 'smg');
@@ -1909,7 +1921,8 @@ class ZombieMultiplayerClient {
         mesh = null;
       }
       if (!mesh) {
-        mesh = z.fr ? this.createFriendlyZombieMesh() : this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
+        mesh = z.fr ? (TYPE_MAP[z.t] === 'skeleton' ? this.createSkeletonMesh() : this.createFriendlyZombieMesh())
+          : this.createZombieMeshByType(TYPE_MAP[z.t] || 'normal', z.boss, z.rv || 0, z.crv || 0, z.cb === 1);
         if (TYPE_MAP[z.t] === 'creepy') mesh.userData.creepyRevive = z.crv || 0;
         // Add health bar above head
         const hbY = TYPE_MAP[z.t] === 'skeletonBoss' ? 6.5 : (z.cb ? 5.5 : (z.boss ? 4.5 : (TYPE_MAP[z.t] === 'ironGolem' ? 4.5 : (TYPE_MAP[z.t] === 'buff' || TYPE_MAP[z.t] === 'guard' || TYPE_MAP[z.t] === 'buffSkeleton' ? 3.0 : (TYPE_MAP[z.t] === 'necromancer' || TYPE_MAP[z.t] === 'exploder' || TYPE_MAP[z.t] === 'spitter' ? 2.5 : 2.3)))));
@@ -2003,6 +2016,22 @@ class ZombieMultiplayerClient {
       // Lightning hit effect
       if (z.lit) {
         this.spawnLightningEffect(z.x, z.z);
+      }
+      // Friendly zombie — level scaling and name tag
+      if (z.fr) {
+        const lv = z.lv || 1;
+        mesh.scale.setScalar(1 + 0.12 * (lv - 1));
+        if (z.nm && mesh.userData.buddyLv !== lv) {
+          if (mesh.userData.buddyLabel) {
+            mesh.remove(mesh.userData.buddyLabel);
+            mesh.userData.buddyLabel.material.map.dispose();
+            mesh.userData.buddyLabel.material.dispose();
+          }
+          const label = this.makeBuddyLabel(lv > 1 ? `${z.nm} Lv${lv}` : z.nm);
+          mesh.add(label);
+          mesh.userData.buddyLabel = label;
+          mesh.userData.buddyLv = lv;
+        }
       }
       // Friendly zombie — green aura
       if (z.fr) {
@@ -2276,6 +2305,39 @@ class ZombieMultiplayerClient {
       this.clearCage();
     }
 
+    // Locked treasure chests — [id, x, z], opened with Chest Keys
+    if (!this.lockedChestMeshes) this.lockedChestMeshes = {};
+    const seenLcIds = new Set();
+    for (const c of (state.lockedChests || [])) {
+      const cid = c[0];
+      seenLcIds.add(cid);
+      let lcMesh = this.lockedChestMeshes[cid];
+      if (!lcMesh) {
+        lcMesh = new THREE.Group();
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3a2a1a, emissive: 0x664400, emissiveIntensity: 0.35 });
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.8), bodyMat);
+        body.position.y = 0.4; body.castShadow = true; lcMesh.add(body);
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.3, 0.8), bodyMat);
+        lid.position.y = 0.95; lid.castShadow = true; lcMesh.add(lid);
+        const trim = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.12, 0.84), new THREE.MeshBasicMaterial({ color: 0xffd700 }));
+        trim.position.y = 0.8; lcMesh.add(trim);
+        const lock = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.3, 0.12), new THREE.MeshBasicMaterial({ color: 0xffd700 }));
+        lock.position.set(0, 0.55, 0.45); lcMesh.add(lock);
+        lcMesh.position.set(c[1], 0, c[2]);
+        this.scene.add(lcMesh);
+        this.lockedChestMeshes[cid] = lcMesh;
+      }
+      lcMesh.rotation.y = Math.sin(now / 800 + cid) * 0.15;
+    }
+    for (const id of Object.keys(this.lockedChestMeshes)) {
+      if (!seenLcIds.has(Number(id))) {
+        const m = this.lockedChestMeshes[id];
+        this.scene.remove(m);
+        m.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        delete this.lockedChestMeshes[id];
+      }
+    }
+
     // Update gold pickups — state.gold is now [id, x, z] arrays
     const seenGoldIds = new Set();
     const goldArr = state.gold || [];
@@ -2410,7 +2472,7 @@ class ZombieMultiplayerClient {
     // Update weapon pickups — state.weaponPickups is [id, gunName, x, z] arrays
     const seenWeaponIds = new Set();
     const wpArr = state.weaponPickups || [];
-    const gunColors = { pistol: 0x3498db, smg: 0x2ecc71, shotgun: 0xe67e22, rifle: 0xe74c3c, katana: 0x9b59b6 };
+    const gunColors = { pistol: 0x3498db, smg: 0x2ecc71, shotgun: 0xe67e22, rifle: 0xe74c3c, katana: 0x9b59b6, goldenKatana: 0xffd700 };
     for (const w of wpArr) {
       const wid = w[0], wgun = w[1], wx = w[2], wz = w[3];
       seenWeaponIds.add(wid);
@@ -3309,6 +3371,24 @@ class ZombieMultiplayerClient {
     this.cageGroup = g;
   }
 
+  makeBuddyLabel(text) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'bold 34px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillStyle = '#66ff99';
+    ctx.strokeText(text, 128, 44);
+    ctx.fillText(text, 128, 44);
+    const tex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+    sprite.scale.set(2.2, 0.55, 1);
+    sprite.position.y = 2.75;
+    return sprite;
+  }
+
   clearCage() {
     if (!this.cageGroup) return;
     this.scene.remove(this.cageGroup);
@@ -3613,6 +3693,8 @@ class ZombieMultiplayerClient {
     document.getElementById('score-val').textContent = p.s;
     document.getElementById('wave-val').textContent = this.serverState ? this.serverState.wave : 1;
     document.getElementById('gold-val').textContent = p.sp ? '∞' : p.g;
+    const keysEl = document.getElementById('keys-val');
+    if (keysEl) keysEl.textContent = '🗝️' + (p.ck || 0);
     // Spawner mode indicator
     const spawnerEl = document.getElementById('spawner-indicator');
     if (spawnerEl) spawnerEl.style.display = p.sp ? 'block' : 'none';
@@ -3676,9 +3758,9 @@ class ZombieMultiplayerClient {
       wpnBar.style.display = 'flex';
       // Weapon hotbar
       const ownedGuns = this.playerMeta.ownedGuns || { knife: true, pistol: true };
-      const gunIcons = { pistol: '🔫', knife: '🔪', katana: '🗡️', smg: '🔫', shotgun: '🔫', rifle: '🔫' };
-      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6' };
-      const gunOrder = ['pistol','knife','katana','smg','shotgun','rifle'];
+      const gunIcons = { pistol: '🔫', knife: '🔪', katana: '🗡️', smg: '🔫', shotgun: '🔫', rifle: '🔫', goldenKatana: '⚔️' };
+      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7' };
+      const gunOrder = ['pistol','knife','katana','smg','shotgun','rifle','goldenKatana'];
       let wpnHtml = '';
       for (const key of gunOrder) {
         if (!ownedGuns[key]) continue;
@@ -3743,7 +3825,7 @@ class ZombieMultiplayerClient {
     const p = this.myPlayer;
     const meta = this.playerMeta;
     const el = document.getElementById('shop-content');
-    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6' };
+    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7' };
     const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K' };
     const upgradeHotkeys = { damage: 'Z', fireRate: 'X', magSize: 'C', health: 'V' };
     const isSpawner = p.sp === 1;
@@ -3767,7 +3849,7 @@ class ZombieMultiplayerClient {
     html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Buy Weapons</div>';
     for (const [key, gun] of Object.entries(GUNS)) {
       const owned = meta.ownedGuns[key];
-      if (owned) continue;
+      if (owned || gun.chestOnly) continue;
       const canBuy = isSpawner || p.g >= gun.price;
       const stats = gun.melee ? `DMG ${gun.damage} · RNG ${gun.meleeRange}` : `DMG ${gun.damage} · MAG ${gun.magSize}`;
       html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name} ${buyHotkeys[key]?`<span style="color:#666;font-size:10px;">[${buyHotkeys[key]}]</span>`:''}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${isSpawner?'FREE':gun.price+'g'}</span></div>`;
