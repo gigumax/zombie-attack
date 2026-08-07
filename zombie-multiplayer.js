@@ -869,7 +869,6 @@ class ZombieMultiplayerClient {
       if (e.code === 'Digit5' && this.playing) this.socket.emit('switchGun', 'shotgun');
       if (e.code === 'Digit6' && this.playing) this.socket.emit('switchGun', 'rifle');
       if (e.code === 'Digit7' && this.playing && !this.spawnerMode) this.socket.emit('switchGun', 'goldenKatana');
-      if (e.code === 'Digit8' && this.playing && !this.spawnerMode) this.socket.emit('switchGun', 'upgrader');
       if (e.code === 'KeyE' && this.playing) this.socket.emit('buyGun', 'upgrader');
       if (e.code === 'Digit1' && this.playing) this.socket.emit('switchGun', 'pistol');
       // Buy gun hotkeys
@@ -904,7 +903,7 @@ class ZombieMultiplayerClient {
       // Upgrade hotkeys
       if (e.code === 'KeyZ' && this.playing) this.socket.emit('recallBuddies');
       if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
-      if (e.code === 'KeyC' && this.playing) this.socket.emit('buyUpgrade', 'magSize');
+      if (e.code === 'KeyC' && this.playing) this.socket.emit('switchGun', 'upgrader');
       if (e.code === 'KeyV' && this.playing) this.socket.emit('buyUpgrade', 'health');
       // Buy item hotkeys
       if (e.code === 'KeyN' && this.playing) this.socket.emit('buyItem', 'grenade');
@@ -4064,7 +4063,7 @@ class ZombieMultiplayerClient {
       // Weapon hotbar
       const ownedGuns = this.playerMeta.ownedGuns || { knife: true, pistol: true };
       const gunIcons = { pistol: '🔫', knife: '🔪', katana: '🗡️', smg: '🔫', shotgun: '🔫', rifle: '🔫', goldenKatana: '⚔️', upgrader: '✨' };
-      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7', upgrader: '8' };
+      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7', upgrader: 'C' };
       const gunOrder = ['pistol','knife','katana','smg','shotgun','rifle','goldenKatana','upgrader'];
       let wpnHtml = '';
       for (const key of gunOrder) {
@@ -4130,9 +4129,9 @@ class ZombieMultiplayerClient {
     const p = this.myPlayer;
     const meta = this.playerMeta;
     const el = document.getElementById('shop-content');
-    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7', upgrader: '8' };
+    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7', upgrader: 'C' };
     const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K', upgrader: 'E' };
-    const upgradeHotkeys = { fireRate: 'X', magSize: 'C', health: 'V' };
+    const upgradeHotkeys = { fireRate: 'X', health: 'V' };
     const isSpawner = p.sp === 1;
     let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${isSpawner ? '∞' : p.g}</div>`;
 
@@ -4268,7 +4267,7 @@ class ZombieMultiplayerClient {
         <span style="font-size:10px;color:#666;">[0]</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>Tab</kbd> Shop <kbd>B</kbd> Map ·<kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>CallBuddies <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP ·<kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>Tab</kbd> Shop <kbd>B</kbd> Map ·<kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>CallBuddies <kbd>C</kbd>Upgrader <kbd>X</kbd>FR <kbd>V</kbd>HP ·<kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
     el.innerHTML = html;
   }
 
