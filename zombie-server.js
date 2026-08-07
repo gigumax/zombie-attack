@@ -1623,7 +1623,7 @@ function processPendingEffects(p, dt) {
 function updatePlayer(p, dt) {
   if (p.dead || p.paused || !p.ready) return;
   // Check if player is in water
-  const inWater = isInWater(p.x, p.z);
+  const inWater = !sandboxMode && isInWater(p.x, p.z); // sandbox is a dry flat plain
   const speedMult = inWater ? 0.45 : 1.0;
   const speed = (p.keys['super'] && !p.escapeMode ? CONFIG.playerSpeed * 10
     : p.keys['shift'] && !p.escapeMode ? CONFIG.playerSprintSpeed
@@ -1688,8 +1688,8 @@ function updatePlayer(p, dt) {
     }
   }
 
-  // Obstacle collision — push out horizontally and allow standing on top
-  for (const obs of OBSTACLES) {
+  // Obstacle collision — push out horizontally and allow standing on top (none in sandbox)
+  for (const obs of (sandboxMode ? [] : OBSTACLES)) {
     const obsHeight = obs.w > 1.2 ? 1.5 : 1.0; // crates are taller, tree bases are shorter
     const dx = p.x - obs.x, dz = p.z - obs.z;
     const minDistX = obs.w / 2 + CONFIG.playerRadius;
@@ -2059,8 +2059,8 @@ function updateZombies(dt) {
       // Still face the target even when stopped
       z.rot = Math.atan2(dx, dz);
     }
-    // Obstacle collision — zombies can't walk through blocks
-    for (const obs of OBSTACLES) {
+    // Obstacle collision — zombies can't walk through blocks (none in sandbox)
+    for (const obs of (sandboxMode ? [] : OBSTACLES)) {
       const odx = z.x - obs.x, odz = z.z - obs.z;
       const minDX = obs.w / 2 + 0.6;
       const minDZ = obs.d / 2 + 0.6;

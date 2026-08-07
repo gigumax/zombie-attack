@@ -361,6 +361,11 @@ class ZombieMultiplayerClient {
 
     this.socket.on('worldChange', (world) => {
       this.currentWorld = world;
+      // Sandbox is a bare flat plain — hide trees, lake, crates, cover walls
+      if (this.envObjects) {
+        const showEnv = world !== 'sandbox';
+        for (const o of this.envObjects) o.visible = showEnv;
+      }
       if (world === 'creepy') {
         this.creepyZoneGroup.visible = true;
         this.scene.background = new THREE.Color(0x0a0010);
@@ -451,6 +456,8 @@ class ZombieMultiplayerClient {
     water.rotation.x = -Math.PI / 2;
     water.position.set(waterX, 0.02, waterZ);
     this.scene.add(water);
+    this.envObjects = this.envObjects || [];
+    this.envObjects.push(water);
     // Sandy shore — slightly larger irregular shape
     const shoreShape = new THREE.Shape();
     for (let i = 0; i <= N; i++) {
@@ -471,6 +478,7 @@ class ZombieMultiplayerClient {
     shore.rotation.x = -Math.PI / 2;
     shore.position.set(waterX, 0.015, waterZ);
     this.scene.add(shore);
+    this.envObjects.push(shore);
     this.waterMesh = water;
 
     // Creepy zombie zone — dark wasteland area (separate world, hidden by default)
@@ -579,6 +587,7 @@ class ZombieMultiplayerClient {
       wall.position.set(c.x, 0.75, c.z);
       wall.castShadow = true; wall.receiveShadow = true;
       this.scene.add(wall);
+      this.envObjects.push(wall);
     }
   }
 
@@ -593,6 +602,8 @@ class ZombieMultiplayerClient {
     l2.position.y = 7; l2.castShadow = true; group.add(l2);
     group.position.set(x, 0, z);
     this.scene.add(group);
+    this.envObjects = this.envObjects || [];
+    this.envObjects.push(group);
   }
 
   createCrate(x, z, size = 1.5) {
@@ -600,6 +611,8 @@ class ZombieMultiplayerClient {
     crate.position.set(x, size / 2, z);
     crate.castShadow = true; crate.receiveShadow = true;
     this.scene.add(crate);
+    this.envObjects = this.envObjects || [];
+    this.envObjects.push(crate);
   }
 
   // ─── Gun view model ───
