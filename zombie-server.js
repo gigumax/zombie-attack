@@ -2637,7 +2637,7 @@ function updateGoldPickups(dt) {
   for (let i = powerUpPickups.length - 1; i >= 0; i--) {
     const pu = powerUpPickups[i];
     for (const p of Object.values(players)) {
-      if (p.dead || p.spawnerMode) continue;
+      if (p.dead) continue; // creative players can collect orbs too
       const dx = p.x - pu.x, dz = p.z - pu.z;
       const dist = Math.hypot(dx, dz);
       if (dist < 2.0) {
