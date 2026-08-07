@@ -2064,8 +2064,8 @@ function updateZombies(dt) {
         if (target) {
           target.health -= absorbDamage(target, z.damage);
           if (target.health <= 0) {
-            target.health = 0;
-            target.dead = true;
+            // Boss kills down you like any other zombie — teammates can revive
+            downPlayer(target);
             checkBossKillEscape();
             if (escapeMode) return;
           }
@@ -2623,6 +2623,8 @@ function gameLoop() {
           p.downed = false;
           p.dead = true;
           broadcastKillFeed(anyKidFriendly() ? `${p.name} wasn't saved in time...` : `${p.name} bled out — no one revived them in time!`);
+          // A death (from any source) can still trigger the prison-cell story
+          checkBossKillEscape();
         }
       }
     }
