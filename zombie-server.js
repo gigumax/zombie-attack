@@ -1522,14 +1522,15 @@ function useItem(playerId, itemKey) {
 
   if (itemKey === 'grenade') {
     // Throw grenade forward — explodes after 1.5s at position 8 units ahead
-    const tx = p.x + Math.sin(p.yaw) * 8;
-    const tz = p.z + Math.cos(p.yaw) * 8;
+    // (look direction is (-sin, -cos), same as bullets)
+    const tx = p.x - Math.sin(p.yaw) * 8;
+    const tz = p.z - Math.cos(p.yaw) * 8;
     p.pendingEffects.push({ type: 'grenade', x: tx, z: tz, timer: 1.5 });
     p.items[itemKey]--;
     p.itemCooldown = 0.8;
   } else if (itemKey === 'rocket') {
     // Fire rocket forward — travels 30 units then explodes
-    const dx = Math.sin(p.yaw), dz = Math.cos(p.yaw);
+    const dx = -Math.sin(p.yaw), dz = -Math.cos(p.yaw);
     p.pendingEffects.push({ type: 'rocket', x: p.x, z: p.z, dx, dz, dist: 0, maxDist: 30, speed: 25 });
     p.items[itemKey]--;
     p.itemCooldown = 1.0;
