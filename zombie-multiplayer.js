@@ -15,7 +15,7 @@ const GUNS = {
   rifle:  { name:'Rifle', magSize:500, reloadTime:1.0, fireRate:0.06, damage:55, pellets:1, spread:0.005, price:400 },
   katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
   goldenKatana: { name:'Golden Katana', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:300, pellets:1, spread:0, price:0, melee:true, meleeRange:5.5, chestOnly:true },
-  upgrader: { name:'Upgrader', magSize:20, reloadTime:2.0, fireRate:0.5, damage:0, pellets:1, spread:0.01, price:500 },
+  upgrader: { name:'Upgrader', magSize:Infinity, reloadTime:0, fireRate:0.033, damage:0, pellets:1, spread:0.01, price:500, infinite:true },
 };
 
 const UPGRADES = {
