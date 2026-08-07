@@ -38,7 +38,10 @@ class ZombieMultiplayerClient {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.BasicShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft shadow edges
+    this.renderer.outputEncoding = THREE.sRGBEncoding;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; // richer, filmic color
+    this.renderer.toneMappingExposure = 1.15;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1a2e);
@@ -397,11 +400,15 @@ class ZombieMultiplayerClient {
     const ambient = new THREE.AmbientLight(0x404060, 0.6);
     this.scene.add(ambient);
 
+    // Sky/ground bounce light — gives every surface a subtle color gradient
+    const hemi = new THREE.HemisphereLight(0x90a8d0, 0x3a5030, 0.45);
+    this.scene.add(hemi);
+
     const moon = new THREE.DirectionalLight(0x8888ff, 0.5);
     moon.position.set(20, 40, 20);
     moon.castShadow = true;
-    moon.shadow.mapSize.width = 1024;
-    moon.shadow.mapSize.height = 1024;
+    moon.shadow.mapSize.width = 2048;
+    moon.shadow.mapSize.height = 2048;
     moon.shadow.camera.left = -50;
     moon.shadow.camera.right = 50;
     moon.shadow.camera.top = 50;
@@ -415,10 +422,32 @@ class ZombieMultiplayerClient {
     this.scene.add(this.flashlight.target);
   }
 
+  // Procedural mottled texture — grayscale so material color tints it (area themes keep working)
+  makeNoiseTexture(blobs = 900, base = 200, spread = 90, blobMax = 7) {
+    const size = 256;
+    const cnv = document.createElement('canvas');
+    cnv.width = size; cnv.height = size;
+    const ctx = cnv.getContext('2d');
+    ctx.fillStyle = `rgb(${base},${base},${base})`;
+    ctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < blobs; i++) {
+      const sh = base - spread / 2 + Math.floor(Math.random() * spread);
+      ctx.fillStyle = `rgb(${sh},${sh},${sh})`;
+      ctx.beginPath();
+      ctx.arc(Math.random() * size, Math.random() * size, 1.5 + Math.random() * blobMax, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const tex = new THREE.CanvasTexture(cnv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    return tex;
+  }
+
   // ─── World ───
   setupWorld() {
     const groundGeo = new THREE.PlaneGeometry(CONFIG.worldSize * 2, CONFIG.worldSize * 2);
-    const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a5f3a });
+    const groundTex = this.makeNoiseTexture(1100, 205, 80, 8);
+    groundTex.repeat.set(14, 14);
+    const groundMat = new THREE.MeshLambertMaterial({ color: 0x3a5f3a, map: groundTex });
     const ground = new THREE.Mesh(groundGeo, groundMat);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -550,7 +579,9 @@ class ZombieMultiplayerClient {
     // Store grasslands objects for toggling
     this.grasslandsGroup = new THREE.Group();
 
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a });
+    const wallTex = this.makeNoiseTexture(500, 190, 70, 5);
+    wallTex.repeat.set(10, 1);
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x4a4a5a, map: wallTex });
     const wallH = 6;
     const half = CONFIG.worldSize;
     const wallGeo = new THREE.BoxGeometry(half * 2, wallH, 1);
@@ -607,7 +638,8 @@ class ZombieMultiplayerClient {
   }
 
   createCrate(x, z, size = 1.5) {
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshLambertMaterial({color:0x8B6914}));
+    if (!this._crateTex) this._crateTex = this.makeNoiseTexture(300, 195, 100, 4);
+    const crate = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshLambertMaterial({color:0x8B6914, map: this._crateTex}));
     crate.position.set(x, size / 2, z);
     crate.castShadow = true; crate.receiveShadow = true;
     this.scene.add(crate);
