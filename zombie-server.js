@@ -2925,6 +2925,9 @@ function gameLoop() {
   }
 
   // Broadcast state — optimized: only send what changes frequently
+  // Broadcast at 12.5 Hz (half the 25 TPS sim rate) — halves bandwidth, client interpolates
+  gameLoop._tick = (gameLoop._tick || 0) + 1;
+  if (gameLoop._tick % 2 === 0) {
   const state = {
     players: Object.values(players).map(p => ({
       id: p.id,
@@ -2995,6 +2998,12 @@ function gameLoop() {
       if (z.waterDamage) z.waterDamage = 0;
       if (z.exploding) z.exploding = 0;
       if (z.lightningHit) z.lightningHit = 0;
+      // Strip zero/false fields — undefined keys are omitted from JSON (big bandwidth saver)
+      for (const k of ['boss', 'cb', 'la', 'ra', 'll', 'rl', 'rv', 'rvv', 'chg', 'slm', 'rng', 'crk', 'atk', 'cmb', 'crv', 'wdmg', 'inv', 'exp', 'eng', 'fr', 'lit', 'gh', 'gs', 'lv']) {
+        if (!base[k]) delete base[k];
+      }
+      if (!base.jmp) { delete base.jmp; delete base.jp; delete base.jtm; delete base.jtx; delete base.jtz; }
+      if (!base.crk) { delete base.cdx; delete base.cdz; delete base.clen; }
       if (z.dying) {
         return { ...base, dy: 1, dt: Math.ceil(z.deathTimer) };
       }
@@ -3011,13 +3020,12 @@ function gameLoop() {
     cage: cagePos ? [+cagePos.x.toFixed(1), +cagePos.z.toFixed(1), cageOpen ? 1 : 0, Object.values(cagedFriendlies || {}).reduce((s, n) => s + n, 0)] : null,
     tod: +timeOfDay.toFixed(3), night: isNight ? 1 : 0,
     zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone && !z.friendly).length + zombiesToSpawn,
-    water: { x: WATER.x, z: WATER.z, pts: WATER.points.map(p => [+p.x.toFixed(2), +p.z.toFixed(2)]) },
-    creepyZone: { x: CREEPY_ZONE.x, z: CREEPY_ZONE.z, r: CREEPY_ZONE.radius },
     skeletonWorld,
     skeletonUnlocked,
     creepyUnlocked,
   };
   io.emit('state', state);
+  }
   } catch(e) {
     console.error('gameLoop error:', e.stack || e.message);
   }

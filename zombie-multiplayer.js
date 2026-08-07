@@ -4316,8 +4316,8 @@ class ZombieMultiplayerClient {
       const ubt = (this._bulletsTime || 0).toFixed(1);
       perfEl.textContent = `FPS:${this._fps} B:${bt} scene:${st}ms bullets:${ubt}ms render:${rt}ms`;
     }
-    // Advance interpolation alpha (server ticks every 40ms)
-    this.interpAlpha += dt / 0.04;
+    // Advance interpolation alpha (server broadcasts every 80ms)
+    this.interpAlpha += dt / 0.08;
     // Flush throttled input
     this.flushInput();
     const _bt0 = performance.now();
