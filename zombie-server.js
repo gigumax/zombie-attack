@@ -167,6 +167,22 @@ let zombies = [];
 let goldPickups = [];
 let powerUpPickups = []; // rare drops from zombies: {id, type, x, z}
 let chests = [];
+// Adventure path — each area has its own waves, zombie flavor, and area boss
+const AREAS = [
+  { key: 'grasslands', name: 'Grasslands',  waves: 5, bossHp: 1.0 },
+  { key: 'darkForest', name: 'Dark Forest', waves: 5, bossHp: 1.4 },
+  { key: 'swamp',      name: 'Swamp',       waves: 5, bossHp: 1.8 },
+  { key: 'ashlands',   name: 'Ashlands',    waves: 6, bossHp: 2.3 },
+  { key: 'volcano',    name: 'Volcano',     waves: 6, bossHp: 3.0 },
+];
+const AREA_FLAVOR = {
+  darkForest: ['creepy', 'necromancer'],
+  swamp: ['spitter', 'exploder'],
+  ashlands: ['buffSkeleton', 'guard'],
+  volcano: ['buff', 'buffSkeleton', 'exploder'],
+};
+let areaIndex = 0;
+let areaWave = 0; // waves cleared within the current area
 let lockedChests = []; // treasure chests — need a Chest Key from a mini-boss
 let eggPickups = []; // mystery eggs — carry 2 waves without going down to hatch a buddy
 const BUDDY_NAMES = ['Chomper', 'Bones', 'Gary', 'Ziggy', 'Munch', 'Grub', 'Rex', 'Blinky', 'Moss', 'Sprout', 'Fang', 'Waffle'];
@@ -228,7 +244,7 @@ function getGunStat(player, stat) {
     case 'reloadTime': return gun.reloadTime;
     case 'pellets': return gun.pellets;
     case 'spread': return gun.spread;
-    case 'maxHealth': return CONFIG.maxHealth + lvl.health * 25;
+    case 'maxHealth': return CONFIG.maxHealth + lvl.health * 25 + ((player.level || 1) - 1) * 5;
     default: return gun[stat];
   }
 }
@@ -248,6 +264,7 @@ function createPlayer(id) {
     upgrades: { damage: 0, fireRate: 0, magSize: 0, health: 0 },
     materials: { bone: 0, goo: 0, gunpowder: 0, iron: 0, shadow: 0, core: 0 },
     buddyGear: {},
+    xp: 0, level: 1,
     reloading: false, reloadTimer: 0,
     fireTimer: 0, autoFire: false,
     shopOpen: false, onGround: true,
@@ -284,6 +301,12 @@ function spawnZombie() {
   else if (wave >= 6 && r < 0.46) type = 'spitter';
   else if (wave >= 8 && r < 0.56) type = 'buffSkeleton';
   else if (wave >= 3 && r < 0.66) type = 'creepy'; // 20% chance for creepy in grasslands
+
+  // Area flavor — later areas lean into their signature zombie types
+  const areaFlavor = AREA_FLAVOR[AREAS[Math.min(areaIndex, AREAS.length - 1)].key];
+  if (areaFlavor && Math.random() < 0.35) {
+    type = areaFlavor[Math.floor(Math.random() * areaFlavor.length)];
+  }
 
   const angle = Math.random() * Math.PI * 2;
   const dist = CONFIG.worldSize - 5;
@@ -496,11 +519,12 @@ function spawnBoss() {
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
   const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
-  const health = 60000; // ~1100 rifle hits — tough but beatable
+  const area = AREAS[Math.min(areaIndex, AREAS.length - 1)];
+  const health = Math.round(60000 * area.bossHp); // scales up each area
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
-    damage: CONFIG.zombieDamage * 30, attackRange: CONFIG.zombieAttackRange * 2.5,
+    damage: Math.round(CONFIG.zombieDamage * 30 * (1 + areaIndex * 0.15)), attackRange: CONFIG.zombieAttackRange * 2.5,
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
     lostLimbs: {}, limbDamage: {},
@@ -625,6 +649,40 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   else msg = `+${score} ${kid ? 'Zombie tagged' : 'Zombie eliminated'}!`;
   broadcastKillFeed(player ? `${player.name}: ${msg}` : msg);
 
+  // Area boss defeated — advance the adventure path
+  if (zombie.isBoss && !postEscapeBoss && !zombie.isCreepyBoss && zombie.type !== 'skeletonBoss' && areaWave > AREAS[Math.min(areaIndex, AREAS.length - 1)].waves) {
+    const clearedArea = AREAS[Math.min(areaIndex, AREAS.length - 1)];
+    areaWave = 0;
+    if (areaIndex < AREAS.length - 1) {
+      areaIndex++;
+      const nextArea = AREAS[areaIndex];
+      io.emit('waveAnnounce', `${clearedArea.name.toUpperCase()} COMPLETE!`);
+      broadcastKillFeed(kid ? `${clearedArea.name} cleared! Next stop: ${nextArea.name}!` : `${clearedArea.name.toUpperCase()} COMPLETE — entering ${nextArea.name.toUpperCase()}! (+200 gold, full heal)`);
+    } else {
+      io.emit('waveAnnounce', 'VOLCANO CONQUERED — YOU BEAT THE PATH!');
+      broadcastKillFeed(kid ? 'You finished the whole adventure! Amazing!' : 'THE ADVENTURE PATH IS CONQUERED! The Volcano keeps burning — endless mode!');
+    }
+    for (const pl of Object.values(players)) {
+      if (pl.dead || pl.spawnerMode) continue;
+      pl.gold += 200;
+      pl.health = getGunStat(pl, 'maxHealth');
+    }
+  }
+
+  // XP — every kill feeds your level
+  if (player && !zombie.friendly) {
+    const XP_VALUES = { normal: 10, skeleton: 12, creepy: 25, buff: 30, exploder: 20, spitter: 20, necromancer: 25, guard: 25, buffSkeleton: 40, skeletonBoss: 600 };
+    player.xp = (player.xp || 0) + (zombie.isBoss ? 400 : (XP_VALUES[zombie.type] || 10));
+    player.level = player.level || 1;
+    while (player.xp >= 100 * player.level) {
+      player.xp -= 100 * player.level;
+      player.level++;
+      player.maxHealth = getGunStat(player, 'maxHealth');
+      player.health = player.maxHealth; // full heal on level up
+      broadcastKillFeed(kid ? `${player.name} reached Level ${player.level}!` : `${player.name} LEVEL UP → Lv${player.level}! (+5 max HP, full heal)`);
+    }
+  }
+
   // Chest keys — mini-bosses (buff skeleton, necromancer, creepy) drop 20%, bosses always
   if (player && !zombie.friendly) {
     const keyChance = (zombie.isBoss || zombie.type === 'skeletonBoss') ? 1.0
@@ -707,8 +765,17 @@ function startWave() {
   waveActive = true;
   spawnTimer = 0;
   bossSpawned = false;
-  if (wave >= 5) bossPending = true;
-  io.emit('waveAnnounce', bossPending ? `WAVE ${wave} — BOSS INCOMING!` : `WAVE ${wave}`);
+  const area = AREAS[Math.min(areaIndex, AREAS.length - 1)];
+  areaWave++;
+  if (areaWave > area.waves) {
+    // Path cleared — this wave brings the AREA BOSS (plus a lighter escort wave)
+    bossPending = true;
+    zombiesToSpawn = Math.ceil(zombiesToSpawn / 2);
+    io.emit('waveAnnounce', `${area.name.toUpperCase()} — AREA BOSS!`);
+  } else {
+    bossPending = false;
+    io.emit('waveAnnounce', `${area.name.toUpperCase()} — WAVE ${areaWave}/${area.waves}`);
+  }
 }
 
 function endWave() {
@@ -2747,6 +2814,7 @@ function gameLoop() {
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0, egg: p.eggWaves || 0,
       ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '', eggn: p.eggCount || 0, pvp: p.pvp ? 1 : 0,
       mat: p.materials ? [p.materials.bone || 0, p.materials.goo || 0, p.materials.gunpowder || 0, p.materials.iron || 0, p.materials.shadow || 0, p.materials.core || 0] : [0, 0, 0, 0, 0, 0],
+      lvl: p.level || 1, xp: Math.round(p.xp || 0), xpn: 100 * (p.level || 1),
       bgh: p.buddyGear && p.buddyGear.helmet ? 1 : 0, bgs: p.buddyGear && p.buddyGear.sword ? 1 : 0,
       clk: (p.cloakTimer || 0) > 0 ? 1 : 0,
       gun: p.currentGun, ammo: p.ammo,
@@ -2819,6 +2887,7 @@ function gameLoop() {
     eggs: eggPickups.map(e => [e.id, +e.x.toFixed(1), +e.z.toFixed(1)]),
     weaponPickups: weaponPickups.map(w => [w.id, w.gun, +w.x.toFixed(2), +w.z.toFixed(2)]),
     wave, waveActive, escapeMode, escapeStep, doorOpen, keyDropped, keyPos, friendlyFire,
+    area: [areaIndex, Math.min(areaWave, AREAS[Math.min(areaIndex, AREAS.length - 1)].waves), AREAS[Math.min(areaIndex, AREAS.length - 1)].waves, AREAS[Math.min(areaIndex, AREAS.length - 1)].name, AREAS[Math.min(areaIndex, AREAS.length - 1)].key],
     cage: cagePos ? [+cagePos.x.toFixed(1), +cagePos.z.toFixed(1), cageOpen ? 1 : 0, Object.values(cagedFriendlies || {}).reduce((s, n) => s + n, 0)] : null,
     tod: +timeOfDay.toFixed(3), night: isNight ? 1 : 0,
     zRemain: zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone).length + zombiesToSpawn,
@@ -2892,6 +2961,8 @@ io.on('connection', (socket) => {
       zombies = [];
       lockedChests = [];
       spawnLockedChest(); spawnLockedChest();
+      areaIndex = 0;
+      areaWave = 0;
     }
   });
   socket.on('setEmoji', (val) => {
@@ -3201,6 +3272,8 @@ io.on('connection', (socket) => {
       chests = [];
       lockedChests = [];
       eggPickups = [];
+      areaIndex = 0;
+      areaWave = 0;
       postEscapeBoss = false;
       skeletonWorld = false;
       cagePos = null; cageOpen = false; cagedFriendlies = null;

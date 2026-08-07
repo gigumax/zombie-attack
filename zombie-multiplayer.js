@@ -181,6 +181,24 @@ class ZombieMultiplayerClient {
       if (creepyLock) {
         creepyLock.style.display = state.creepyUnlocked ? 'none' : 'flex';
       }
+      // Adventure area — theme the ground and update the path display
+      if (state.area) {
+        const areaKey = state.area[4];
+        if (areaKey !== this._areaKey) {
+          this._areaKey = areaKey;
+          const groundColors = { grasslands: 0x3a5f3a, darkForest: 0x1c3a22, swamp: 0x50602a, ashlands: 0x50505a, volcano: 0x40201a };
+          if (this.groundMesh && groundColors[areaKey] && this.currentWorld !== 'skeleton') {
+            this.groundMesh.material.color.setHex(groundColors[areaKey]);
+          }
+        }
+        const areaEl = document.getElementById('area-val');
+        if (areaEl) areaEl.textContent = `${state.area[3]} ${state.area[1]}/${state.area[2]}`;
+        const pathEl = document.getElementById('area-path');
+        if (pathEl) {
+          const names = ['Grasslands', 'Dark Forest', 'Swamp', 'Ashlands', 'Volcano'];
+          pathEl.textContent = names.map((n, i) => (i < state.area[0] ? `✓ ${n}` : i === state.area[0] ? `▶ ${n}` : `🔒 ${n}`)).join('  →  ');
+        }
+      }
       // PvP indicator — shows when YOU have opted into PvP
       const pvpEl = document.getElementById('pvp-indicator');
       if (pvpEl) pvpEl.style.display = (this.myPlayer && this.myPlayer.pvp) ? 'block' : 'none';
@@ -3794,6 +3812,8 @@ class ZombieMultiplayerClient {
       const icons = { leather: '🥾', iron: '🛡️', diamond: '💎' };
       armorEl.textContent = p.ar ? `${icons[p.art] || '🛡️'} ${p.ar}` : '—';
     }
+    const levelEl = document.getElementById('level-val');
+    if (levelEl) levelEl.textContent = `Lv${p.lvl || 1} · ${p.xp || 0}/${p.xpn || 100}`;
     // Spawner mode indicator
     const spawnerEl = document.getElementById('spawner-indicator');
     if (spawnerEl) spawnerEl.style.display = p.sp ? 'block' : 'none';

@@ -255,7 +255,9 @@
   <div id="hud">
     <div class="hud-item"><div class="hud-label">Health</div><div id="health-val">100</div></div>
     <div class="hud-item"><div class="hud-label">Score</div><div id="score-val">0</div></div>
+    <div class="hud-item"><div class="hud-label">Area</div><div id="area-val" style="color:#8aff8a;font-size:14px;">Grasslands</div></div>
     <div class="hud-item"><div class="hud-label">Wave</div><div id="wave-val">1</div></div>
+    <div class="hud-item"><div class="hud-label">Level</div><div id="level-val" style="color:#cc88ff;">Lv1</div></div>
     <div class="hud-item"><div class="hud-label">Ammo</div><div id="ammo-val">Pistol — 12/∞</div></div>
     <div class="hud-item"><div class="hud-label">Gold</div><div id="gold-val">0</div></div>
     <div class="hud-item"><div class="hud-label">Keys</div><div id="keys-val" style="color:#ffd700;">0</div></div>
@@ -411,6 +413,7 @@
   <div id="world-map-overlay" class="overlay hidden" style="background:rgba(0,0,0,0.9);">
     <div style="display:flex;flex-direction:column;align-items:center;gap:20px;max-width:600px;">
       <h2 style="color:#f1c40f;font-size:28px;">WORLD MAP</h2>
+      <div id="area-path" style="color:#8aff8a;font-size:13px;font-weight:700;letter-spacing:0.5px;"></div>
       <p style="color:rgba(255,255,255,0.5);font-size:13px;">Choose a world to travel to</p>
       <div style="display:flex;gap:20px;flex-wrap:wrap;justify-content:center;">
         <div class="world-card" data-world="main" style="width:160px;height:200px;border:3px solid #4a8a4a;border-radius:16px;cursor:pointer;background:linear-gradient(135deg,#2a4a2a,#1a3a1a);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;transition:transform 0.2s;">
@@ -452,6 +455,6 @@
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="zombie-multiplayer.js?v=69"></script>
+  <script src="zombie-multiplayer.js?v=70"></script>
 </body>
 </html>
