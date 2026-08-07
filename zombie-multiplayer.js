@@ -3746,6 +3746,11 @@ class ZombieMultiplayerClient {
     if (keysEl) keysEl.textContent = '🗝️' + (p.ck || 0);
     const eggEl = document.getElementById('egg-val');
     if (eggEl) eggEl.textContent = p.egg ? `🥚 ${p.egg} wave${p.egg > 1 ? 's' : ''}` : '—';
+    const armorEl = document.getElementById('armor-val');
+    if (armorEl) {
+      const icons = { leather: '🥾', iron: '🛡️', diamond: '💎' };
+      armorEl.textContent = p.ar ? `${icons[p.art] || '🛡️'} ${p.ar}` : '—';
+    }
     // Spawner mode indicator
     const spawnerEl = document.getElementById('spawner-indicator');
     if (spawnerEl) spawnerEl.style.display = p.sp ? 'block' : 'none';
@@ -3904,6 +3909,22 @@ class ZombieMultiplayerClient {
       const canBuy = isSpawner || p.g >= gun.price;
       const stats = gun.melee ? `DMG ${gun.damage} · RNG ${gun.meleeRange}` : `DMG ${gun.damage} · MAG ${gun.magSize}`;
       html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name} ${buyHotkeys[key]?`<span style="color:#666;font-size:10px;">[${buyHotkeys[key]}]</span>`:''}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${isSpawner?'FREE':gun.price+'g'}</span></div>`;
+    }
+
+    // Armor
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Armor</div>';
+    const ARMOR_SHOP = [
+      { key: 'leather', name: 'Leather Armor', icon: '🥾', price: 150, points: 100, absorb: 25 },
+      { key: 'iron',    name: 'Iron Armor',    icon: '🛡️', price: 350, points: 200, absorb: 50 },
+      { key: 'diamond', name: 'Diamond Armor', icon: '💎', price: 700, points: 350, absorb: 70 },
+    ];
+    for (const a of ARMOR_SHOP) {
+      const wearing = p.art === a.key;
+      const canBuy = !wearing && (isSpawner || p.g >= a.price);
+      html += `<div class="shop-item ${wearing?'equipped':(canBuy?'':'disabled')}" ${canBuy?`data-action="buyArmor" data-key="${a.key}"`:''}>
+        <span>${a.icon} ${a.name}${wearing?` <span style="color:#2ecc71;font-size:10px;">WEARING · ${p.ar}</span>`:''}<br><span style="font-size:10px;color:#666;">Soaks ${a.absorb}% damage · ${a.points} durability</span></span>
+        <span>${wearing?'ON':(isSpawner?'FREE':a.price+'g')}</span>
+      </div>`;
     }
 
     // Upgrades

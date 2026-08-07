@@ -117,6 +117,24 @@ const GUNS = {
   rifle:  { name:'Rifle', magSize:500, reloadTime:1.0, fireRate:0.06, damage:55, pellets:1, spread:0.005, price:400 },
 };
 
+const ARMORS = {
+  leather: { name: 'Leather Armor', price: 150, points: 100, absorb: 0.25 },
+  iron:    { name: 'Iron Armor',    price: 350, points: 200, absorb: 0.5 },
+  diamond: { name: 'Diamond Armor', price: 700, points: 350, absorb: 0.7 },
+};
+
+// Armor soaks a fraction of incoming damage until its points run out
+function absorbDamage(p, dmg) {
+  if (!p.armor || p.armor.points <= 0) return dmg;
+  const absorbed = Math.min(p.armor.points, dmg * p.armor.absorb);
+  p.armor.points -= absorbed;
+  if (p.armor.points <= 0) {
+    broadcastKillFeed(anyKidFriendly() ? `${p.name}'s armor wore out!` : `${p.name}'s ${p.armor.name} BROKE!`);
+    p.armor = null;
+  }
+  return dmg - absorbed;
+}
+
 const UPGRADES = {
   damage:  { name:'Damage +10', price:100, maxLevel:5 },
   fireRate:{ name:'Fire Rate +20%', price:80, maxLevel:5 },
@@ -1139,7 +1157,7 @@ function rayHitPlayer(p, dir, target, maxDist) {
 
 function damagePlayer(target, attackerId, damage) {
   if (!target || target.dead || target.downed || target.paused || target.spawnerMode) return;
-  target.health -= damage;
+  target.health -= absorbDamage(target, damage);
   if (target.health <= 0) {
     const attacker = players[attackerId];
     const attackerName = attacker ? attacker.name : 'Unknown';
@@ -1900,7 +1918,7 @@ function updateZombies(dt) {
             // RANGED — shoot projectile at target (instant hit, long range)
             if (dist < 30) {
               if (target) {
-                target.health -= z.damage * 0.4;
+                target.health -= absorbDamage(target, z.damage * 0.4);
                 if (target.health <= 0) downPlayer(target);
               } else if (zombieTarget) {
                 zombieTarget.health -= z.damage * 0.4;
@@ -1935,7 +1953,7 @@ function updateZombies(dt) {
             if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             const pd = Math.hypot(p.x - z.jumpTargetX, p.z - z.jumpTargetZ);
             if (pd < 3.0) {
-              p.health -= 200;
+              p.health -= absorbDamage(p, 200);
               if (p.health <= 0) downPlayer(p);
             }
           }
@@ -1982,7 +2000,7 @@ function updateZombies(dt) {
               const perpZ = pz - t * z.crackDz;
               const perpDist = Math.hypot(perpX, perpZ);
               if (perpDist < z.crackWidth) {
-                p.health -= z.damage * 0.7;
+                p.health -= absorbDamage(p, z.damage * 0.7);
                 if (p.health <= 0) downPlayer(p);
               }
             }
@@ -2017,7 +2035,7 @@ function updateZombies(dt) {
           if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
           const pd = Math.hypot(p.x - z.x, p.z - z.z);
           if (pd < attackRange) {
-            p.health -= z.damage;
+            p.health -= absorbDamage(p, z.damage);
             if (p.health <= 0) downPlayer(p);
             z.charging = false;
           }
@@ -2044,7 +2062,7 @@ function updateZombies(dt) {
       if (dist < attackRange && z.attackTimer <= 0 && !z.charging) {
         z.attackTimer = z.attackCooldown || 0.7;
         if (target) {
-          target.health -= z.damage;
+          target.health -= absorbDamage(target, z.damage);
           if (target.health <= 0) {
             target.health = 0;
             target.dead = true;
@@ -2071,7 +2089,7 @@ function updateZombies(dt) {
             zombieTarget.health -= rangedDmg;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
-            target.health -= rangedDmg;
+            target.health -= absorbDamage(target, rangedDmg);
             if (target.health <= 0) downPlayer(target);
           }
           z.rangedEffect = 1;
@@ -2083,7 +2101,7 @@ function updateZombies(dt) {
             zombieTarget.health -= z.damage;
             if (zombieTarget.health <= 0 && !zombieTarget.dying) killZombie(zombieTarget, null);
           } else {
-            target.health -= z.damage;
+            target.health -= absorbDamage(target, z.damage);
             if (target.health <= 0) downPlayer(target);
           }
           z.attacking = 1;
@@ -2093,7 +2111,7 @@ function updateZombies(dt) {
             for (const p of Object.values(players)) {
               if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
               const pd = Math.hypot(p.x - z.x, p.z - z.z);
-              if (pd < attackRange * 2) { p.health -= z.damage * 0.8; if (p.health <= 0) downPlayer(p); }
+              if (pd < attackRange * 2) { p.health -= absorbDamage(p, z.damage * 0.8); if (p.health <= 0) downPlayer(p); }
             }
             for (const oz of zombies) {
               if (oz === z || oz.dying || oz.reviving || oz.isBoss || oz.friendly) continue;
@@ -2111,7 +2129,7 @@ function updateZombies(dt) {
             if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < attackRange * 1.3) {
-              p.health -= z.damage * 1.5;
+              p.health -= absorbDamage(p, z.damage * 1.5);
               if (p.health <= 0) downPlayer(p);
             }
           }
@@ -2127,7 +2145,7 @@ function updateZombies(dt) {
         // GUARD — shield bash: knocks player back, moderate damage
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
-          target.health -= z.damage;
+          target.health -= absorbDamage(target, z.damage);
           // Knockback
           const kdx = (target.x - z.x) / dist, kdz = (target.z - z.z) / dist;
           target.x += kdx * 3;
@@ -2156,7 +2174,7 @@ function updateZombies(dt) {
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.3;
           z.invisible = 0; // reveal when attacking
-          target.health -= z.damage;
+          target.health -= absorbDamage(target, z.damage);
           if (target.health <= 0) downPlayer(target);
           z.slamEffect = 1;
           z.attacking = 1; // visual: mouth open + head shake
@@ -2193,7 +2211,7 @@ function updateZombies(dt) {
         }
         if (dist < attackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 1.5;
-          target.health -= z.damage;
+          target.health -= absorbDamage(target, z.damage);
           if (target.health <= 0) downPlayer(target);
           z.attacking = 1;
         }
@@ -2209,7 +2227,7 @@ function updateZombies(dt) {
             if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             const pd = Math.hypot(p.x - z.x, p.z - z.z);
             if (pd < explodeRadius) {
-              p.health -= z.damage;
+              p.health -= absorbDamage(p, z.damage);
               if (p.health <= 0) downPlayer(p);
             }
           }
@@ -2255,7 +2273,7 @@ function updateZombies(dt) {
         // Weak melee if player gets close
         if (dist < CONFIG.zombieAttackRange && z.attackTimer <= 0) {
           z.attackTimer = CONFIG.zombieAttackCooldown * 2;
-          target.health -= z.damage * 0.5;
+          target.health -= absorbDamage(target, z.damage * 0.5);
           if (target.health <= 0) downPlayer(target);
           z.attacking = 1;
         }
@@ -2281,7 +2299,7 @@ function updateZombies(dt) {
             // Check if still in range after lunge
             const newDist = Math.hypot(target.x - z.x, target.z - z.z);
             if (newDist < attackRange) {
-              target.health -= z.damage;
+              target.health -= absorbDamage(target, z.damage);
               if (target.health <= 0) downPlayer(target);
             }
           }
@@ -2573,7 +2591,7 @@ function gameLoop() {
             if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
             const pd = Math.hypot(p.x - sp.x, p.z - sp.z);
             if (pd < 0.8) {
-              p.health -= sp.damage;
+              p.health -= absorbDamage(p, sp.damage);
               if (p.health <= 0) downPlayer(p);
               hit = true;
               break;
@@ -2645,6 +2663,7 @@ function gameLoop() {
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0, egg: p.eggWaves || 0,
+      ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '',
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
@@ -2921,6 +2940,16 @@ io.on('connection', (socket) => {
   socket.on('buyUpgrade', (key) => {
     if (typeof key !== 'string' || !UPGRADES[key]) return;
     buyUpgrade(socket.id, key); sendPlayerMeta(socket.id);
+  });
+  socket.on('buyArmor', (key) => {
+    if (typeof key !== 'string' || !ARMORS[key]) return;
+    const p = players[socket.id];
+    if (!p || p.dead) return;
+    const a = ARMORS[key];
+    if (!p.spawnerMode && p.gold < a.price) return;
+    if (!p.spawnerMode) p.gold -= a.price;
+    p.armor = { name: a.name, points: a.points, maxPoints: a.points, absorb: a.absorb, tier: key };
+    broadcastKillFeed(anyKidFriendly() ? `${p.name} put on ${a.name}! So tough!` : `${p.name} equipped ${a.name} (${Math.round(a.absorb * 100)}% damage soak, ${a.points} durability)`);
   });
   socket.on('switchGun', (gun) => {
     if (typeof gun !== 'string' || !GUNS[gun]) return;
