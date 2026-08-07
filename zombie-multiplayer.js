@@ -742,7 +742,7 @@ class ZombieMultiplayerClient {
         if (e.code === 'Digit0') this.socket.emit('spawnEgg', 'friendly');
       }
       // Upgrade hotkeys
-      if (e.code === 'KeyZ' && this.playing) this.socket.emit('buyUpgrade', 'damage');
+      if (e.code === 'KeyZ' && this.playing) this.socket.emit('recallBuddies');
       if (e.code === 'KeyX' && this.playing) this.socket.emit('buyUpgrade', 'fireRate');
       if (e.code === 'KeyC' && this.playing) this.socket.emit('buyUpgrade', 'magSize');
       if (e.code === 'KeyV' && this.playing) this.socket.emit('buyUpgrade', 'health');
@@ -3912,7 +3912,7 @@ class ZombieMultiplayerClient {
     const el = document.getElementById('shop-content');
     const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7' };
     const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K' };
-    const upgradeHotkeys = { damage: 'Z', fireRate: 'X', magSize: 'C', health: 'V' };
+    const upgradeHotkeys = { fireRate: 'X', magSize: 'C', health: 'V' };
     const isSpawner = p.sp === 1;
     let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${isSpawner ? '∞' : p.g}</div>`;
 
@@ -4030,7 +4030,7 @@ class ZombieMultiplayerClient {
         <span style="font-size:10px;color:#666;">[0]</span>
       </div>`;
     }
-    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle ·<kbd>Z</kbd>DMG <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP · <kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
+    html += `<div style="margin-top:10px;font-size:10px;color:#555;">Press <kbd>B</kbd> shop · <kbd>F</kbd>SMG <kbd>H</kbd>Shotgun <kbd>J</kbd>Katana <kbd>K</kbd>Rifle · <kbd>Z</kbd>CallBuddies <kbd>X</kbd>FR <kbd>C</kbd>Mag <kbd>V</kbd>HP ·<kbd>N</kbd>Gre <kbd>M</kbd>Rck <kbd>,</kbd>Med <kbd>.</kbd>Air · <kbd>T</kbd>UseGre <kbd>Y</kbd>UseRck <kbd>U</kbd>UseMed <kbd>I</kbd>UseAir · <kbd>/</kbd>Creative</div>`;
     el.innerHTML = html;
   }
 

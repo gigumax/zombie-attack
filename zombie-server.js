@@ -1670,6 +1670,26 @@ function updateZombies(dt) {
     // Friendly zombies target enemy zombies, not players
     if (z.friendly) {
       z.attackTimer -= dt;
+      // Recalled — drop everything and run to the owner
+      if (z.recall && z.recall > 0) {
+        z.recall -= dt;
+        const owner = players[z.owner];
+        if (owner && !owner.dead) {
+          const rdx = owner.x - z.x, rdz = owner.z - z.z;
+          const rdist = Math.hypot(rdx, rdz);
+          if (rdist < 2.5) {
+            z.recall = 0; // arrived
+          } else {
+            z.x += (rdx / rdist) * z.speed * 1.2 * dt;
+            z.z += (rdz / rdist) * z.speed * 1.2 * dt;
+            z.walkPhase += dt * z.speed * 4;
+            z.rot = Math.atan2(rdx, rdz);
+            continue;
+          }
+        } else {
+          z.recall = 0;
+        }
+      }
       // Dodge instincts — scramble out of boss attack danger zones
       let dodgeX = 0, dodgeZ = 0;
       for (const b of zombies) {
@@ -2988,6 +3008,15 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || p.dead) return;
     p.shopOpen = !p.shopOpen;
+  });
+  socket.on('recallBuddies', () => {
+    const p = players[socket.id];
+    if (!p) return;
+    let n = 0;
+    for (const z of zombies) {
+      if (z.friendly && z.owner === socket.id && !z.dying) { z.recall = 6; n++; }
+    }
+    if (n > 0) broadcastKillFeed(anyKidFriendly() ? `${p.name} called their buddies back!` : `${p.name} recalled ${n} buddie${n > 1 ? 's' : ''}!`);
   });
   socket.on('toggleFriendlyFire', () => {
     // Per-player PvP opt-in: only players who turn it on can be shot/hit
