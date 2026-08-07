@@ -662,24 +662,32 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   // Kill feed
   const kid = anyKidFriendly();
 
-  // Rare power-up drop — 5% chance for normal zombies, 15% for special types, 100% for boss
-  let dropChance = 1.0; // TEMP: 100% for testing
-  if (zombie.isBoss || zombie.type === 'skeletonBoss') dropChance = 1.0;
-  else if (['buff', 'necromancer', 'exploder', 'creepy', 'spitter', 'guard', 'buffSkeleton'].includes(zombie.type)) dropChance = 0.15;
-  if (Math.random() < dropChance) {
+  // Power-up drops — 5% for normal zombies, 15% for special types, 100% for bosses,
+  // and buff zombies / buff skeletons always burst into 3 orbs
+  const rollOrb = () => {
     const dropTypes = ['maxHealth', 'speedBoots', 'reloadGlove', 'goldenBullet', 'lightningRod', 'necroSkull'];
-    // Weighted: permanent upgrades more common, special items rarer
-    const weights = [3, 3, 3, 3, 1, 1];
-    let totalW = weights.reduce((a, b) => a + b, 0);
-    let roll = Math.random() * totalW;
-    let dropType = dropTypes[0];
+    const weights = [3, 3, 3, 3, 1, 1]; // permanent upgrades common, special items rare
+    let roll = Math.random() * weights.reduce((a, b) => a + b, 0);
     for (let i = 0; i < dropTypes.length; i++) {
       roll -= weights[i];
-      if (roll <= 0) { dropType = dropTypes[i]; break; }
+      if (roll <= 0) return dropTypes[i];
     }
-    // Boss always drops lightning rod or necro skull
-    if (zombie.isBoss) dropType = Math.random() < 0.5 ? 'lightningRod' : 'necroSkull';
-    powerUpPickups.push({ id: nextGoldId++, type: dropType, x: zombie.x, z: zombie.z });
+    return dropTypes[0];
+  };
+  if (zombie.type === 'buff' || zombie.type === 'buffSkeleton') {
+    for (let oi = 0; oi < 3; oi++) {
+      const ang = (oi / 3) * Math.PI * 2;
+      powerUpPickups.push({ id: nextGoldId++, type: rollOrb(), x: zombie.x + Math.cos(ang) * 1.2, z: zombie.z + Math.sin(ang) * 1.2 });
+    }
+  } else {
+    let dropChance = 0.05;
+    if (zombie.isBoss || zombie.type === 'skeletonBoss') dropChance = 1.0;
+    else if (['necromancer', 'exploder', 'creepy', 'spitter', 'guard'].includes(zombie.type)) dropChance = 0.15;
+    if (Math.random() < dropChance) {
+      // Boss always drops lightning rod or necro skull
+      const dropType = zombie.isBoss ? (Math.random() < 0.5 ? 'lightningRod' : 'necroSkull') : rollOrb();
+      powerUpPickups.push({ id: nextGoldId++, type: dropType, x: zombie.x, z: zombie.z });
+    }
   }
   let msg = '';
   if (zombie.type === 'skeletonBoss') msg = kid ? `MUTANT SKELETON BOSS TAGGED! +${score}` : `MUTANT SKELETON BOSS DESTROYED! +${score}`;
