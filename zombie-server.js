@@ -2537,6 +2537,44 @@ function updateZombies(dt) {
       if (!bBig) { b.x -= ux * push; b.z -= uz * push; }
     }
   }
+
+  // Players are solid too — nothing overlaps anything
+  const PR = 0.55; // player body radius
+  const plist = Object.values(players).filter(p => !p.dead && !p.downed && !p.paused && !p.spawnerMode && p.ready);
+  for (let i = 0; i < plist.length; i++) {
+    const a = plist[i];
+    // Player vs player
+    for (let j = i + 1; j < plist.length; j++) {
+      const b = plist[j];
+      const dx = a.x - b.x, dz = a.z - b.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.001 && d < PR * 2) {
+        const push = (PR * 2 - d) * 0.5;
+        const ux = dx / d, uz = dz / d;
+        a.x += ux * push; a.z += uz * push;
+        b.x -= ux * push; b.z -= uz * push;
+      }
+    }
+    // Player vs zombies — player nudges aside, zombie gives way (bosses don't budge)
+    for (const zz of zombies) {
+      if (zz.dying || zz.reviving || zz.jumping) continue;
+      const zBig = zz.isBoss || zz.type === 'skeletonBoss';
+      const zr = zBig ? 2.0 : sepRadius(zz.type);
+      const minSep = zr + PR;
+      const dx = a.x - zz.x, dz = a.z - zz.z;
+      if (Math.abs(dx) > minSep || Math.abs(dz) > minSep) continue;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.001 && d < minSep) {
+        const push = minSep - d;
+        const ux = dx / d, uz = dz / d;
+        a.x += ux * push * 0.35; a.z += uz * push * 0.35;
+        if (!zBig && !zz.charging) { zz.x -= ux * push * 0.5; zz.z -= uz * push * 0.5; }
+      }
+    }
+    const half = CONFIG.worldSize - 1;
+    a.x = Math.max(-half, Math.min(half, a.x));
+    a.z = Math.max(-half, Math.min(half, a.z));
+  }
 }
 
 // ─── Power-up drops ───
