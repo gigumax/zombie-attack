@@ -2568,6 +2568,7 @@ class ZombieMultiplayerClient {
       }
       mesh.rotation.y = p.yaw + Math.PI;
       mesh.visible = !p.dead;
+      this.updatePlayerArmor(mesh, p.art || '');
       // Walk animation for other players — detect movement by comparing positions
       const ud = mesh.userData;
       // Show/hide gun based on weapon type
@@ -2787,6 +2788,7 @@ class ZombieMultiplayerClient {
           this.localPlayerMesh.position.set(this.myPlayer.x, 0, this.myPlayer.z);
           // Face the direction the camera is looking (away from camera)
           this.localPlayerMesh.rotation.y = this.yaw + Math.PI;
+          this.updatePlayerArmor(this.localPlayerMesh, this.myPlayer.art || '');
         }
         // Hide gun in third person
         this.gun.visible = false;
@@ -2880,6 +2882,33 @@ class ZombieMultiplayerClient {
         document.getElementById('shop-overlay').classList.add('hidden');
       }
     }
+  }
+
+  updatePlayerArmor(mesh, tier) {
+    if (!mesh || mesh.userData.armorTier === tier) return;
+    if (mesh.userData.armorGroup) {
+      mesh.remove(mesh.userData.armorGroup);
+      mesh.userData.armorGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+      mesh.userData.armorGroup = null;
+    }
+    mesh.userData.armorTier = tier;
+    if (!tier) return;
+    const colors = { leather: 0x8a5a2a, iron: 0xc0c0cc, diamond: 0x55eeff };
+    const mat = new THREE.MeshLambertMaterial({
+      color: colors[tier] || 0xc0c0cc,
+      emissive: tier === 'diamond' ? 0x115566 : 0x000000,
+      emissiveIntensity: tier === 'diamond' ? 0.5 : 0,
+    });
+    const g = new THREE.Group();
+    const chest = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.95, 0.45), mat);
+    chest.position.y = 1.15; chest.castShadow = true; g.add(chest);
+    const shoulderGeo = new THREE.BoxGeometry(0.28, 0.18, 0.32);
+    const shL = new THREE.Mesh(shoulderGeo, mat); shL.position.set(-0.42, 1.58, 0); g.add(shL);
+    const shR = new THREE.Mesh(shoulderGeo, mat); shR.position.set(0.42, 1.58, 0); g.add(shR);
+    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.24, 0.46), mat);
+    helmet.position.y = 2.06; g.add(helmet);
+    mesh.add(g);
+    mesh.userData.armorGroup = g;
   }
 
   createPlayerMesh(emoji, faceDataURL, name, colors) {
