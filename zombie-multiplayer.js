@@ -191,6 +191,8 @@ class ZombieMultiplayerClient {
             this.groundMesh.material.color.setHex(groundColors[areaKey]);
           }
         }
+        const areaEl = document.getElementById('area-val');
+        if (areaEl) areaEl.textContent = `${state.area[3]} ${state.area[1]}/${state.area[2]}`;
         const pathEl = document.getElementById('area-path');
         if (pathEl) {
           const names = ['Grasslands', 'Dark Forest', 'Swamp', 'Ashlands', 'Volcano'];

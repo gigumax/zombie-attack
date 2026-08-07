@@ -549,15 +549,16 @@ function spawnBoss() {
   const z = Math.sin(angle) * dist;
   const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
   const area = AREAS[Math.min(areaIndex, AREAS.length - 1)];
-  const health = Math.round(60000 * area.bossHp); // scales up each area
+  const health = Math.round(12000 * area.bossHp); // scales up each area
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
-    damage: Math.round(CONFIG.zombieDamage * 30 * (1 + areaIndex * 0.15)), attackRange: CONFIG.zombieAttackRange * 2.5,
+    damage: Math.round(CONFIG.zombieDamage * 6 * (1 + areaIndex * 0.15)), attackRange: CONFIG.zombieAttackRange * 2.5,
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
     lostLimbs: {}, limbDamage: {},
-    reviveCount: 0, reviveTimer: 0, reviving: false,
+    // Each area's boss IS the revived version of the last one — darker, hornier, meaner
+    reviveCount: Math.min(3, areaIndex), reviveTimer: 0, reviving: false,
     specialAttackTimer: 5, // timer for special attacks
   });
   broadcastKillFeed(anyKidFriendly() ? 'BIG BOSS APPEARED!' : 'BOSS HAS APPEARED!');
@@ -593,8 +594,9 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   if (zombie.dying) return; // already dead, no double rewards
   const player = killerId ? players[killerId] : null;
 
-  // Boss revive logic — revives 3 times before truly dying
-  if (zombie.isBoss && zombie.reviveCount < 3 && !zombie.reviving) {
+  // Boss revive logic — wave/area bosses die for real (their next-area version IS the revival);
+  // creepy and skeleton bosses keep their in-fight revives
+  if (zombie.isBoss && zombie.type !== 'boss' && zombie.reviveCount < 3 && !zombie.reviving) {
     zombie.reviving = true;
     zombie.reviveTimer = 3; // 3 seconds to revive
     zombie.health = 0;
@@ -815,7 +817,7 @@ function startWave() {
     io.emit('waveAnnounce', `${area.name.toUpperCase()} — AREA BOSS!`);
   } else {
     bossPending = false;
-    io.emit('waveAnnounce', `WAVE ${wave} — ${area.name.toUpperCase()}`);
+    io.emit('waveAnnounce', `${area.name.toUpperCase()} — WAVE ${areaWave}/${area.waves}`);
   }
 }
 
