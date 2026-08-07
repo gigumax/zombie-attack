@@ -38,10 +38,7 @@ class ZombieMultiplayerClient {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // soft shadow edges
-    this.renderer.outputEncoding = THREE.sRGBEncoding;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping; // richer, filmic color
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.shadowMap.type = THREE.BasicShadowMap; // cheapest — keeps input latency low
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x1a1a2e);
@@ -110,6 +107,7 @@ class ZombieMultiplayerClient {
 
     this.setupLights();
     this.setupWorld();
+    this.setupSky();
     this.setupGun();
     this.setupInput();
     this.setupConnectScreen();
@@ -208,23 +206,40 @@ class ZombieMultiplayerClient {
       // Day/night cycle — update scene background and fog
       if (state.tod !== undefined && this.currentWorld !== 'creepy' && this.currentWorld !== 'skeleton') {
         const tod = state.tod;
-        // Interpolate sky color: dawn(0) -> day(0.25) -> dusk(0.5) -> night(0.75) -> dawn(1)
-        let skyColor, fogColor, fogNear, fogFar;
+        // Sky phases: dawn(0) -> day(0.25) -> dusk(0.5) -> night(0.75) -> dawn(1)
+        let top, horizon, fogNear, fogFar;
         if (tod < 0.15 || tod > 0.85) {
-          // Dawn — warm orange
-          skyColor = 0x2a1a0a; fogColor = 0x2a1a0a; fogNear = 25; fogFar = 70;
+          top = 0x4a2a5a; horizon = 0xcc7a3a; fogNear = 25; fogFar = 75; // dawn — purple to orange
         } else if (tod < 0.35) {
-          // Day — dark blue (default)
-          skyColor = 0x1a1a2e; fogColor = 0x1a1a2e; fogNear = 30; fogFar = 80;
+          top = 0x2a5aa8; horizon = 0x86b0d8; fogNear = 32; fogFar = 90; // day — blue sky
         } else if (tod < 0.6) {
-          // Dusk — dark purple
-          skyColor = 0x1a0a1a; fogColor = 0x1a0a1a; fogNear = 22; fogFar = 60;
+          top = 0x2a1a4a; horizon = 0xa04a5a; fogNear = 22; fogFar = 65; // dusk — violet to rose
         } else {
-          // Night — very dark
-          skyColor = 0x05050a; fogColor = 0x05050a; fogNear = 18; fogFar = 50;
+          top = 0x050512; horizon = 0x10102a; fogNear = 18; fogFar = 55; // night
         }
-        this.scene.background = new THREE.Color(skyColor);
-        this.scene.fog = new THREE.Fog(fogColor, fogNear, fogFar);
+        if (this.skyUniforms) {
+          this.skyUniforms.topColor.value.setHex(top);
+          this.skyUniforms.bottomColor.value.setHex(horizon);
+        }
+        this.scene.background = new THREE.Color(top);
+        this.scene.fog = new THREE.Fog(horizon, fogNear, fogFar);
+        // Sun and moon arc across the sky; stars fade in at night; clouds drift
+        if (this.sunMesh) {
+          const phi = tod * Math.PI * 2;
+          this.sunMesh.position.set(Math.cos(phi) * 110, Math.sin(phi) * 90 + 5, 40);
+          this.sunMesh.visible = Math.sin(phi) > -0.05;
+          this.sunMesh.lookAt(0, 10, 0);
+          this.moonMesh.position.set(-Math.cos(phi) * 110, -Math.sin(phi) * 90 + 5, -40);
+          this.moonMesh.visible = -Math.sin(phi) > -0.05;
+          this.moonMesh.lookAt(0, 10, 0);
+          this.starMat.opacity = (tod > 0.55 && tod < 0.95) ? 0.9 : 0;
+          const cdt = this._lastDt || 0.04;
+          for (const cl of this.clouds) {
+            cl.position.x += cl.userData.speed * cdt;
+            if (cl.position.x > 100) cl.position.x = -100;
+            cl.material.opacity = state.night ? 0.12 : 0.5;
+          }
+        }
         // Night indicator
         const nightEl = document.getElementById('night-indicator');
         if (nightEl) nightEl.style.display = state.night ? 'block' : 'none';
@@ -369,6 +384,15 @@ class ZombieMultiplayerClient {
         const showEnv = world !== 'sandbox';
         for (const o of this.envObjects) o.visible = showEnv;
       }
+      // Sky dome only exists under an open sky (main world and sandbox)
+      if (this.skyDome) {
+        const skyVisible = world !== 'creepy' && world !== 'skeleton';
+        this.skyDome.visible = skyVisible;
+        this.sunMesh.visible = skyVisible;
+        this.moonMesh.visible = skyVisible;
+        this.stars.visible = skyVisible;
+        for (const cl of this.clouds) cl.visible = skyVisible;
+      }
       if (world === 'creepy') {
         this.creepyZoneGroup.visible = true;
         this.scene.background = new THREE.Color(0x0a0010);
@@ -395,20 +419,78 @@ class ZombieMultiplayerClient {
     });
   }
 
+  // ─── Sky ───
+  setupSky() {
+    // Gradient dome — real sky instead of a flat background color
+    this.skyUniforms = {
+      topColor: { value: new THREE.Color(0x2a5aa8) },
+      bottomColor: { value: new THREE.Color(0x86b0d8) },
+    };
+    const skyMat = new THREE.ShaderMaterial({
+      uniforms: this.skyUniforms,
+      vertexShader: 'varying vec3 vPos; void main() { vPos = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'uniform vec3 topColor; uniform vec3 bottomColor; varying vec3 vPos; void main() { float h = clamp(vPos.y / 80.0, 0.0, 1.0); gl_FragColor = vec4(mix(bottomColor, topColor, h), 1.0); }',
+      side: THREE.BackSide, depthWrite: false, fog: false,
+    });
+    this.skyDome = new THREE.Mesh(new THREE.SphereGeometry(140, 16, 12), skyMat);
+    this.skyDome.renderOrder = -10;
+    this.scene.add(this.skyDome);
+    // Sun and moon discs that arc with the day/night cycle
+    this.sunMesh = new THREE.Mesh(new THREE.CircleGeometry(7, 20), new THREE.MeshBasicMaterial({ color: 0xffdd88, fog: false }));
+    this.scene.add(this.sunMesh);
+    this.moonMesh = new THREE.Mesh(new THREE.CircleGeometry(4.5, 20), new THREE.MeshBasicMaterial({ color: 0xddddff, fog: false }));
+    this.scene.add(this.moonMesh);
+    // Stars — fade in at night
+    const starPos = [];
+    for (let i = 0; i < 350; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const el = Math.random() * Math.PI * 0.45 + 0.08;
+      starPos.push(Math.cos(a) * Math.cos(el) * 130, Math.sin(el) * 130, Math.sin(a) * Math.cos(el) * 130);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+    this.starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, transparent: true, opacity: 0, fog: false });
+    this.stars = new THREE.Points(starGeo, this.starMat);
+    this.scene.add(this.stars);
+    // Soft drifting clouds
+    const cloudCnv = document.createElement('canvas');
+    cloudCnv.width = 128; cloudCnv.height = 64;
+    const cctx = cloudCnv.getContext('2d');
+    for (let i = 0; i < 14; i++) {
+      const cx = 20 + Math.random() * 88, cy = 16 + Math.random() * 30, cr = 10 + Math.random() * 16;
+      const grad = cctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
+      grad.addColorStop(0, 'rgba(255,255,255,0.5)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      cctx.fillStyle = grad;
+      cctx.fillRect(0, 0, 128, 64);
+    }
+    const cloudTex = new THREE.CanvasTexture(cloudCnv);
+    this.clouds = [];
+    for (let i = 0; i < 7; i++) {
+      const mat = new THREE.MeshBasicMaterial({ map: cloudTex, transparent: true, opacity: 0.5, depthWrite: false, fog: false, side: THREE.DoubleSide });
+      const cl = new THREE.Mesh(new THREE.PlaneGeometry(24 + Math.random() * 14, 13 + Math.random() * 7), mat);
+      cl.rotation.x = Math.PI / 2;
+      cl.position.set((Math.random() - 0.5) * 180, 45 + Math.random() * 12, (Math.random() - 0.5) * 180);
+      cl.userData.speed = 0.5 + Math.random() * 0.9;
+      this.scene.add(cl);
+      this.clouds.push(cl);
+    }
+  }
+
   // ─── Lights ───
   setupLights() {
     const ambient = new THREE.AmbientLight(0x404060, 0.6);
     this.scene.add(ambient);
 
-    // Sky/ground bounce light — gives every surface a subtle color gradient
-    const hemi = new THREE.HemisphereLight(0x90a8d0, 0x3a5030, 0.45);
+    // Sky/ground bounce light — subtle color gradient on surfaces
+    const hemi = new THREE.HemisphereLight(0x90a8d0, 0x3a5030, 0.2);
     this.scene.add(hemi);
 
     const moon = new THREE.DirectionalLight(0x8888ff, 0.5);
     moon.position.set(20, 40, 20);
     moon.castShadow = true;
-    moon.shadow.mapSize.width = 2048;
-    moon.shadow.mapSize.height = 2048;
+    moon.shadow.mapSize.width = 1024;
+    moon.shadow.mapSize.height = 1024;
     moon.shadow.camera.left = -50;
     moon.shadow.camera.right = 50;
     moon.shadow.camera.top = 50;
