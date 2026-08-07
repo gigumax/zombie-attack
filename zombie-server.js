@@ -183,6 +183,7 @@ const AREA_FLAVOR = {
 };
 let areaIndex = 0;
 let areaWave = 0; // waves cleared within the current area
+let sandboxMode = false; // whole-server playground: no waves, everyone creative
 let lockedChests = []; // treasure chests — need a Chest Key from a mini-boss
 let eggPickups = []; // mystery eggs — carry 2 waves without going down to hatch a buddy
 const BUDDY_NAMES = ['Chomper', 'Bones', 'Gary', 'Ziggy', 'Munch', 'Grub', 'Rex', 'Blinky', 'Moss', 'Sprout', 'Fang', 'Waffle'];
@@ -2759,7 +2760,7 @@ function gameLoop() {
     if (!escapeMode) {
       // Wave management — paused while the post-escape story boss is alive,
       // otherwise a wave-5+ boss can spawn alongside it (double boss bug)
-      if (!waveActive && !postEscapeBoss) {
+      if (!waveActive && !postEscapeBoss && !sandboxMode) {
         waveBreakTimer -= dt;
         if (waveBreakTimer <= 0) startWave();
       } else {
@@ -3164,11 +3165,34 @@ io.on('connection', (socket) => {
       if (!skeletonUnlocked) return;
       startSkeletonWorld();
     } else if (data === 'main') {
-      // Return to grasslands center
+      // Return to grasslands center — leaving the sandbox resumes the fight
+      if (sandboxMode) {
+        sandboxMode = false;
+        waveBreakTimer = CONFIG.waveBreakTime;
+        for (const pl of Object.values(players)) pl.spawnerMode = false;
+        broadcastKillFeed(anyKidFriendly() ? 'Sandbox closed — back to the game!' : 'SANDBOX CLOSED — the waves resume!');
+      }
       p.x = 0; p.z = 0; p.y = CONFIG.playerHeight;
       p.vx = 0; p.vy = 0; p.vz = 0;
       p.currentWorld = 'main';
       io.emit('worldChange', 'main');
+    } else if (data === 'sandbox') {
+      // Sandbox playground — pause the game, clear enemies, everyone gets creative powers
+      sandboxMode = true;
+      waveActive = false;
+      bossPending = false;
+      bossSpawned = false;
+      zombiesToSpawn = 0;
+      zombies = zombies.filter(z => z.friendly); // buddies come with you
+      for (const pl of Object.values(players)) {
+        pl.spawnerMode = true;
+        pl.x = (Math.random() - 0.5) * 4; pl.z = (Math.random() - 0.5) * 4; pl.y = CONFIG.playerHeight;
+        pl.vx = 0; pl.vy = 0; pl.vz = 0;
+        pl.currentWorld = 'sandbox';
+        pl.health = getGunStat(pl, 'maxHealth');
+      }
+      io.emit('worldChange', 'sandbox');
+      broadcastKillFeed(anyKidFriendly() ? 'SANDBOX TIME — spawn anything, build anything, nothing can hurt you!' : 'SANDBOX MODE — waves paused, everyone creative. Travel to Grasslands to resume the game.');
     } else if (data === 'creepy') {
       if (!creepyUnlocked) return;
       // Teleport to creepy zone
@@ -3367,6 +3391,7 @@ io.on('connection', (socket) => {
       eggPickups = [];
       areaIndex = 0;
       areaWave = 0;
+      sandboxMode = false;
       postEscapeBoss = false;
       skeletonWorld = false;
       cagePos = null; cageOpen = false; cagedFriendlies = null;

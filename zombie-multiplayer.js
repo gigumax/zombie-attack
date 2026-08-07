@@ -369,6 +369,11 @@ class ZombieMultiplayerClient {
         this.creepyZoneGroup.visible = false;
         this.scene.background = new THREE.Color(0x1a0a0a);
         this.scene.fog = new THREE.Fog(0x1a0a0a, 20, 60);
+      } else if (world === 'sandbox') {
+        // Sandbox — bright, cheerful builder sky
+        this.creepyZoneGroup.visible = false;
+        this.scene.background = new THREE.Color(0x4a7ab5);
+        this.scene.fog = new THREE.Fog(0x4a7ab5, 40, 100);
       } else {
         // main / water / default — grasslands
         this.creepyZoneGroup.visible = false;
@@ -1100,6 +1105,8 @@ class ZombieMultiplayerClient {
           this.socket.emit('travelToWorld', 'creepy');
         } else if (world === 'skeleton') {
           this.socket.emit('travelToWorld', 'skeleton');
+        } else if (world === 'sandbox') {
+          this.socket.emit('travelToWorld', 'sandbox');
         }
         this.toggleWorldMap();
       });
