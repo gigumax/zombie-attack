@@ -191,8 +191,6 @@ class ZombieMultiplayerClient {
             this.groundMesh.material.color.setHex(groundColors[areaKey]);
           }
         }
-        const areaEl = document.getElementById('area-val');
-        if (areaEl) areaEl.textContent = `${state.area[3]} ${state.area[1]}/${state.area[2]}`;
         const pathEl = document.getElementById('area-path');
         if (pathEl) {
           const names = ['Grasslands', 'Dark Forest', 'Swamp', 'Ashlands', 'Volcano'];
@@ -2065,8 +2063,8 @@ class ZombieMultiplayerClient {
           mesh.userData.buddyLv = lv;
         }
       }
-      // Friendly zombie — green aura
-      if (z.fr) {
+      // Friendly zombie — green aura (throttled: material writes every 3rd frame)
+      if (z.fr && this._frameCount % 3 === 0) {
         const t = performance.now() / 300;
         const pulse = Math.sin(t) * 0.3 + 0.5;
         mesh.traverse(child => {

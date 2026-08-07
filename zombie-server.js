@@ -345,6 +345,14 @@ function spawnZombie() {
   });
 }
 
+// Soft cap so huge buddy armies can't lag the server (AI scans, separation pairs, network size)
+const MAX_BUDDIES_PER_PLAYER = 30;
+function ownedBuddyCount(ownerId) {
+  let n = 0;
+  for (const z of zombies) if (z.friendly && z.owner === ownerId && !z.dying) n++;
+  return n;
+}
+
 // Crafted buddy gear applies to every buddy the owner spawns (and retroactively when crafted)
 function applyBuddyGear(ownerId, z) {
   const p = players[ownerId];
@@ -362,6 +370,7 @@ function applyBuddyGear(ownerId, z) {
 }
 
 function spawnFriendlyZombie(ownerId, x, z) {
+  if (ownedBuddyCount(ownerId) >= MAX_BUDDIES_PER_PLAYER) return;
   const buddy = {
     id: nextZombieId++, x, z, type: 'normal',
     health: 75, maxHealth: 75,
@@ -379,6 +388,7 @@ function spawnFriendlyZombie(ownerId, x, z) {
 }
 
 function spawnPetSkeleton(ownerId, x, z) {
+  if (ownedBuddyCount(ownerId) >= MAX_BUDDIES_PER_PLAYER) return;
   // Treasure chest exclusive — a tougher skeleton buddy
   const buddy = {
     id: nextZombieId++, x, z, type: 'skeleton',
@@ -774,7 +784,7 @@ function startWave() {
     io.emit('waveAnnounce', `${area.name.toUpperCase()} — AREA BOSS!`);
   } else {
     bossPending = false;
-    io.emit('waveAnnounce', `${area.name.toUpperCase()} — WAVE ${areaWave}/${area.waves}`);
+    io.emit('waveAnnounce', `WAVE ${wave} — ${area.name.toUpperCase()}`);
   }
 }
 
@@ -854,6 +864,7 @@ function hatchEggs(p) {
   const shortLabels = { normal: 'Zombie', skeleton: 'Skeleton', spitter: 'Spitter', buff: 'BUFF' };
   const hatched = [];
   for (let i = 0; i < count; i++) {
+    if (ownedBuddyCount(p.id) >= MAX_BUDDIES_PER_PLAYER) break;
     const type = types[Math.floor(Math.random() * types.length)];
     const stats = statsByType[type];
     const a = (i / count) * Math.PI * 2;
@@ -3138,6 +3149,7 @@ io.on('connection', (socket) => {
     const r = RECIPES[key];
     if (!r) return;
     if ((key === 'ironHelmet' && p.buddyGear.helmet) || (key === 'boneSword' && p.buddyGear.sword)) return;
+    if (key === 'golemHeart' && ownedBuddyCount(p.id) >= MAX_BUDDIES_PER_PLAYER) return;
     if (!p.materials) return;
     for (const [m, n] of Object.entries(r.cost)) {
       if ((p.materials[m] || 0) < n) return;
