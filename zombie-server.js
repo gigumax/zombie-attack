@@ -474,11 +474,11 @@ function spawnBoss() {
   const x = Math.cos(angle) * dist;
   const z = Math.sin(angle) * dist;
   const speed = CONFIG.zombieSpeed * 0.85; // boss speed never scales with wave
-  const health = 137500; // 5x harder: 2500 rifle hits (55 dmg each) to kill
+  const health = 60000; // ~1100 rifle hits — tough but beatable
   zombies.push({
     id: nextZombieId++, x, z, type: 'boss',
     health, maxHealth: health, speed,
-    damage: CONFIG.zombieDamage * 75, attackRange: CONFIG.zombieAttackRange * 2.5, // 5x damage
+    damage: CONFIG.zombieDamage * 30, attackRange: CONFIG.zombieAttackRange * 2.5,
     attackTimer: 0, attackCooldown: 0.7, walkPhase: Math.random() * Math.PI * 2,
     isBoss: true, hasKey: false,
     lostLimbs: {}, limbDamage: {},
