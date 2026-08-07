@@ -2017,10 +2017,24 @@ class ZombieMultiplayerClient {
       if (z.lit) {
         this.spawnLightningEffect(z.x, z.z);
       }
-      // Friendly zombie — level scaling and name tag
+      // Friendly zombie — level scaling, name tag, crafted gear
       if (z.fr) {
         const lv = z.lv || 1;
         mesh.scale.setScalar(1 + 0.12 * (lv - 1));
+        if (z.gh && !mesh.userData.gearHelmet) {
+          const hy = mesh.userData.head ? mesh.userData.head.position.y + 0.33 : 2.1;
+          const gearH = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.16, 0.58), new THREE.MeshLambertMaterial({ color: 0xc0c0cc }));
+          gearH.position.y = hy; mesh.add(gearH); mesh.userData.gearHelmet = gearH;
+        }
+        if (z.gs && !mesh.userData.gearSword) {
+          const gearS = new THREE.Group();
+          const blade = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.7, 0.12), new THREE.MeshLambertMaterial({ color: 0xe8e8d8 }));
+          blade.position.y = 0.35; gearS.add(blade);
+          const hilt = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.12), new THREE.MeshLambertMaterial({ color: 0x8a6a2a }));
+          gearS.add(hilt);
+          gearS.position.set(0.5, 1.15, 0.3); gearS.rotation.x = -0.9;
+          mesh.add(gearS); mesh.userData.gearSword = gearS;
+        }
         if (z.nm && mesh.userData.buddyLv !== lv) {
           if (mesh.userData.buddyLabel) {
             mesh.remove(mesh.userData.buddyLabel);
@@ -2567,7 +2581,7 @@ class ZombieMultiplayerClient {
         mesh.position.set(p.x, Math.max(0, p.y - 1.7), p.z);
       }
       mesh.rotation.y = p.yaw + Math.PI;
-      mesh.visible = !p.dead;
+      mesh.visible = !p.dead && !p.clk; // cloaked players are invisible
       this.updatePlayerArmor(mesh, p.art || '');
       // Walk animation for other players — detect movement by comparing positions
       const ud = mesh.userData;
@@ -3938,6 +3952,24 @@ class ZombieMultiplayerClient {
       const canBuy = isSpawner || p.g >= gun.price;
       const stats = gun.melee ? `DMG ${gun.damage} · RNG ${gun.meleeRange}` : `DMG ${gun.damage} · MAG ${gun.magSize}`;
       html += `<div class="shop-item ${canBuy?'':'disabled'}" ${canBuy?`data-action="buyGun" data-key="${key}"`:''}><span>${gun.name} ${buyHotkeys[key]?`<span style="color:#666;font-size:10px;">[${buyHotkeys[key]}]</span>`:''}<br><span style="font-size:10px;color:#666;">${stats}</span></span><span>${isSpawner?'FREE':gun.price+'g'}</span></div>`;
+    }
+
+    // Crafting
+    const mats = p.mat || [0, 0, 0, 0, 0, 0]; // bone, goo, gunpowder, iron, shadow, core
+    html += '<div style="color:#aaa;font-size:11px;font-weight:700;margin:10px 0 4px;text-transform:uppercase;letter-spacing:1px;">Crafting</div>';
+    html += `<div style="font-size:11px;color:#999;margin-bottom:4px;">Materials: 🦴${mats[0]} Bone · 🟢${mats[1]} Goo · 💥${mats[2]} Powder · 🔩${mats[3]} Iron · 🌑${mats[4]} Shadow · 💜${mats[5]} Core</div>`;
+    const CRAFT_RECIPES = [
+      { key: 'ironHelmet', name: '⛑️ Iron Helmets', desc: 'All your buddies get +50 HP forever', costText: '4 Iron', can: mats[3] >= 4, owned: !!p.bgh },
+      { key: 'boneSword',  name: '🗡️ Bone Swords',  desc: 'All your buddies get +15 DMG forever', costText: '5 Bone', can: mats[0] >= 5, owned: !!p.bgs },
+      { key: 'golemHeart', name: '🗿 Golem Heart',  desc: 'Summon the Iron Golem (1500 HP tank)', costText: '1 Core + 10 Bone', can: mats[5] >= 1 && mats[0] >= 10, owned: false },
+      { key: 'shadowCloak', name: '🌫️ Shadow Cloak', desc: 'Invisible to zombies for 10 seconds', costText: '1 Core + 5 Shadow', can: mats[5] >= 1 && mats[4] >= 5, owned: false },
+    ];
+    for (const r of CRAFT_RECIPES) {
+      const canCraft = r.can && !r.owned;
+      html += `<div class="shop-item ${r.owned ? 'equipped' : (canCraft ? '' : 'disabled')}" ${canCraft ? `data-action="craft" data-key="${r.key}"` : ''}>
+        <span>${r.name}${r.owned ? ' <span style="color:#2ecc71;font-size:10px;">CRAFTED</span>' : ''}<br><span style="font-size:10px;color:#666;">${r.desc}</span></span>
+        <span style="font-size:10px;color:#888;">${r.owned ? '✓' : r.costText}</span>
+      </div>`;
     }
 
     // Armor

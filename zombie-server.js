@@ -246,6 +246,8 @@ function createPlayer(id) {
     ammo: GUNS.pistol.magSize,
     reserveAmmo: GUNS.pistol.magSize * 3,
     upgrades: { damage: 0, fireRate: 0, magSize: 0, health: 0 },
+    materials: { bone: 0, goo: 0, gunpowder: 0, iron: 0, shadow: 0, core: 0 },
+    buddyGear: {},
     reloading: false, reloadTimer: 0,
     fireTimer: 0, autoFire: false,
     shopOpen: false, onGround: true,
@@ -320,8 +322,24 @@ function spawnZombie() {
   });
 }
 
+// Crafted buddy gear applies to every buddy the owner spawns (and retroactively when crafted)
+function applyBuddyGear(ownerId, z) {
+  const p = players[ownerId];
+  if (!p || !p.buddyGear) return;
+  if (p.buddyGear.helmet && !z.gearHelmet) {
+    z.gearHelmet = 1;
+    z.maxHealth += 50; z.health += 50;
+    z.baseMaxHealth = (z.baseMaxHealth || 75) + 50;
+  }
+  if (p.buddyGear.sword && !z.gearSword) {
+    z.gearSword = 1;
+    z.damage += 15;
+    z.baseDamage = (z.baseDamage || z.damage) + 15;
+  }
+}
+
 function spawnFriendlyZombie(ownerId, x, z) {
-  zombies.push({
+  const buddy = {
     id: nextZombieId++, x, z, type: 'normal',
     health: 75, maxHealth: 75,
     speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.2,
@@ -332,12 +350,14 @@ function spawnFriendlyZombie(ownerId, x, z) {
     name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
     level: 1, kills: 0, baseDamage: CONFIG.zombieDamage * 3, baseMaxHealth: 75,
     slamEffect: 0,
-  });
+  };
+  applyBuddyGear(ownerId, buddy);
+  zombies.push(buddy);
 }
 
 function spawnPetSkeleton(ownerId, x, z) {
   // Treasure chest exclusive — a tougher skeleton buddy
-  zombies.push({
+  const buddy = {
     id: nextZombieId++, x, z, type: 'skeleton',
     health: 150, maxHealth: 150,
     speed: CONFIG.playerSpeed, damage: CONFIG.zombieDamage * 3, attackRange: CONFIG.zombieAttackRange * 1.3,
@@ -348,7 +368,9 @@ function spawnPetSkeleton(ownerId, x, z) {
     name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
     level: 1, kills: 0, baseDamage: CONFIG.zombieDamage * 3, baseMaxHealth: 150,
     slamEffect: 0,
-  });
+  };
+  applyBuddyGear(ownerId, buddy);
+  zombies.push(buddy);
 }
 
 function spawnLockedChest() {
@@ -616,6 +638,22 @@ function killZombie(zombie, killerId, dirX, dirZ) {
       eggPickups.push({ id: nextGoldId++, x: zombie.x, z: zombie.z });
       broadcastKillFeed(kid ? 'A Mystery Egg dropped! Ooooh!' : 'A MYSTERY EGG dropped! Grab it and survive 2 waves to hatch it!');
     }
+    // Crafting materials — each zombie type drops its own ingredient
+    if (!player.materials) player.materials = { bone: 0, goo: 0, gunpowder: 0, iron: 0, shadow: 0, core: 0 };
+    const MAT_DROPS = {
+      skeleton: ['bone', 0.4], buffSkeleton: ['bone', 0.8],
+      normal: ['goo', 0.25], spitter: ['goo', 0.5],
+      exploder: ['gunpowder', 0.6],
+      guard: ['iron', 0.5], buff: ['iron', 0.5],
+      creepy: ['shadow', 0.5], necromancer: ['shadow', 0.4],
+    };
+    if (zombie.isBoss || zombie.type === 'skeletonBoss') {
+      player.materials.core = (player.materials.core || 0) + 1;
+      broadcastKillFeed(kid ? `${player.name} got a BOSS CORE! Craft something amazing!` : `${player.name} extracted a BOSS CORE — check the Crafting section!`);
+    } else {
+      const md = MAT_DROPS[zombie.type];
+      if (md && Math.random() < md[1]) player.materials[md[0]] = (player.materials[md[0]] || 0) + 1;
+    }
     // Boss bounty — every player gets a full clutch of 5 eggs
     if (zombie.isBoss || zombie.type === 'skeletonBoss') {
       for (const pl of Object.values(players)) {
@@ -752,7 +790,7 @@ function hatchEggs(p) {
     const type = types[Math.floor(Math.random() * types.length)];
     const stats = statsByType[type];
     const a = (i / count) * Math.PI * 2;
-    zombies.push({
+    const buddy = {
       id: nextZombieId++, x: p.x + Math.cos(a) * 2, z: p.z + Math.sin(a) * 2, type,
       health: stats.hp, maxHealth: stats.hp,
       speed: stats.speed, damage: stats.dmg, attackRange: stats.range,
@@ -763,7 +801,9 @@ function hatchEggs(p) {
       name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
       level: 1, kills: 0, baseDamage: stats.dmg, baseMaxHealth: stats.hp,
       slamEffect: 0,
-    });
+    };
+    applyBuddyGear(p.id, buddy);
+    zombies.push(buddy);
     hatched.push(shortLabels[type]);
   }
   broadcastKillFeed(kid
@@ -1801,7 +1841,7 @@ function updateZombies(dt) {
       continue;
     }
     for (const p of Object.values(players)) {
-      if (p.dead || p.paused || !p.ready || p.spawnerMode) continue;
+      if (p.dead || p.paused || !p.ready || p.spawnerMode || (p.cloakTimer || 0) > 0) continue;
       const d = Math.hypot(p.x - z.x, p.z - z.z);
       if (d < minDist) { minDist = d; target = p; }
     }
@@ -2552,6 +2592,7 @@ function gameLoop() {
     // Update players
     for (const p of Object.values(players)) {
       updatePlayer(p, dt);
+      if (p.cloakTimer > 0) p.cloakTimer -= dt;
       if (p.itemCooldown > 0) p.itemCooldown -= dt;
       if (p.pendingEffects.length > 0) processPendingEffects(p, dt);
     }
@@ -2705,6 +2746,9 @@ function gameLoop() {
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0, egg: p.eggWaves || 0,
       ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '', eggn: p.eggCount || 0, pvp: p.pvp ? 1 : 0,
+      mat: p.materials ? [p.materials.bone || 0, p.materials.goo || 0, p.materials.gunpowder || 0, p.materials.iron || 0, p.materials.shadow || 0, p.materials.core || 0] : [0, 0, 0, 0, 0, 0],
+      bgh: p.buddyGear && p.buddyGear.helmet ? 1 : 0, bgs: p.buddyGear && p.buddyGear.sword ? 1 : 0,
+      clk: (p.cloakTimer || 0) > 0 ? 1 : 0,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
@@ -2751,6 +2795,7 @@ function gameLoop() {
         fr: z.friendly ? 1 : 0,
         lv: z.friendly ? (z.level || 1) : 0,
         nm: z.friendly ? z.name : undefined,
+        gh: z.gearHelmet ? 1 : 0, gs: z.gearSword ? 1 : 0,
         lit: z.lightningHit ? 1 : 0,
         spit: z.acidSpits && z.acidSpits.length > 0 ? z.acidSpits.map(s => [+s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2)]) : undefined,
       };
@@ -3008,6 +3053,49 @@ io.on('connection', (socket) => {
     const p = players[socket.id];
     if (!p || p.dead) return;
     p.shopOpen = !p.shopOpen;
+  });
+  socket.on('craft', (key) => {
+    const p = players[socket.id];
+    if (!p || p.dead || typeof key !== 'string') return;
+    const kid = anyKidFriendly();
+    const RECIPES = {
+      ironHelmet: { cost: { iron: 4 } },
+      boneSword: { cost: { bone: 5 } },
+      golemHeart: { cost: { core: 1, bone: 10 } },
+      shadowCloak: { cost: { core: 1, shadow: 5 } },
+    };
+    const r = RECIPES[key];
+    if (!r) return;
+    if ((key === 'ironHelmet' && p.buddyGear.helmet) || (key === 'boneSword' && p.buddyGear.sword)) return;
+    if (!p.materials) return;
+    for (const [m, n] of Object.entries(r.cost)) {
+      if ((p.materials[m] || 0) < n) return;
+    }
+    for (const [m, n] of Object.entries(r.cost)) p.materials[m] -= n;
+    if (key === 'ironHelmet') {
+      p.buddyGear.helmet = true;
+      for (const z of zombies) if (z.friendly && z.owner === p.id && !z.dying) applyBuddyGear(p.id, z);
+      broadcastKillFeed(kid ? `${p.name} crafted Iron Helmets for their buddies!` : `${p.name} crafted IRON HELMETS — all their buddies get +50 HP, forever!`);
+    } else if (key === 'boneSword') {
+      p.buddyGear.sword = true;
+      for (const z of zombies) if (z.friendly && z.owner === p.id && !z.dying) applyBuddyGear(p.id, z);
+      broadcastKillFeed(kid ? `${p.name} crafted Bone Swords for their buddies!` : `${p.name} crafted BONE SWORDS — all their buddies get +15 damage, forever!`);
+    } else if (key === 'golemHeart') {
+      zombies.push({
+        id: nextZombieId++, x: p.x + 2, z: p.z + 2, type: 'ironGolem',
+        health: 1500, maxHealth: 1500,
+        speed: CONFIG.playerSpeed * 0.9, damage: 150, attackRange: CONFIG.zombieAttackRange * 1.5,
+        attackTimer: 0, walkPhase: 0, rot: 0, attacking: 0,
+        isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+        friendly: true, owner: p.id,
+        name: 'Golem', level: 1, kills: 0, baseDamage: 150, baseMaxHealth: 1500,
+        slamEffect: 0,
+      });
+      broadcastKillFeed(kid ? `${p.name} crafted a GOLEM HEART — the Iron Golem is back!` : `${p.name} crafted a GOLEM HEART — IRON GOLEM SUMMONED! (1500 HP, 150 DMG)`);
+    } else if (key === 'shadowCloak') {
+      p.cloakTimer = 10;
+      broadcastKillFeed(kid ? `${p.name} vanished in a shadow cloak!` : `${p.name} crafted a SHADOW CLOAK — invisible to zombies for 10s!`);
+    }
   });
   socket.on('recallBuddies', () => {
     const p = players[socket.id];
