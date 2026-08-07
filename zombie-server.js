@@ -788,7 +788,8 @@ function killZombie(zombie, killerId, dirX, dirZ) {
   const aliveZombies = zombies.filter(z => !z.dying && (!z.reviving || z.isBoss) && !z.fromCreepyZone && !z.friendly);
   if (escapeMode) {
     checkEscapeWin();
-  } else if (aliveZombies.length === 0 && zombiesToSpawn === 0) {
+  } else if (aliveZombies.length === 0 && zombiesToSpawn === 0 && !(bossPending && !bossSpawned)) {
+    // A pending area boss keeps the wave open until it spawns and dies
     endWave();
   }
 }
