@@ -237,7 +237,12 @@ class ZombieMultiplayerClient {
       this._wasPaused = isPaused;
       this.interpAlpha = 0;
       const _t0 = performance.now();
-      this.updateScene(state, this._lastDt || 0.016);
+      try {
+        this.updateScene(state, this._lastDt || 0.016);
+      } catch (err) {
+        // One bad frame must never kill the game — log and keep rendering
+        if (!this._sceneErrLogged) { console.error('updateScene error:', err); this._sceneErrLogged = true; }
+      }
       const _t1 = performance.now();
       this.updateHUD();
       const _t2 = performance.now();

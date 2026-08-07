@@ -2930,7 +2930,7 @@ function gameLoop() {
       }
       const base = {
         id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), t: z.type === 'skeletonBoss' ? 'k' : z.type === 'buffSkeleton' ? 'x' : z.type[0],
-        boss: z.isBoss ? 1 : 0, cb: z.isCreepyBoss ? 1 : 0, wp: +z.walkPhase.toFixed(2), r: +z.rot.toFixed(3),
+        boss: z.isBoss ? 1 : 0, cb: z.isCreepyBoss ? 1 : 0, wp: +(z.walkPhase || 0).toFixed(2), r: +(z.rot || 0).toFixed(3),
         la: ll.armL ? 1 : 0, ra: ll.armR ? 1 : 0, ll: ll.legL ? 1 : 0, rl: ll.legR ? 1 : 0,
         rv: z.reviveCount || 0, rvv: z.reviving ? 1 : 0,
         chg: z.charging ? 1 : 0, slm: z.slamEffect ? 1 : 0, rng: z.rangedEffect ? 1 : 0,
@@ -2983,7 +2983,7 @@ function gameLoop() {
   };
   io.emit('state', state);
   } catch(e) {
-    console.error('gameLoop error:', e.message);
+    console.error('gameLoop error:', e.stack || e.message);
   }
 }
 
