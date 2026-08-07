@@ -3774,7 +3774,7 @@ class ZombieMultiplayerClient {
     const keysEl = document.getElementById('keys-val');
     if (keysEl) keysEl.textContent = '🗝️' + (p.ck || 0);
     const eggEl = document.getElementById('egg-val');
-    if (eggEl) eggEl.textContent = p.egg ? `🥚 ${p.egg} wave${p.egg > 1 ? 's' : ''}` : '—';
+    if (eggEl) eggEl.textContent = p.eggn ? `🥚×${p.eggn} · ${p.egg}w` : '—';
     const armorEl = document.getElementById('armor-val');
     if (armorEl) {
       const icons = { leather: '🥾', iron: '🛡️', diamond: '💎' };

@@ -616,6 +616,15 @@ function killZombie(zombie, killerId, dirX, dirZ) {
       eggPickups.push({ id: nextGoldId++, x: zombie.x, z: zombie.z });
       broadcastKillFeed(kid ? 'A Mystery Egg dropped! Ooooh!' : 'A MYSTERY EGG dropped! Grab it and survive 2 waves to hatch it!');
     }
+    // Boss bounty — every player gets a full clutch of 5 eggs
+    if (zombie.isBoss || zombie.type === 'skeletonBoss') {
+      for (const pl of Object.values(players)) {
+        if (pl.dead || pl.spawnerMode) continue;
+        pl.eggCount = 5;
+        if (!pl.eggWaves) pl.eggWaves = 2;
+      }
+      broadcastKillFeed(kid ? 'The boss dropped 5 Mystery Eggs for everyone!' : 'BOSS BOUNTY — everyone gets 5 MYSTERY EGGS! Survive 2 waves to hatch them!');
+    }
   }
 
   // Post-escape boss killed → grasslands completed; skeleton world unlocks but you travel when you want
@@ -719,37 +728,47 @@ function endWave() {
     p.eggWaves--;
     if (p.eggWaves <= 0) {
       p.eggWaves = 0;
-      hatchEgg(p);
+      hatchEggs(p);
     } else {
       broadcastKillFeed(anyKidFriendly() ? `${p.name}'s egg is wiggling! One more wave!` : `${p.name}'s Mystery Egg shakes... one more wave until it hatches!`);
     }
   }
 }
 
-function hatchEgg(p) {
+function hatchEggs(p) {
   const kid = anyKidFriendly();
+  const count = Math.max(1, p.eggCount || 1);
+  p.eggCount = 0;
   const types = ['normal', 'skeleton', 'spitter', 'buff'];
-  const type = types[Math.floor(Math.random() * types.length)];
-  const stats = {
+  const statsByType = {
     normal:   { hp: 75,  dmg: CONFIG.zombieDamage * 3,   speed: CONFIG.playerSpeed,       range: CONFIG.zombieAttackRange * 1.2 },
     skeleton: { hp: 150, dmg: CONFIG.zombieDamage * 3,   speed: CONFIG.playerSpeed,       range: CONFIG.zombieAttackRange * 1.3 },
     spitter:  { hp: 100, dmg: CONFIG.zombieDamage * 2.5, speed: CONFIG.playerSpeed * 0.9, range: CONFIG.zombieAttackRange * 1.2 },
     buff:     { hp: 250, dmg: CONFIG.zombieDamage * 4.5, speed: CONFIG.playerSpeed * 0.7, range: CONFIG.zombieAttackRange * 1.4 },
-  }[type];
-  zombies.push({
-    id: nextZombieId++, x: p.x + 1.5, z: p.z + 1.5, type,
-    health: stats.hp, maxHealth: stats.hp,
-    speed: stats.speed, damage: stats.dmg, attackRange: stats.range,
-    attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
-    isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
-    rot: 0, attacking: 0, specialAttackTimer: 2,
-    friendly: true, owner: p.id,
-    name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
-    level: 1, kills: 0, baseDamage: stats.dmg, baseMaxHealth: stats.hp,
-    slamEffect: 0,
-  });
-  const label = { normal: 'Zombie Buddy', skeleton: 'Skeleton Buddy', spitter: 'Spitter Buddy — it spits acid at zombies!', buff: 'BUFF Buddy — a tank!' }[type];
-  broadcastKillFeed(kid ? `${p.name}'s egg hatched into a ${label}!` : `${p.name}'s MYSTERY EGG HATCHED — ${label}`);
+  };
+  const shortLabels = { normal: 'Zombie', skeleton: 'Skeleton', spitter: 'Spitter', buff: 'BUFF' };
+  const hatched = [];
+  for (let i = 0; i < count; i++) {
+    const type = types[Math.floor(Math.random() * types.length)];
+    const stats = statsByType[type];
+    const a = (i / count) * Math.PI * 2;
+    zombies.push({
+      id: nextZombieId++, x: p.x + Math.cos(a) * 2, z: p.z + Math.sin(a) * 2, type,
+      health: stats.hp, maxHealth: stats.hp,
+      speed: stats.speed, damage: stats.dmg, attackRange: stats.range,
+      attackTimer: 0, walkPhase: Math.random() * Math.PI * 2,
+      isBoss: false, hasKey: false, lostLimbs: {}, limbDamage: {},
+      rot: 0, attacking: 0, specialAttackTimer: 2,
+      friendly: true, owner: p.id,
+      name: BUDDY_NAMES[Math.floor(Math.random() * BUDDY_NAMES.length)],
+      level: 1, kills: 0, baseDamage: stats.dmg, baseMaxHealth: stats.hp,
+      slamEffect: 0,
+    });
+    hatched.push(shortLabels[type]);
+  }
+  broadcastKillFeed(kid
+    ? `${p.name}'s egg${count > 1 ? 's' : ''} hatched: ${hatched.join(', ')}!`
+    : `${p.name}'s MYSTERY EGG${count > 1 ? 'S' : ''} HATCHED — ${hatched.join(', ')}!`);
 }
 
 function creditBuddyKill(z) {
@@ -1172,9 +1191,11 @@ function damagePlayer(target, attackerId, damage) {
 
 function downPlayer(p, attackerName) {
   if (!p || p.dead || p.downed || p.spawnerMode) return;
-  if (p.eggWaves) {
+  if (p.eggWaves || p.eggCount) {
+    const n = p.eggCount || 1;
     p.eggWaves = 0;
-    broadcastKillFeed(anyKidFriendly() ? `Oh no! ${p.name}'s egg broke!` : `${p.name} went down — the Mystery Egg SHATTERED!`);
+    p.eggCount = 0;
+    broadcastKillFeed(anyKidFriendly() ? `Oh no! ${p.name}'s egg${n > 1 ? 's' : ''} broke!` : `${p.name} went down — ${n > 1 ? `all ${n} Mystery Eggs` : 'the Mystery Egg'} SHATTERED!`);
   }
   // Single-player or already downed before this wave = instant death
   const playerCount = Object.values(players).filter(pp => !pp.spawnerMode).length;
@@ -2418,15 +2439,16 @@ function updateGoldPickups(dt) {
       }
     }
   }
-  // Mystery egg pickups — one at a time
+  // Mystery egg pickups — carry up to 5 at once
   for (let i = eggPickups.length - 1; i >= 0; i--) {
     const egg = eggPickups[i];
     for (const p of Object.values(players)) {
-      if (p.dead || p.spawnerMode || p.eggWaves) continue;
+      if (p.dead || p.spawnerMode || (p.eggCount || 0) >= 5) continue;
       if (Math.hypot(p.x - egg.x, p.z - egg.z) < 2.0) {
-        p.eggWaves = 2;
+        p.eggCount = (p.eggCount || 0) + 1;
+        if (!p.eggWaves) p.eggWaves = 2;
         eggPickups.splice(i, 1);
-        broadcastKillFeed(anyKidFriendly() ? `${p.name} is carrying a Mystery Egg! Keep it safe!` : `${p.name} picked up the MYSTERY EGG — survive 2 waves without going down to hatch it!`);
+        broadcastKillFeed(anyKidFriendly() ? `${p.name} is carrying ${p.eggCount} Mystery Egg${p.eggCount > 1 ? 's' : ''}! Keep them safe!` : `${p.name} picked up a MYSTERY EGG (${p.eggCount}/5) — survive 2 waves without going down to hatch!`);
         break;
       }
     }
@@ -2665,7 +2687,7 @@ function gameLoop() {
       x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
       yaw: +p.yaw.toFixed(3), pitch: +p.pitch.toFixed(3),
       h: Math.ceil(p.health), mhp: p.maxHealth || 100, s: p.score, k: p.kills, g: p.gold, ck: p.chestKeys || 0, egg: p.eggWaves || 0,
-      ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '',
+      ar: p.armor ? Math.ceil(p.armor.points) : 0, art: p.armor ? p.armor.tier : '', eggn: p.eggCount || 0,
       gun: p.currentGun, ammo: p.ammo,
       r: p.reloading ? 1 : 0, af: p.autoFire ? 1 : 0, shop: p.shopOpen ? 1 : 0,
       dead: p.dead ? 1 : 0, dwn: p.downed ? 1 : 0, dwt: Math.ceil(p.downedTimer || 0), em: p.escapeMode ? 1 : 0, es: p.escapeStep,
