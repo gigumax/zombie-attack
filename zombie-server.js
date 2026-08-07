@@ -2514,9 +2514,13 @@ function gameLoop() {
             spawnTimer = 1.5 + Math.random() * 1.5;
           }
         } else if (bossPending && !bossSpawned) {
-          bossSpawned = true;
-          bossPending = false;
-          spawnBoss();
+          // One boss at a time — wait until no other boss (wave, story, creepy, skeleton) is alive
+          const bossAlive = zombies.some(zz => (zz.isBoss || zz.type === 'skeletonBoss') && !zz.dying);
+          if (!bossAlive) {
+            bossSpawned = true;
+            bossPending = false;
+            spawnBoss();
+          }
         }
       }
       updateGoldPickups(dt);
