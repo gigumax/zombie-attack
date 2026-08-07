@@ -111,6 +111,7 @@ const GUNS = {
   knife:  { name:'Knife', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:60, pellets:1, spread:0, price:0, melee:true, meleeRange:3.0 },
   katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
   goldenKatana: { name:'Golden Katana', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:300, pellets:1, spread:0, price:0, melee:true, meleeRange:5.5, chestOnly:true },
+  upgrader: { name:'Upgrader', magSize:20, reloadTime:2.0, fireRate:0.5, damage:0, pellets:1, spread:0.01, price:500 },
   pistol: { name:'Pistol', magSize:20, reloadTime:1.2, fireRate:0.25, damage:34, pellets:1, spread:0.01, price:0 },
   smg:    { name:'SMG', magSize:100, reloadTime:1.8, fireRate:0.08, damage:25, pellets:1, spread:0.03, price:150 },
   shotgun:{ name:'Shotgun', magSize:6, reloadTime:2.5, fireRate:0.6, damage:20, pellets:8, spread:0.12, price:250 },
@@ -1224,6 +1225,7 @@ function handleShoot(playerId) {
   const pellets = getGunStat(p, 'pellets');
   const spread = getGunStat(p, 'spread');
   const isPiercing = GUNS[p.currentGun] && GUNS[p.currentGun].pierce;
+  const isUpgrader = p.currentGun === 'upgrader';
 
   for (let pellet = 0; pellet < pellets; pellet++) {
     const dir = getLookDir(p, spread);
@@ -1231,7 +1233,7 @@ function handleShoot(playerId) {
     let closestPlayerHit = null;
     let piercedZombies = [];
     for (const z of zombies) {
-      if (z.dying || z.reviving || z.friendly) continue;
+      if (z.dying || z.reviving || (z.friendly && !isUpgrader)) continue; // upgrader can target buddies
       const hit = rayHitZombie(p, dir, z, closestDist);
       if (hit && hit.dist < closestDist) {
         if (isPiercing) {
@@ -1263,7 +1265,31 @@ function handleShoot(playerId) {
 
     // Apply damage to player if hit
     if (closestPlayerHit) {
-      damagePlayer(closestPlayerHit.player, playerId, damage);
+      if (isUpgrader) {
+        const t = closestPlayerHit.player;
+        t.level = (t.level || 1) + 1;
+        t.xp = 0;
+        t.maxHealth = getGunStat(t, 'maxHealth');
+        t.health = t.maxHealth;
+        broadcastKillFeed(anyKidFriendly() ? `${p.name} upgraded ${t.name} to Level ${t.level}!` : `${p.name} UPGRADED ${t.name} → Lv${t.level}!`);
+      } else {
+        damagePlayer(closestPlayerHit.player, playerId, damage);
+      }
+      continue;
+    }
+    if (closestHit && isUpgrader) {
+      const z = closestHit.zombie;
+      if (z.friendly) {
+        // Level up the buddy — same formula as kill progression
+        z.kills = 3 * (z.level || 1) - 1;
+        creditBuddyKill(z);
+      } else {
+        // Even enemies get upgraded — every hit makes them stronger. Your call.
+        z.maxHealth = Math.round(z.maxHealth * 1.3);
+        z.health = z.maxHealth;
+        z.damage = Math.round(z.damage * 1.2);
+        z.lightningHit = 1; // zap visual
+      }
       continue;
     }
     if (closestHit) {

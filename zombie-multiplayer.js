@@ -15,6 +15,7 @@ const GUNS = {
   rifle:  { name:'Rifle', magSize:500, reloadTime:1.0, fireRate:0.06, damage:55, pellets:1, spread:0.005, price:400 },
   katana: { name:'Katana', magSize:Infinity, reloadTime:0, fireRate:0.35, damage:120, pellets:1, spread:0, price:300, melee:true, meleeRange:5.0 },
   goldenKatana: { name:'Golden Katana', magSize:Infinity, reloadTime:0, fireRate:0.3, damage:300, pellets:1, spread:0, price:0, melee:true, meleeRange:5.5, chestOnly:true },
+  upgrader: { name:'Upgrader', magSize:20, reloadTime:2.0, fireRate:0.5, damage:0, pellets:1, spread:0.01, price:500 },
 };
 
 const UPGRADES = {
@@ -868,6 +869,8 @@ class ZombieMultiplayerClient {
       if (e.code === 'Digit5' && this.playing) this.socket.emit('switchGun', 'shotgun');
       if (e.code === 'Digit6' && this.playing) this.socket.emit('switchGun', 'rifle');
       if (e.code === 'Digit7' && this.playing && !this.spawnerMode) this.socket.emit('switchGun', 'goldenKatana');
+      if (e.code === 'Digit8' && this.playing && !this.spawnerMode) this.socket.emit('switchGun', 'upgrader');
+      if (e.code === 'KeyE' && this.playing) this.socket.emit('buyGun', 'upgrader');
       if (e.code === 'Digit1' && this.playing) this.socket.emit('switchGun', 'pistol');
       // Buy gun hotkeys
       if (e.code === 'KeyF' && this.playing) this.socket.emit('buyGun', 'smg');
@@ -886,8 +889,10 @@ class ZombieMultiplayerClient {
         this.socket.emit('toggleSpawnerMode');
         e.preventDefault();
       }
-      // Spawn eggs — only in spawner mode
+      // Spawn eggs — only in spawner mode; holding the key keeps spawning (see egg-hold interval)
       if (this.myPlayer && this.myPlayer.sp && this.playing) {
+        this._heldEggKeys = this._heldEggKeys || {};
+        if (ZombieMultiplayerClient.EGG_KEYS[e.code]) this._heldEggKeys[e.code] = true;
         if (e.code === 'Digit7') this.socket.emit('spawnEgg', 'zombie');
         if (e.code === 'Digit8') this.socket.emit('spawnEgg', this.keys['x'] ? 'friendlySkeleton' : 'skeleton');
         if (e.code === 'Digit9') this.socket.emit('spawnEgg', 'creepy');
@@ -921,8 +926,18 @@ class ZombieMultiplayerClient {
       this.sendInput();
     });
 
+    // Held egg keys keep spawning even while moving
+    setInterval(() => {
+      if (!this.connected || !this.playing || !this.myPlayer || !this.myPlayer.sp) return;
+      for (const code of Object.keys(this._heldEggKeys || {})) {
+        const fn = ZombieMultiplayerClient.EGG_KEYS[code];
+        if (fn) this.socket.emit('spawnEgg', fn(this));
+      }
+    }, 220);
+
     window.addEventListener('keyup', e => {
       this.keys[e.key.toLowerCase()] = false;
+      if (this._heldEggKeys) delete this._heldEggKeys[e.code];
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
         if (this.shiftHeld) this.shiftHeld[e.code] = false;
         this.keys['super'] = !!(this.shiftHeld && this.shiftHeld.ShiftLeft && this.shiftHeld.ShiftRight);
@@ -2699,7 +2714,7 @@ class ZombieMultiplayerClient {
     // Update weapon pickups — state.weaponPickups is [id, gunName, x, z] arrays
     const seenWeaponIds = new Set();
     const wpArr = state.weaponPickups || [];
-    const gunColors = { pistol: 0x3498db, smg: 0x2ecc71, shotgun: 0xe67e22, rifle: 0xe74c3c, katana: 0x9b59b6, goldenKatana: 0xffd700 };
+    const gunColors = { pistol: 0x3498db, smg: 0x2ecc71, shotgun: 0xe67e22, rifle: 0xe74c3c, katana: 0x9b59b6, goldenKatana: 0xffd700, upgrader: 0xcc66ff };
     for (const w of wpArr) {
       const wid = w[0], wgun = w[1], wx = w[2], wz = w[3];
       seenWeaponIds.add(wid);
@@ -3210,6 +3225,17 @@ class ZombieMultiplayerClient {
     }
   }
 
+  // Creative egg keys — code → egg type (evaluated at emit time so X-combos work)
+  static EGG_KEYS = {
+    Digit7: () => 'zombie',
+    Digit8: (c) => c.keys['x'] ? 'friendlySkeleton' : 'skeleton',
+    Digit9: () => 'creepy',
+    Comma: (c) => c.keys['x'] ? 'friendlyBuff' : 'buff',
+    Period: () => 'spitter',
+    Equal: () => 'buffSkeleton',
+    Digit0: () => 'friendly',
+  };
+
   // ─── Tracers ───
   static GUN_TRACER = {
     pistol:  { color: 0xffee44, radius: 0.03, life: 0.08 },
@@ -3217,6 +3243,7 @@ class ZombieMultiplayerClient {
     shotgun: { color: 0xff9933, radius: 0.05, life: 0.1 },
     rifle:   { color: 0x66ffff, radius: 0.02, life: 0.07 },
     knife:   { color: 0xffffff, radius: 0.08, life: 0.12 },
+    upgrader:{ color: 0xff66ff, radius: 0.05, life: 0.15 },
   };
 
   spawnTracer(x1, y1, z1, x2, y2, z2, gunName) {
@@ -4036,9 +4063,9 @@ class ZombieMultiplayerClient {
       wpnBar.style.display = 'flex';
       // Weapon hotbar
       const ownedGuns = this.playerMeta.ownedGuns || { knife: true, pistol: true };
-      const gunIcons = { pistol: '🔫', knife: '🔪', katana: '🗡️', smg: '🔫', shotgun: '🔫', rifle: '🔫', goldenKatana: '⚔️' };
-      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7' };
-      const gunOrder = ['pistol','knife','katana','smg','shotgun','rifle','goldenKatana'];
+      const gunIcons = { pistol: '🔫', knife: '🔪', katana: '🗡️', smg: '🔫', shotgun: '🔫', rifle: '🔫', goldenKatana: '⚔️', upgrader: '✨' };
+      const gunKeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7', upgrader: '8' };
+      const gunOrder = ['pistol','knife','katana','smg','shotgun','rifle','goldenKatana','upgrader'];
       let wpnHtml = '';
       for (const key of gunOrder) {
         if (!ownedGuns[key]) continue;
@@ -4103,8 +4130,8 @@ class ZombieMultiplayerClient {
     const p = this.myPlayer;
     const meta = this.playerMeta;
     const el = document.getElementById('shop-content');
-    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7' };
-    const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K' };
+    const hotkeys = { pistol: '1', knife: '2', katana: '3', smg: '4', shotgun: '5', rifle: '6', goldenKatana: '7', upgrader: '8' };
+    const buyHotkeys = { smg: 'F', shotgun: 'H', katana: 'J', rifle: 'K', upgrader: 'E' };
     const upgradeHotkeys = { fireRate: 'X', magSize: 'C', health: 'V' };
     const isSpawner = p.sp === 1;
     let html = `<div style="color:#ffdd00;font-size:18px;font-weight:900;margin-bottom:8px;">GOLD: ${isSpawner ? '∞' : p.g}</div>`;
