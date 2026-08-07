@@ -939,7 +939,7 @@ function hatchEggs(p) {
 function creditBuddyKill(z) {
   // Buddy progression — every 3 kills is a level, up to Lv5
   z.kills = (z.kills || 0) + 1;
-  const newLv = Math.min(5, 1 + Math.floor(z.kills / 3));
+  const newLv = Math.min(10, 1 + Math.floor(z.kills / 3));
   if (newLv > (z.level || 1)) {
     z.level = newLv;
     z.damage = (z.baseDamage || z.damage) * (1 + 0.3 * (newLv - 1));

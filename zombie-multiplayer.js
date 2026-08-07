@@ -2191,7 +2191,7 @@ class ZombieMultiplayerClient {
       // Friendly zombie — level scaling, name tag, crafted gear
       if (z.fr) {
         const lv = z.lv || 1;
-        mesh.scale.setScalar(1 + 0.12 * (lv - 1));
+        mesh.scale.setScalar(1 + 0.12 * (Math.min(lv, 5) - 1)); // size caps at Lv5, stats keep growing
         if (z.gh && !mesh.userData.gearHelmet) {
           const hy = mesh.userData.head ? mesh.userData.head.position.y + 0.33 : 2.1;
           const gearH = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.16, 0.58), new THREE.MeshLambertMaterial({ color: 0xc0c0cc }));
